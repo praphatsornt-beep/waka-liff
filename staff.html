@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WAKA SPACE - Staff</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #e7e5df;
+      --card-bg: #ffffff;
+      --card-shadow: 0 24px 60px rgba(40,38,34,.18);
+      --card-border: #ddd9d2;
+      --accent: #111740;
+      --accent-hover: #222222;
+      --label: #a8a8a8;
+      --input-bg: #f5f5f5;
+      --field-radius: 14px;
+      --red: #d64545;
+      --white: #ffffff;
+      --pill-border: #e3e3e3;
+      --text-primary: #1a1a1a;
+      --text-secondary: #666666;
+      --summary-bg: #f7f7f5;
+      --green: #2d8f4e;
+      --orange: #d97706;
+      --blue: #2563eb;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Anuphan', 'Space Grotesk', sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      font-size: 14px;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+    }
+
+    /* -- PIN overlay --------------------------------------------------------- */
+    #pinOverlay {
+      position: fixed; inset: 0;
+      background: var(--bg);
+      z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .pin-card {
+      background: var(--card-bg);
+      border-radius: 14px;
+      box-shadow: var(--card-shadow);
+      border: 1px solid var(--card-border);
+      padding: 36px 28px;
+      max-width: 340px;
+      width: calc(100% - 32px);
+      text-align: center;
+    }
+    .pin-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+    .pin-subtitle {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+    }
+    .pin-input {
+      width: 100%;
+      padding: 14px;
+      background: var(--input-bg);
+      border: 1.5px solid transparent;
+      border-radius: var(--field-radius);
+      font-size: 18px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 600;
+      letter-spacing: .2em;
+      text-align: center;
+      color: var(--text-primary);
+      outline: none;
+      transition: border-color .15s;
+    }
+    .pin-input:focus { border-color: var(--accent); }
+    .pin-input.error { border-color: var(--red); }
+    .pin-error {
+      font-size: 12px;
+      color: var(--red);
+      margin-top: 8px;
+      display: none;
+    }
+    .pin-btn {
+      width: 100%;
+      padding: 14px;
+      background: var(--accent);
+      color: var(--white);
+      border: none;
+      border-radius: var(--field-radius);
+      font-family: 'Anuphan', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 16px;
+      transition: background .15s;
+    }
+    .pin-btn:hover { background: var(--accent-hover); }
+
+    /* -- Main layout --------------------------------------------------------- */
+    #mainApp { display: none; }
+    .app-wrap {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 0 12px;
+    }
+
+    /* -- Header -------------------------------------------------------------- */
+    .header {
+      padding: 16px 0 12px;
+      text-align: center;
+    }
+    .header-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    .header-sub {
+      font-size: 12px;
+      color: var(--label);
+      margin-top: 2px;
+    }
+    .logout-btn {
+      position: absolute;
+      top: 16px; right: 16px;
+      background: none; border: none;
+      font-family: 'Anuphan', sans-serif;
+      font-size: 12px;
+      color: var(--label);
+      cursor: pointer;
+      padding: 4px 8px;
+    }
+    .logout-btn:hover { color: var(--red); }
+
+    /* -- Search -------------------------------------------------------------- */
+    .search-wrap {
+      margin-bottom: 16px;
+    }
+    .search-row {
+      display: flex; gap: 8px;
+    }
+    .search-input {
+      flex: 1;
+      padding: 13px 14px;
+      background: var(--card-bg);
+      border: 1.5px solid var(--card-border);
+      border-radius: var(--field-radius);
+      font-size: 14px;
+      font-family: 'Anuphan', sans-serif;
+      color: var(--text-primary);
+      outline: none;
+      transition: border-color .15s;
+    }
+    .search-input:focus { border-color: var(--accent); }
+    .search-input::placeholder { color: var(--label); }
+    .search-btn {
+      padding: 0 20px;
+      background: var(--accent);
+      color: var(--white);
+      border: none;
+      border-radius: var(--field-radius);
+      font-family: 'Anuphan', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+      white-space: nowrap;
+    }
+    .search-btn:hover { background: var(--accent-hover); }
+    .search-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* -- Results ------------------------------------------------------------- */
+    #results {
+      padding-bottom: 40px;
+    }
+    .results-status {
+      text-align: center;
+      padding: 32px 0;
+      font-size: 13px;
+      color: var(--label);
+    }
+    .results-count {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      color: var(--label);
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    /* -- Order card ---------------------------------------------------------- */
+    .order-card {
+      background: var(--card-bg);
+      border-radius: 14px;
+      box-shadow: 0 4px 20px rgba(40,38,34,.08);
+      border: 1px solid var(--card-border);
+      margin-bottom: 14px;
+      overflow: hidden;
+    }
+    .order-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid #f0efec;
+    }
+    .order-id {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: .04em;
+    }
+    .order-date {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 11px;
+      color: var(--label);
+    }
+    .order-body { padding: 12px 16px; }
+    .order-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 3px 0;
+      font-size: 13px;
+      gap: 8px;
+    }
+    .order-label {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--label);
+      min-width: 60px;
+      flex-shrink: 0;
+      padding-top: 2px;
+    }
+    .order-value {
+      flex: 1;
+      text-align: right;
+      color: var(--text-primary);
+      word-break: break-word;
+    }
+
+    /* -- Items list inside card ---------------------------------------------- */
+    .items-section {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #f0efec;
+    }
+    .item-line {
+      display: flex;
+      justify-content: space-between;
+      padding: 3px 0;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+    .item-line .item-name {
+      font-family: 'Anuphan', sans-serif;
+    }
+    .item-line .item-detail {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 500;
+      white-space: nowrap;
+      margin-left: 8px;
+    }
+    .order-total-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0 0;
+      margin-top: 4px;
+      border-top: 1px solid #f0efec;
+    }
+    .order-total-label {
+      font-family: 'Anuphan', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .order-total-value {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    /* -- Status badges ------------------------------------------------------- */
+    .badge {
+      display: inline-block;
+      font-family: 'Anuphan', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+    .badge-green { background: #e8f5e9; color: var(--green); }
+    .badge-orange { background: #fff8e1; color: var(--orange); }
+    .badge-red { background: #fde8e8; color: var(--red); }
+    .badge-blue { background: #e3f2fd; color: var(--blue); }
+    .badge-gray { background: var(--input-bg); color: var(--text-secondary); }
+
+    /* -- Status section in card ----------------------------------------------- */
+    .status-section {
+      padding: 12px 16px;
+      border-top: 1px solid #f0efec;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .status-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .status-label {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--label);
+    }
+
+    /* -- Action section ------------------------------------------------------- */
+    .action-section {
+      padding: 10px 16px 14px;
+      border-top: 1px solid #f0efec;
+    }
+    .action-btn {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      font-family: 'Anuphan', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .action-btn:active { opacity: .7; }
+    .action-btn:disabled { opacity: .4; cursor: not-allowed; }
+    .action-btn-primary {
+      background: var(--accent);
+      color: var(--white);
+    }
+    .action-btn-success {
+      background: var(--green);
+      color: var(--white);
+    }
+    .action-btn-done {
+      background: var(--input-bg);
+      color: var(--text-secondary);
+      cursor: default;
+    }
+
+    /* -- Toast --------------------------------------------------------------- */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%; transform: translateX(-50%);
+      background: var(--accent);
+      color: var(--white);
+      font-family: 'Anuphan', sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 12px 24px;
+      border-radius: 12px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.2);
+      z-index: 200;
+      opacity: 0;
+      transition: opacity .3s;
+      pointer-events: none;
+      max-width: calc(100% - 32px);
+      text-align: center;
+    }
+    .toast.show { opacity: 1; }
+    .toast.error { background: var(--red); }
+    .toast.success { background: var(--green); }
+
+    /* -- Spinner ------------------------------------------------------------- */
+    .spinner-inline {
+      display: inline-block;
+      border: 2px solid #ddd9d2; border-top-color: var(--accent);
+      border-radius: 50%; width: 18px; height: 18px;
+      animation: spin .8s linear infinite;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<!-- ===== PIN OVERLAY ===== -->
+<div id="pinOverlay">
+  <div class="pin-card">
+    <div class="pin-title">WAKA SPACE</div>
+    <div class="pin-subtitle">Staff Access</div>
+    <input type="password" class="pin-input" id="pinInput" placeholder="PIN" maxlength="20"
+      onkeydown="if(event.key==='Enter')checkPin()" />
+    <div class="pin-error" id="pinError">PIN ไม่ถูกต้อง</div>
+    <button class="pin-btn" onclick="checkPin()">เข้าสู่ระบบ</button>
+  </div>
+</div>
+
+<!-- ===== MAIN APP ===== -->
+<div id="mainApp">
+  <div class="app-wrap" style="position:relative">
+
+    <!-- Header -->
+    <div class="header">
+      <div class="header-title">WAKA SPACE &middot; Staff</div>
+      <div class="header-sub">Order Management</div>
+    </div>
+    <button class="logout-btn" onclick="logout()">Logout</button>
+
+    <!-- Search -->
+    <div class="search-wrap">
+      <div class="search-row">
+        <input type="text" class="search-input" id="searchInput"
+          placeholder="เลขออเดอร์ / ชื่อ / เบอร์โทร"
+          onkeydown="if(event.key==='Enter')doSearch()" />
+        <button class="search-btn" id="searchBtn" onclick="doSearch()">ค้นหา</button>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="results">
+      <div class="results-status">พิมพ์คำค้นหาแล้วกด "ค้นหา"</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+  // -- Config ----------------------------------------------------------------
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec";
+  const DEFAULT_PIN = "waka2024";
+  const PIN_KEY = "waka_staff_pin";
+
+  // -- PIN auth --------------------------------------------------------------
+  function checkPin() {
+    const input = document.getElementById("pinInput");
+    const pin = input.value.trim();
+    if (pin === DEFAULT_PIN) {
+      localStorage.setItem(PIN_KEY, pin);
+      showApp();
+    } else {
+      input.classList.add("error");
+      document.getElementById("pinError").style.display = "block";
+      setTimeout(() => {
+        input.classList.remove("error");
+        document.getElementById("pinError").style.display = "none";
+      }, 2000);
+    }
+  }
+
+  function showApp() {
+    document.getElementById("pinOverlay").style.display = "none";
+    document.getElementById("mainApp").style.display = "block";
+    document.getElementById("searchInput").focus();
+
+    // Auto-search if URL has ?order= param
+    const params = new URLSearchParams(window.location.search);
+    const orderParam = params.get("order");
+    if (orderParam) {
+      document.getElementById("searchInput").value = orderParam;
+      doSearch();
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem(PIN_KEY);
+    document.getElementById("mainApp").style.display = "none";
+    document.getElementById("pinOverlay").style.display = "flex";
+    document.getElementById("pinInput").value = "";
+    document.getElementById("searchInput").value = "";
+    document.getElementById("results").innerHTML =
+      '<div class="results-status">พิมพ์คำค้นหาแล้วกด "ค้นหา"</div>';
+  }
+
+  // Check saved PIN on load
+  (function initAuth() {
+    const saved = localStorage.getItem(PIN_KEY);
+    if (saved === DEFAULT_PIN) {
+      showApp();
+    }
+  })();
+
+  // -- Search ----------------------------------------------------------------
+  async function doSearch() {
+    const query = document.getElementById("searchInput").value.trim();
+    if (!query) {
+      showToast("กรุณาพิมพ์คำค้นหา", "error");
+      return;
+    }
+
+    const btn = document.getElementById("searchBtn");
+    const results = document.getElementById("results");
+    btn.disabled = true;
+    btn.textContent = "...";
+    results.innerHTML = '<div class="results-status"><span class="spinner-inline"></span> กำลังค้นหา...</div>';
+
+    try {
+      const url = GAS_URL + "?action=api&do=search&q=" + encodeURIComponent(query);
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (data.error) {
+        results.innerHTML = '<div class="results-status">' + escapeHtml(data.error) + '</div>';
+        return;
+      }
+
+      const orders = data.orders || [];
+      if (orders.length === 0) {
+        results.innerHTML = '<div class="results-status">ไม่พบออเดอร์ที่ตรงกับ "' + escapeHtml(query) + '"</div>';
+        return;
+      }
+
+      results.innerHTML = '<div class="results-count">' + orders.length + ' order' + (orders.length > 1 ? 's' : '') + ' found</div>';
+      for (const order of orders) {
+        results.innerHTML += renderOrderCard(order);
+      }
+
+    } catch (e) {
+      results.innerHTML = '<div class="results-status">เกิดข้อผิดพลาด: ' + escapeHtml(e.message) + '</div>';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "ค้นหา";
+    }
+  }
+
+  // -- Render order card -----------------------------------------------------
+  function renderOrderCard(order) {
+    const id = escapeHtml(order.order_id || order.orderId || "-");
+    const date = escapeHtml(order.date || order.timestamp || "-");
+    const displayName = escapeHtml(order.display_name || order.displayName || "-");
+    const realName = escapeHtml(order.real_name || order.realName || "");
+    const phone = escapeHtml(order.phone || "-");
+    const branch = escapeHtml(order.branch || "-");
+    const address = escapeHtml(order.address || "");
+    const total = order.total || 0;
+    const slipStatus = order.slip_status || order.slipStatus || "-";
+    const fulfillment = order.fulfillment || order.fulfillment_status || "";
+
+    // Customer name line
+    const nameDisplay = realName
+      ? displayName + ' <span style="color:var(--text-secondary)">(' + realName + ')</span>'
+      : displayName;
+
+    // Parse items
+    let itemsHtml = "";
+    let items = [];
+    try {
+      if (order.items_json) {
+        items = typeof order.items_json === "string" ? JSON.parse(order.items_json) : order.items_json;
+      } else if (order.items) {
+        items = typeof order.items === "string" ? JSON.parse(order.items) : order.items;
+      }
+    } catch (_) {}
+
+    if (items.length > 0) {
+      itemsHtml = '<div class="items-section">';
+      for (const item of items) {
+        const iName = escapeHtml(item.name || "");
+        const iType = item.type === "box" ? "Box" : item.type === "pack" ? "Pack" : escapeHtml(item.type || "");
+        const iQty = item.qty || 1;
+        const iPrice = (item.price || 0) * iQty;
+        itemsHtml += '<div class="item-line">'
+          + '<span class="item-name">' + iName + ' (' + iType + ' x' + iQty + ')</span>'
+          + '<span class="item-detail">' + iPrice.toLocaleString() + '</span>'
+          + '</div>';
+      }
+      itemsHtml += '</div>';
+    }
+
+    // Slip status badge
+    const slipBadge = getSlipBadge(slipStatus);
+
+    // Fulfillment badge
+    const fulfillmentBadge = getFulfillmentBadge(fulfillment);
+
+    // Branch / delivery display
+    const isDelivery = branch === "จัดส่ง";
+    const locationHtml = isDelivery
+      ? '<span class="order-label">DELIVERY</span><span class="order-value">' + (address || "จัดส่ง") + '</span>'
+      : '<span class="order-label">BRANCH</span><span class="order-value">' + branch + '</span>';
+
+    // Action button
+    const actionHtml = getActionButton(id, fulfillment, isDelivery, slipStatus);
+
+    // Stage progress
+    const staffAt = order.staff_confirmed_at || "";
+    const custAt = order.customer_confirmed_at || "";
+    const fulfilledAt = order.fulfilled_at || "";
+    const orderTime = (order.timestamp || "").substring(0,16).replace("T"," ");
+    const stageHtml = renderStages(slipStatus, fulfillment, isDelivery, staffAt, custAt, orderTime, fulfilledAt);
+
+    return '<div class="order-card" id="card_' + id + '">'
+      + '<div class="order-header">'
+      + '  <span class="order-id">' + id + '</span>'
+      + '  <span class="order-date">' + date + '</span>'
+      + '</div>'
+      + stageHtml
+      + '<div class="order-body">'
+      + '  <div class="order-row"><span class="order-label">CUSTOMER</span><span class="order-value">' + nameDisplay + '</span></div>'
+      + '  <div class="order-row"><span class="order-label">PHONE</span><span class="order-value">' + phone + '</span></div>'
+      + '  <div class="order-row">' + locationHtml + '</div>'
+      + itemsHtml
+      + '  <div class="order-total-row">'
+      + '    <span class="order-total-label">Total</span>'
+      + '    <span class="order-total-value">' + total.toLocaleString() + ' .-</span>'
+      + '  </div>'
+      + '</div>'
+      + (actionHtml ? '<div class="action-section">' + actionHtml + '</div>' : '')
+      + '</div>';
+  }
+
+  // -- Stage timeline (Thailand Post style) -----------------------------------
+  function renderStages(slipStatus, fulfillment, isDelivery, staffAt, custAt, orderTime, fulfilledAt) {
+    var ff = (fulfillment || "").trim() || "รอเตรียม";
+    var slip = (slipStatus || "").trim();
+
+    var stages;
+    if (isDelivery) {
+      stages = [
+        { icon: "🛒", label: "รับเข้าระบบ",      done: true,                                    time: orderTime },
+        { icon: "💳", label: "ชำระเงินแล้ว",      done: slip === "ยืนยัน",                        time: slip === "ยืนยัน" ? orderTime : "" },
+        { icon: "📦", label: "จัดส่งพัสดุ",       done: ff === "จัดส่งแล้ว" || ff === "รับแล้ว",  time: fulfilledAt },
+        { icon: "✅", label: "นำจ่ายสำเร็จ",      done: !!custAt,                                 time: custAt },
+      ];
+    } else {
+      stages = [
+        { icon: "🛒", label: "รับเข้าระบบ",      done: true,                                                                        time: orderTime },
+        { icon: "💳", label: "ชำระเงินแล้ว",      done: slip === "ยืนยัน",                                                            time: slip === "ยืนยัน" ? orderTime : "" },
+        { icon: "🚚", label: "ระหว่างขนส่ง",      done: ["กำลังจัดส่งไปสาขา","พร้อมรับ","สาขายืนยัน","รับแล้ว"].indexOf(ff) >= 0,      time: fulfilledAt },
+        { icon: "📍", label: "ถึงสาขาแล้ว",       done: ["พร้อมรับ","สาขายืนยัน","รับแล้ว"].indexOf(ff) >= 0,                          time: "" },
+        { icon: "🤝", label: "ส่งมอบสินค้า",      done: !!staffAt,                                                                     time: staffAt },
+        { icon: "✅", label: "รับสำเร็จ",          done: !!custAt,                                                                      time: custAt },
+      ];
+    }
+
+    var currentIdx = -1;
+    for (var i = stages.length - 1; i >= 0; i--) {
+      if (stages[i].done) { currentIdx = i; break; }
+    }
+    var allDone = currentIdx === stages.length - 1;
+    var doneColor = allDone ? "#06c755" : "#d4382c";
+    var pendingColor = "#ddd";
+
+    var html = '<div style="padding:16px;border-bottom:1px solid #f0f0f0;background:#fafaf8">';
+
+    // Top: current status + date
+    var currentLabel = allDone ? "รับสำเร็จ" : (currentIdx >= 0 ? stages[currentIdx].label : "รอดำเนินการ");
+    var lastTime = "";
+    for (var t = currentIdx; t >= 0; t--) { if (stages[t].time) { lastTime = stages[t].time; break; } }
+
+    html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">';
+    html += '<div>';
+    html += '<div style="font-family:Anuphan,sans-serif;font-size:15px;font-weight:600;color:' + (allDone ? '#06c755' : '#2a2a2a') + '">' + currentLabel + '</div>';
+    if (!allDone && currentIdx + 1 < stages.length) {
+      html += '<div style="font-family:Anuphan,sans-serif;font-size:11px;color:#999;margin-top:2px">ถัดไป: ' + stages[currentIdx+1].label + '</div>';
+    }
+    html += '</div>';
+    if (lastTime) {
+      html += '<div style="text-align:right;font-family:Space Grotesk,sans-serif;font-size:11px;color:#999;line-height:1.5">' + lastTime + '</div>';
+    }
+    html += '</div>';
+
+    // Horizontal icon bar
+    html += '<div style="display:flex;align-items:center;margin-bottom:6px">';
+    for (var h = 0; h < stages.length; h++) {
+      var sDone = stages[h].done;
+      var bgColor = sDone ? doneColor : pendingColor;
+      html += '<div style="text-align:center;flex:none">';
+      html += '<div style="width:36px;height:36px;border-radius:50%;background:' + bgColor + ';display:flex;align-items:center;justify-content:center;font-size:18px;' + (sDone ? '' : 'opacity:.5') + '">' + stages[h].icon + '</div>';
+      html += '</div>';
+      if (h < stages.length - 1) {
+        var lineColor = (stages[h].done && stages[h+1].done) ? doneColor : pendingColor;
+        html += '<div style="flex:1;height:3px;background:' + lineColor + ';margin:0 -1px"></div>';
+      }
+    }
+    html += '</div>';
+
+    // Labels under icons
+    html += '<div style="display:flex;margin-bottom:10px">';
+    for (var lb = 0; lb < stages.length; lb++) {
+      var lbDone = stages[lb].done;
+      html += '<div style="flex:1;text-align:center;min-width:0">';
+      html += '<div style="font-family:Anuphan,sans-serif;font-size:9px;color:' + (lbDone ? '#555' : '#bbb') + ';font-weight:' + (lbDone ? '500' : '400') + ';line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + stages[lb].label + '</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+
+    // Update log (vertical, latest first)
+    html += '<div style="border-top:1px solid #eee;padding-top:8px">';
+    for (var k = currentIdx; k >= 0; k--) {
+      if (!stages[k].done) continue;
+      html += '<div style="display:flex;gap:8px;padding:4px 0;font-family:Anuphan,sans-serif">';
+      html += '<div style="font-size:14px;flex:none;width:20px;text-align:center">' + stages[k].icon + '</div>';
+      html += '<div style="flex:1;font-size:12px;color:#555">' + stages[k].label + '</div>';
+      html += '<div style="font-family:Space Grotesk,sans-serif;font-size:11px;color:#aaa;white-space:nowrap">' + (stages[k].time || "") + '</div>';
+      html += '</div>';
+    }
+    html += '</div></div>';
+
+    return html;
+  }
+
+  // -- Status badges ---------------------------------------------------------
+  function getSlipBadge(status) {
+    const s = (status || "").trim();
+    if (s === "ยืนยัน") return '<span class="badge badge-green">' + escapeHtml(s) + '</span>';
+    if (s === "ยอดไม่ตรง" || s === "สลิปซ้ำ" || s === "บัญชีไม่ตรง") return '<span class="badge badge-red">' + escapeHtml(s) + '</span>';
+    if (s === "รอตรวจ" || s === "รอตรวจสอบ") return '<span class="badge badge-orange">' + escapeHtml(s) + '</span>';
+    if (s === "ไม่มีสลิป" || s === "-") return '<span class="badge badge-gray">' + escapeHtml(s) + '</span>';
+    return '<span class="badge badge-gray">' + escapeHtml(s || "-") + '</span>';
+  }
+
+  function getFulfillmentBadge(status) {
+    const s = (status || "").trim();
+    if (!s) return '<span class="badge badge-gray">-</span>';
+    if (s === "รอเตรียม") return '<span class="badge badge-orange">' + escapeHtml(s) + '</span>';
+    if (s === "กำลังจัดส่งไปสาขา" || s === "จัดส่งพัสดุแล้ว") return '<span class="badge badge-blue">' + escapeHtml(s) + '</span>';
+    if (s === "พร้อมรับ") return '<span class="badge badge-green">' + escapeHtml(s) + '</span>';
+    if (s === "สาขายืนยัน" || s === "รับแล้ว") return '<span class="badge badge-green">' + escapeHtml(s) + '</span>';
+    return '<span class="badge badge-gray">' + escapeHtml(s) + '</span>';
+  }
+
+  // -- Action buttons --------------------------------------------------------
+  function getActionButton(orderId, fulfillment, isDelivery, slipStatus) {
+    const f = (fulfillment || "").trim();
+    const slip = (slipStatus || "").trim();
+
+    if (slip !== "ยืนยัน" && (f === "รอเตรียม" || f === "" || f === "-")) {
+      return '<div style="text-align:center;padding:12px;background:#f5f5f5;border-radius:10px;font-family:Anuphan,sans-serif;font-size:13px;color:#999">รอตรวจสลิปก่อนจึงจะจัดส่งได้</div>';
+    }
+
+    if (f === "รอเตรียม" || f === "" || f === "-") {
+      if (isDelivery) {
+        return '<button class="action-btn action-btn-primary" onclick="updateStatus(\'' + orderId + '\', \'handover\', this)">'
+          + '<span>&#x1F69A;</span> จัดส่งพัสดุแล้ว</button>';
+      }
+      return '<button class="action-btn action-btn-primary" onclick="updateStatus(\'' + orderId + '\', \'shipping\', this)">'
+        + '<span>&#x1F4E4;</span> จัดส่งไปสาขาแล้ว</button>';
+    }
+
+    if (f === "กำลังจัดส่งไปสาขา") {
+      return '<button class="action-btn action-btn-primary" onclick="updateStatus(\'' + orderId + '\', \'ready\', this)">'
+        + '<span>&#x1F4CD;</span> ถึงสาขา/พร้อมรับ</button>';
+    }
+
+    if (f === "พร้อมรับ") {
+      return '<button class="action-btn action-btn-success" onclick="updateStatus(\'' + orderId + '\', \'handover\', this)">'
+        + '<span>&#x1F91D;</span> ส่งมอบสินค้า</button>';
+    }
+
+    if (f === "สาขายืนยัน" || f === "รับแล้ว" || f === "จัดส่งแล้ว" || f === "จัดส่งพัสดุแล้ว") {
+      return '<button class="action-btn action-btn-done" disabled>'
+        + '<span>&#x2705;</span> ดำเนินการแล้ว</button>';
+    }
+
+    // No action for unknown statuses
+    return "";
+  }
+
+  // -- Update status ---------------------------------------------------------
+  async function updateStatus(orderId, newStatus, btnEl) {
+    if (!confirm("ยืนยันเปลี่ยนสถานะเป็น: " + newStatus + " ?")) return;
+
+    btnEl.disabled = true;
+    const originalText = btnEl.innerHTML;
+    btnEl.innerHTML = '<span class="spinner-inline" style="border-top-color:#fff"></span> กำลังอัปเดต...';
+
+    try {
+      const url = GAS_URL + "?action=api&do=update&order=" + encodeURIComponent(orderId) + "&status=" + encodeURIComponent(newStatus);
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (data.error) {
+        showToast(data.error, "error");
+        btnEl.disabled = false;
+        btnEl.innerHTML = originalText;
+        return;
+      }
+
+      showToast("อัปเดตสำเร็จ: " + newStatus, "success");
+
+      // Re-search to refresh the card
+      setTimeout(() => doSearch(), 500);
+
+    } catch (e) {
+      showToast("อัปเดตไม่ได้: " + e.message, "error");
+      btnEl.disabled = false;
+      btnEl.innerHTML = originalText;
+    }
+  }
+
+  // -- Toast -----------------------------------------------------------------
+  let toastTimer = null;
+  function showToast(msg, type) {
+    const el = document.getElementById("toast");
+    el.textContent = msg;
+    el.className = "toast" + (type ? " " + type : "");
+    el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove("show"), 3000);
+  }
+
+  // -- Utility ---------------------------------------------------------------
+  function escapeHtml(str) {
+    if (!str) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+</script>
+</body>
+</html>

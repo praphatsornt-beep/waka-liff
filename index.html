@@ -3,276 +3,838 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>สั่งซื้อการ์ดเกม</title>
-  <script src="https://static.line-scdn.net/liff/edge/versions/2.22.3/sdk.js"></script>
+  <title>WAKA SPACE — สั่งซื้อการ์ด</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script defer src="https://static.line-scdn.net/liff/edge/versions/2.22.3/sdk.js"></script>
   <style>
+    :root {
+      --bg: #e7e5df;
+      --card-bg: #ffffff;
+      --card-shadow: 0 24px 60px rgba(40,38,34,.18);
+      --card-border: #ddd9d2;
+      --accent: #111740;
+      --accent-hover: #222222;
+      --label: #a8a8a8;
+      --input-bg: #f5f5f5;
+      --field-radius: 14px;
+      --red: #d64545;
+      --white: #ffffff;
+      --pill-border: #e3e3e3;
+      --dashed: #d2d2d2;
+      --text-primary: #1a1a1a;
+      --text-secondary: #666666;
+      --summary-bg: #f7f7f5;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Sarabun', sans-serif; background: #f5f5f5; color: #333; }
-
-    .header {
-      background: #06c755;
-      color: #fff;
-      padding: 16px;
-      text-align: center;
-      font-size: 18px;
-      font-weight: bold;
-      position: sticky;
-      top: 0;
-      z-index: 10;
+    body {
+      font-family: 'Anuphan', 'Space Grotesk', sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      font-size: 14px;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
     }
 
-    .section {
-      background: #fff;
-      margin: 12px;
-      border-radius: 12px;
-      padding: 16px;
-      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    /* ── Loading / Error ─────────────────────────────────────────────────── */
+    #loadingState {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      min-height: 100vh;
     }
-    .section h2 { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: #06c755; }
+    .spinner {
+      border: 2px solid #ddd9d2; border-top-color: var(--accent);
+      border-radius: 50%; width: 32px; height: 32px;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-txt {
+      margin-top: 14px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 13px; color: var(--label);
+      letter-spacing: .04em;
+    }
+    #errorState {
+      display: none; text-align: center;
+      padding: 60px 24px;
+      font-size: 14px; color: var(--red);
+    }
 
-    /* Catalog */
-    .category-title { font-size: 13px; color: #888; font-weight: 600; margin: 12px 0 6px; text-transform: uppercase; }
-    .product-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
+    /* ── Card container ──────────────────────────────────────────────────── */
+    #mainContent {
+      padding: 20px 0 40px;
+      display: flex;
+      justify-content: center;
     }
-    .product-card {
-      border: 1.5px solid #eee;
-      border-radius: 10px;
+    .card {
+      background: var(--card-bg);
+      border-radius: 14px;
+      box-shadow: var(--card-shadow);
+      border: 1px solid var(--card-border);
+      max-width: 390px;
+      width: calc(100% - 24px);
       overflow: hidden;
-      transition: border-color .15s;
-      background: #fff;
     }
-    .product-card.has-qty { border-color: #06c755; }
+
+    /* ── Header bar ──────────────────────────────────────────────────────── */
+    .header-bar {
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-bottom: 1px solid var(--card-border);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    /* ── Section labels ──────────────────────────────────────────────────── */
+    .card-body { padding: 0 20px 24px; }
+    .section-label {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--label);
+      margin: 24px 0 14px;
+    }
+
+    /* ── Catalog ─────────────────────────────────────────────────────────── */
+    .cat-label {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 10px; font-weight: 600; color: var(--label);
+      letter-spacing: .12em; text-transform: uppercase;
+      margin: 18px 0 10px; padding-bottom: 6px;
+      border-bottom: 1px solid #eeece8;
+    }
+    .cat-label:first-child { margin-top: 0; }
+
+    .product-card {
+      border: 1px solid var(--pill-border);
+      border-radius: 12px;
+      margin-bottom: 10px;
+      overflow: hidden;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .product-card.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+
+    .product-top { display: flex; gap: 12px; padding: 14px; }
+    .product-img-wrap { width: 58px; height: 58px; flex-shrink: 0; }
     .product-img {
-      width: 100%; aspect-ratio: 1/1;
-      object-fit: cover; display: block;
-      background: #f5f5f5;
+      width: 58px; height: 58px;
+      object-fit: cover; border-radius: 10px;
+      background: var(--input-bg); display: block;
+      cursor: pointer;
     }
     .product-img-placeholder {
-      width: 100%; aspect-ratio: 1/1;
-      background: #f0f0f0; display: flex;
+      width: 58px; height: 58px; border-radius: 10px;
+      background: var(--input-bg); display: flex;
       align-items: center; justify-content: center;
-      font-size: 36px;
+      font-size: 22px; color: #ccc;
     }
-    .product-info { padding: 8px; }
-    .product-name  { font-size: 13px; font-weight: 600; line-height: 1.3; margin-bottom: 2px; }
-    .product-price { font-size: 12px; color: #06c755; font-weight: bold; }
+    .product-meta {
+      flex: 1; min-width: 0;
+      display: flex; flex-direction: column; justify-content: center;
+    }
+    .product-name {
+      font-family: 'Anuphan', sans-serif;
+      font-size: 15px; font-weight: 700;
+      line-height: 1.3; color: var(--text-primary);
+    }
+    .product-cat {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 11px; color: var(--label); margin-top: 2px;
+      letter-spacing: .04em;
+    }
+
+    /* Type rows (Box / Pack) */
+    .type-rows { border-top: 1px solid #f0efec; }
+    .type-row {
+      display: flex; align-items: center;
+      padding: 10px 14px; gap: 8px;
+      border-bottom: 1px solid #f5f4f2;
+    }
+    .type-row:last-child { border-bottom: none; }
+    .type-label {
+      font-family: 'Anuphan', sans-serif;
+      font-size: 13px; color: var(--text-secondary);
+      min-width: 36px;
+    }
+    .type-price {
+      flex: 1;
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 600; font-size: 13px;
+      color: var(--text-primary);
+    }
+
     .qty-ctrl {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 6px 8px; border-top: 1px solid #f0f0f0; margin-top: 4px;
+      display: flex; align-items: center; gap: 0;
+      border: 1px solid var(--pill-border);
+      border-radius: 9px;
+      overflow: hidden;
     }
     .qty-ctrl button {
-      width: 28px; height: 28px; border-radius: 50%;
-      border: 1.5px solid #06c755; background: #fff;
-      color: #06c755; font-size: 18px; font-weight: bold;
-      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px;
+      border: none;
+      background: var(--white);
+      color: var(--accent);
+      font-size: 16px; font-weight: 600;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .12s;
     }
-    .qty-ctrl button:active { background: #e8f9ee; }
-    .qty-num { font-size: 15px; font-weight: bold; }
+    .qty-ctrl button:active { background: var(--input-bg); }
+    .qty-num {
+      min-width: 28px; text-align: center;
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700; font-size: 14px;
+      background: var(--white);
+      border-left: 1px solid var(--pill-border);
+      border-right: 1px solid var(--pill-border);
+      height: 32px; line-height: 32px;
+    }
 
-    /* Pickup */
-    .pickup-options { display: flex; flex-direction: column; gap: 8px; }
-    .pickup-option {
-      display: flex; align-items: center; gap: 10px;
-      padding: 10px 12px; border: 1.5px solid #ddd;
-      border-radius: 8px; cursor: pointer; transition: border-color .15s;
+    /* ── Pickup / Delivery toggle ────────────────────────────────────────── */
+    .fulfillment-toggle {
+      display: flex;
+      background: var(--input-bg);
+      border-radius: 12px;
+      padding: 3px;
+      margin-bottom: 14px;
     }
-    .pickup-option.selected { border-color: #06c755; background: #f0fbf4; }
-    .pickup-option input[type=radio] { accent-color: #06c755; }
-    .pickup-label { flex: 1; font-size: 14px; }
-    .pickup-badge {
-      font-size: 12px; color: #888; background: #f5f5f5;
-      padding: 2px 6px; border-radius: 4px;
+    .toggle-btn {
+      flex: 1;
+      padding: 10px 0;
+      border: none;
+      background: transparent;
+      font-family: 'Anuphan', sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      cursor: pointer;
+      border-radius: 10px;
+      transition: all .2s;
     }
-    .pickup-badge.extra { color: #e66; background: #fff0f0; }
+    .toggle-btn.active {
+      background: var(--accent);
+      color: var(--white);
+      font-weight: 600;
+    }
 
-    /* Form fields */
-    label { font-size: 13px; color: #555; display: block; margin-bottom: 4px; margin-top: 12px; }
-    input[type=text] {
-      width: 100%; padding: 10px 12px; border: 1.5px solid #ddd;
-      border-radius: 8px; font-size: 14px; outline: none;
+    /* ── Branch selection ────────────────────────────────────────────────── */
+    .branch-options { display: flex; flex-direction: column; gap: 8px; }
+    .branch-opt {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all .15s;
+      background: var(--white);
     }
-    input[type=text]:focus { border-color: #06c755; }
+    .branch-opt:hover { background: #fafaf8; }
+    .branch-opt input[type="radio"] { display: none; }
 
-    /* Slip upload */
-    .slip-upload {
-      border: 2px dashed #ddd; border-radius: 10px;
-      padding: 20px; text-align: center; cursor: pointer;
-      transition: border-color .15s;
-    }
-    .slip-upload:hover { border-color: #06c755; }
-    .slip-upload input { display: none; }
-    #slipPreview { max-width: 100%; border-radius: 8px; margin-top: 10px; display: none; }
-
-    /* Summary bar */
-    .summary-bar {
-      position: sticky; bottom: 0; background: #fff;
-      border-top: 1px solid #eee; padding: 12px 16px;
-      display: flex; align-items: center; justify-content: space-between;
-    }
-    .summary-total { font-size: 16px; font-weight: bold; }
-    .summary-total span { color: #06c755; font-size: 20px; }
-    .submit-btn {
-      background: #06c755; color: #fff;
-      border: none; border-radius: 24px;
-      padding: 12px 28px; font-size: 15px; font-weight: bold;
-      cursor: pointer; transition: opacity .15s;
-    }
-    .submit-btn:disabled { opacity: .5; cursor: not-allowed; }
-    .submit-btn:not(:disabled):active { opacity: .8; }
-
-    /* Toast / overlay */
-    #overlay {
-      display: none; position: fixed; inset: 0;
-      background: rgba(0,0,0,.5); z-index: 100;
+    .radio-circle {
+      width: 18px; height: 18px;
+      border: 2px solid #ccc;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: flex;
       align-items: center; justify-content: center;
+      transition: all .15s;
     }
-    #overlay.show { display: flex; }
-    .overlay-card {
-      background: #fff; border-radius: 16px;
-      padding: 28px 24px; text-align: center;
-      max-width: 300px; width: 90%;
+    .radio-circle::after {
+      content: '';
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      transform: scale(0);
+      transition: transform .15s;
     }
-    .overlay-icon { font-size: 48px; margin-bottom: 12px; }
-    .overlay-title { font-size: 18px; font-weight: bold; margin-bottom: 8px; }
-    .overlay-msg { font-size: 14px; color: #555; margin-bottom: 20px; }
-    .overlay-close {
-      background: #06c755; color: #fff; border: none;
-      border-radius: 20px; padding: 10px 28px;
-      font-size: 15px; cursor: pointer;
+    .branch-opt.selected .radio-circle {
+      border-color: var(--accent);
+    }
+    .branch-opt.selected .radio-circle::after {
+      transform: scale(1);
+    }
+    .branch-info { flex: 1; }
+    .branch-name {
+      font-family: 'Anuphan', sans-serif;
+      font-size: 14px; font-weight: 600;
+      color: var(--text-primary);
+    }
+    .branch-hours {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 11px; color: var(--label);
+      margin-top: 2px;
+    }
+    .delivery-fee-badge {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 11px; font-weight: 600;
+      color: var(--accent);
+      background: var(--input-bg);
+      padding: 4px 10px;
+      border-radius: 20px;
     }
 
-    .spinner { border: 3px solid #eee; border-top-color: #06c755; border-radius: 50%; width: 32px; height: 32px; animation: spin .8s linear infinite; margin: 0 auto 12px; }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    /* ── Address section ─────────────────────────────────────────────────── */
+    #addressSection { margin-top: 14px; }
 
-    #loadingState { text-align: center; padding: 40px 0; }
-    #errorState { display: none; text-align: center; padding: 40px 16px; color: #e44; }
+    /* ── Form inputs ─────────────────────────────────────────────────────── */
+    .field-label {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 11px; font-weight: 500;
+      color: var(--label);
+      letter-spacing: .06em;
+      display: block;
+      margin: 14px 0 6px;
+    }
+    .field-label:first-child { margin-top: 0; }
+    .field-label .req { color: var(--red); }
+
+    input[type=text], input[type=tel], select {
+      width: 100%;
+      padding: 13px 14px;
+      background: var(--input-bg);
+      border: 1.5px solid transparent;
+      border-radius: var(--field-radius);
+      font-size: 14px;
+      font-family: 'Anuphan', sans-serif;
+      color: var(--text-primary);
+      outline: none;
+      transition: border-color .15s;
+      -webkit-appearance: none;
+    }
+    input:focus, select:focus {
+      border-color: var(--accent);
+    }
+    input.input-error, select.input-error {
+      border-color: var(--red);
+    }
+    .field-error {
+      font-size: 12px;
+      color: var(--red);
+      margin-top: 4px;
+      display: none;
+    }
+
+    /* ── Bank info ────────────────────────────────────────────────────────── */
+    .bank-card {
+      background: var(--summary-bg);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    .bank-card .bank-title {
+      font-family: 'Anuphan', sans-serif;
+      font-size: 14px; font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+    .bank-card .bank-detail {
+      font-size: 13px; color: var(--text-secondary);
+      line-height: 1.7;
+    }
+    .bank-card .bank-detail strong {
+      color: var(--text-primary);
+    }
+    .bank-account-row {
+      display: flex; align-items: center; gap: 8px;
+      margin-top: 4px;
+    }
+    .bank-account-num {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 16px; font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: .06em;
+    }
+    .copy-btn {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 11px; font-weight: 600;
+      color: var(--accent);
+      background: var(--white);
+      border: 1px solid var(--pill-border);
+      border-radius: 20px;
+      padding: 4px 12px;
+      cursor: pointer;
+      transition: all .15s;
+      letter-spacing: .04em;
+    }
+    .copy-btn:active { background: var(--input-bg); }
+
+    /* ── Slip upload ─────────────────────────────────────────────────────── */
+    .slip-box {
+      border: 1.5px dashed var(--dashed);
+      border-radius: 14px;
+      padding: 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .15s;
+      color: var(--label);
+    }
+    .slip-box:hover { border-color: var(--accent); }
+    .slip-box input { display: none; }
+    .slip-icon {
+      font-size: 28px;
+      margin-bottom: 6px;
+      display: block;
+    }
+    .slip-text {
+      font-family: 'Anuphan', sans-serif;
+      font-size: 13px;
+      color: var(--label);
+    }
+    #slipPreview {
+      max-width: 100%;
+      border-radius: 10px;
+      margin-top: 12px;
+      display: none;
+    }
+
+    /* ── Order summary ───────────────────────────────────────────────────── */
+    .order-summary {
+      background: var(--summary-bg);
+      border-radius: 12px;
+      padding: 18px;
+      margin-top: 20px;
+    }
+    .summary-line {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 0;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+    .summary-line .item-name {
+      font-family: 'Anuphan', sans-serif;
+    }
+    .summary-line .item-price {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 500;
+    }
+    .summary-divider {
+      border: none;
+      border-top: 1px solid #e3e1dc;
+      margin: 10px 0;
+    }
+    .summary-total {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 0;
+    }
+    .summary-total .total-label {
+      font-family: 'Anuphan', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .summary-total .total-price {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .summary-empty {
+      text-align: center;
+      font-size: 13px;
+      color: var(--label);
+      padding: 8px 0;
+    }
+
+    /* ── Confirm button ──────────────────────────────────────────────────── */
+    .confirm-btn {
+      width: 100%;
+      padding: 16px;
+      background: var(--accent);
+      color: var(--white);
+      border: none;
+      border-radius: var(--field-radius);
+      font-family: 'Anuphan', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 20px;
+      transition: background .15s, opacity .15s;
+      letter-spacing: .03em;
+    }
+    .confirm-btn:hover { background: var(--accent-hover); }
+    .confirm-btn:disabled { opacity: .4; cursor: not-allowed; }
+    .confirm-btn:not(:disabled):active { opacity: .7; }
+
+    /* ── Success view ────────────────────────────────────────────────────── */
+    #successView {
+      padding: 48px 24px;
+      text-align: center;
+    }
+    .success-check {
+      width: 72px; height: 72px;
+      background: var(--accent);
+      border-radius: 50%;
+      display: flex;
+      align-items: center; justify-content: center;
+      margin: 0 auto 24px;
+    }
+    .success-check svg {
+      width: 32px; height: 32px;
+    }
+    .success-title {
+      font-family: 'Anuphan', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+    .success-order-id {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 13px;
+      color: var(--label);
+      letter-spacing: .08em;
+      margin-bottom: 20px;
+    }
+    .success-detail {
+      background: var(--summary-bg);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 24px;
+      text-align: left;
+    }
+    .success-detail-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      font-size: 13px;
+    }
+    .success-detail-row .sdl {
+      color: var(--label);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 11px;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+    .success-detail-row .sdv {
+      font-family: 'Anuphan', sans-serif;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .success-msg {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+      margin-bottom: 28px;
+      white-space: pre-line;
+    }
+    .success-msg.warn {
+      color: var(--red);
+    }
+    .back-btn {
+      width: 100%;
+      padding: 16px;
+      background: var(--accent);
+      color: var(--white);
+      border: none;
+      border-radius: var(--field-radius);
+      font-family: 'Anuphan', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+      letter-spacing: .03em;
+    }
+    .back-btn:hover { background: var(--accent-hover); }
+
+    /* ── Lightbox ─────────────────────────────────────────────────────────── */
+    #lightbox {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.92); z-index: 200;
+      align-items: center; justify-content: center;
+      cursor: pointer;
+    }
+    #lightbox.show { display: flex; }
+    #lightbox img {
+      max-width: 92%; max-height: 88vh;
+      border-radius: 10px; object-fit: contain;
+    }
+    #lightbox .lb-close {
+      position: absolute; top: 14px; right: 18px;
+      color: #fff; font-size: 28px; font-weight: 300;
+      cursor: pointer; line-height: 1;
+    }
+
+    /* ── Misc ─────────────────────────────────────────────────────────────── */
+    .separator {
+      height: 1px;
+      background: #eeece8;
+      margin: 0 -20px;
+    }
   </style>
 </head>
 <body>
 
-<div class="header">🎴 สั่งซื้อการ์ดเกม</div>
-
 <div id="loadingState">
-  <div class="spinner" style="margin-top:60px"></div>
-  <p style="color:#888;margin-top:12px">กำลังโหลด...</p>
+  <div class="spinner"></div>
+  <p class="loading-txt">Loading...</p>
 </div>
 <div id="errorState"></div>
 
-<div id="mainContent" style="display:none; padding-bottom: 80px;">
+<div id="mainContent" style="display:none">
+  <div class="card">
 
-  <!-- สินค้า -->
-  <div class="section">
-    <h2>🛒 เลือกสินค้า</h2>
-    <div id="catalogContainer"></div>
-  </div>
+    <!-- Header bar -->
+    <div class="header-bar">WAKA SPACE</div>
 
-  <!-- รับสินค้า -->
-  <div class="section">
-    <h2>📍 วิธีรับสินค้า</h2>
-    <div class="pickup-options" id="pickupOptions">
-      <label class="pickup-option" onclick="selectPickup(this)">
-        <input type="radio" name="pickup" value="สาขาต้นสัก" />
-        <span class="pickup-label">สาขาต้นสัก</span>
-        <span class="pickup-badge">รับฟรี</span>
-      </label>
-      <label class="pickup-option" onclick="selectPickup(this)">
-        <input type="radio" name="pickup" value="สาขาเมืองทอง" />
-        <span class="pickup-label">สาขาเมืองทอง</span>
-        <span class="pickup-badge">รับฟรี</span>
-      </label>
-      <label class="pickup-option" onclick="selectPickup(this)">
-        <input type="radio" name="pickup" value="สาขาศรีนครินทร์" />
-        <span class="pickup-label">สาขาศรีนครินทร์</span>
-        <span class="pickup-badge">รับฟรี</span>
-      </label>
-      <label class="pickup-option" onclick="selectPickup(this)">
-        <input type="radio" name="pickup" value="จัดส่งพัสดุ" />
-        <span class="pickup-label">จัดส่งพัสดุ</span>
-        <span class="pickup-badge extra">+50 บาท</span>
-      </label>
+    <!-- ═══════════ ORDER VIEW ═══════════ -->
+    <div id="orderView">
+      <div class="card-body">
+
+        <!-- Products -->
+        <div class="section-label">Products</div>
+        <div id="catalogContainer"></div>
+
+        <!-- Separator -->
+        <div class="separator" style="margin-top:24px"></div>
+
+        <!-- Fulfillment -->
+        <div class="section-label">Fulfillment</div>
+        <div class="fulfillment-toggle">
+          <button class="toggle-btn active" id="togglePickup" onclick="switchFulfillment('pickup')">รับที่ร้าน</button>
+          <button class="toggle-btn" id="toggleDelivery" onclick="switchFulfillment('delivery')">จัดส่ง</button>
+        </div>
+
+        <!-- Branches (shown when pickup) -->
+        <div id="branchSection">
+          <div class="branch-options">
+            <label class="branch-opt" onclick="selectBranch(this)">
+              <input type="radio" name="branch" value="ต้นสัก" />
+              <span class="radio-circle"></span>
+              <div class="branch-info">
+                <div class="branch-name">สาขาต้นสัก</div>
+                <div class="branch-hours">10:00 - 21:00</div>
+              </div>
+            </label>
+            <label class="branch-opt" onclick="selectBranch(this)">
+              <input type="radio" name="branch" value="เมืองทอง" />
+              <span class="radio-circle"></span>
+              <div class="branch-info">
+                <div class="branch-name">สาขาเมืองทอง</div>
+                <div class="branch-hours">11:00 - 21:00</div>
+              </div>
+            </label>
+            <label class="branch-opt" onclick="selectBranch(this)">
+              <input type="radio" name="branch" value="ศรีนครินทร์" />
+              <span class="radio-circle"></span>
+              <div class="branch-info">
+                <div class="branch-name">สาขาศรีนครินทร์</div>
+                <div class="branch-hours">11:00 - 21:00</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Delivery address (shown when delivery) -->
+        <div id="deliverySection" style="display:none">
+          <input type="radio" name="branch" value="จัดส่ง" checked style="display:none" />
+          <div id="addressSection">
+            <label class="field-label">บ้านเลขที่ / ถนน / ซอย <span class="req">*</span></label>
+            <input type="text" id="addrLine" placeholder="เช่น 123/4 ซ.สุขุมวิท 55" />
+
+            <label class="field-label">จังหวัด <span class="req">*</span></label>
+            <select id="addrProv" onchange="onProvChange()">
+              <option value="">-- เลือกจังหวัด --</option>
+            </select>
+
+            <label class="field-label">อำเภอ / เขต <span class="req">*</span></label>
+            <select id="addrAmp" onchange="onAmpChange()">
+              <option value="">-- เลือกอำเภอ --</option>
+            </select>
+
+            <label class="field-label">ตำบล / แขวง <span class="req">*</span></label>
+            <select id="addrDist" onchange="onDistChange()">
+              <option value="">-- เลือกตำบล --</option>
+            </select>
+
+            <label class="field-label">รหัสไปรษณีย์</label>
+            <input type="text" id="addrZip" readonly style="background:#eeedea" />
+          </div>
+        </div>
+
+        <!-- Separator -->
+        <div class="separator" style="margin-top:24px"></div>
+
+        <!-- Customer info -->
+        <div class="section-label">Customer Info</div>
+        <label class="field-label">ชื่อ-นามสกุลจริง <span class="req">*</span></label>
+        <input type="text" id="realName" placeholder="เช่น สมชาย ใจดี" />
+
+        <label class="field-label">เบอร์โทร <span class="req">*</span></label>
+        <input type="tel" id="phone" placeholder="0xx-xxx-xxxx" maxlength="10" oninput="validatePhoneInput()" />
+        <div class="field-error" id="phoneError">กรุณากรอกเบอร์โทร 10 หลัก เริ่มต้นด้วย 0</div>
+
+        <!-- Separator -->
+        <div class="separator" style="margin-top:24px"></div>
+
+        <!-- Payment -->
+        <div class="section-label">Payment</div>
+        <div class="bank-card" id="bankInfo">
+          <div class="bank-detail">กำลังโหลดข้อมูลธนาคาร...</div>
+        </div>
+        <div class="slip-box" onclick="document.getElementById('slipInput').click()">
+          <input type="file" id="slipInput" accept="image/*" onchange="previewSlip(this)" />
+          <div id="slipPlaceholder">
+            <span class="slip-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </span>
+            <span class="slip-text">กดเพื่อแนบสลิป</span>
+          </div>
+          <img id="slipPreview" />
+        </div>
+
+        <!-- Order summary -->
+        <div class="order-summary" id="orderSummary">
+          <div class="section-label" style="margin-top:0">Order Summary</div>
+          <div id="summaryLines">
+            <div class="summary-empty">ยังไม่ได้เลือกสินค้า</div>
+          </div>
+        </div>
+
+        <!-- Confirm button -->
+        <button class="confirm-btn" id="submitBtn" onclick="submitOrder()">ยืนยันสั่งซื้อ</button>
+
+      </div>
     </div>
-  </div>
 
-  <!-- ข้อมูลผู้สั่ง -->
-  <div class="section">
-    <h2>👤 ข้อมูลผู้สั่ง</h2>
-    <label>ชื่อ-นามสกุลจริง (ตามที่โอนเงิน) <span style="color:red">*</span></label>
-    <input type="text" id="realName" placeholder="เช่น สมชาย ใจดี" />
-    <label>ชื่อเล่น / ชื่อในวงการ</label>
-    <input type="text" id="nickname" placeholder="เช่น Ash, Pikachu" />
-  </div>
-
-  <!-- สลิป -->
-  <div class="section">
-    <h2>🧾 แนบสลิปโอนเงิน</h2>
-    <div class="slip-upload" onclick="document.getElementById('slipInput').click()">
-      <input type="file" id="slipInput" accept="image/*" onchange="previewSlip(this)" />
-      <div id="slipPlaceholder">📷 กดเพื่อเลือกรูปสลิป</div>
-      <img id="slipPreview" />
+    <!-- ═══════════ SUCCESS VIEW ═══════════ -->
+    <div id="successView" style="display:none">
+      <div class="success-check">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div class="success-title" id="successTitle">สั่งซื้อสำเร็จ!</div>
+      <div class="success-order-id" id="successOrderId"></div>
+      <div class="success-detail">
+        <div class="success-detail-row">
+          <span class="sdl">Fulfillment</span>
+          <span class="sdv" id="successFulfillment"></span>
+        </div>
+        <div class="success-detail-row">
+          <span class="sdl">Total</span>
+          <span class="sdv" id="successTotal"></span>
+        </div>
+      </div>
+      <div class="success-msg" id="successMsg"></div>
+      <button class="back-btn" onclick="handleBack()">กลับสู่หน้าร้าน</button>
     </div>
-  </div>
 
+  </div>
 </div>
 
-<!-- Summary bar -->
-<div class="summary-bar" id="summaryBar" style="display:none">
-  <div class="summary-total">ยอดรวม <span id="totalDisplay">0</span> บาท</div>
-  <button class="submit-btn" id="submitBtn" onclick="submitOrder()">ยืนยันสั่งซื้อ</button>
-</div>
-
-<!-- Result overlay -->
-<div id="overlay">
-  <div class="overlay-card">
-    <div class="overlay-icon" id="overlayIcon">✅</div>
-    <div class="overlay-title" id="overlayTitle">สั่งซื้อสำเร็จ</div>
-    <div class="overlay-msg"   id="overlayMsg"></div>
-    <button class="overlay-close" onclick="closeOverlay()">ปิด</button>
-  </div>
+<!-- Lightbox -->
+<div id="lightbox" onclick="closeLightbox()">
+  <span class="lb-close">&times;</span>
+  <img id="lbImg" src="" />
 </div>
 
 <script>
-  // ── Config — เปลี่ยน 2 ค่านี้หลัง deploy ─────────────────────────────────
-  const LIFF_ID  = "YOUR_LIFF_ID";          // จาก Line Developers Console
-  const GAS_URL  = "YOUR_GAS_WEB_APP_URL";  // จาก GAS Deploy → Web App URL
-  // ──────────────────────────────────────────────────────────────────────────
+  // ── Lightbox ──────────────────────────────────────────────────────────────────
+  function openLightbox(src) {
+    document.getElementById("lbImg").src = src;
+    document.getElementById("lightbox").classList.add("show");
+  }
+  function closeLightbox() {
+    document.getElementById("lightbox").classList.remove("show");
+  }
 
-  const DELIVERY_FEE = 50;
+  // ── Config ────────────────────────────────────────────────────────────────────
+  const LIFF_ID = "2010457385-UpJLXxJ0";
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec";
+  // ──────────────────────────────────────────────────────────────────────────────
 
   let catalog     = [];
-  let quantities  = {};  // { productName: qty }
+  let configData  = {};
   let lineProfile = {};
   let slipBase64  = null;
+  // quantities: { "name__box": n, "name__pack": n }
+  const quantities = {};
 
-  // ── Init ──────────────────────────────────────────────────────────────────
+  // ── Init ──────────────────────────────────────────────────────────────────────
   async function init() {
     try {
       await liff.init({ liffId: LIFF_ID });
       if (!liff.isLoggedIn()) { liff.login(); return; }
       lineProfile = await liff.getProfile();
-    } catch (e) {
-      // ถ้ารันนอก Line ให้ใช้ mock สำหรับ dev
-      lineProfile = { userId: "dev_user", displayName: "Dev User" };
+    } catch (_) {
+      lineProfile = { userId: "dev_user", displayName: "Dev" };
     }
 
     try {
       const res  = await fetch(GAS_URL);
       const data = await res.json();
+      if (data.error) throw new Error(data.error);
       catalog    = data.catalog || [];
+      configData = data.config || {};
+      renderBankInfo(configData);
       renderCatalog();
       document.getElementById("loadingState").style.display = "none";
-      document.getElementById("mainContent").style.display  = "block";
-      document.getElementById("summaryBar").style.display   = "flex";
+      document.getElementById("mainContent").style.display  = "flex";
     } catch (e) {
       document.getElementById("loadingState").style.display = "none";
-      document.getElementById("errorState").style.display   = "block";
-      document.getElementById("errorState").textContent     = "โหลดสินค้าไม่ได้ กรุณาลองใหม่: " + e.message;
+      const el = document.getElementById("errorState");
+      el.style.display = "block";
+      el.textContent   = "โหลดสินค้าไม่ได้: " + e.message;
     }
   }
 
-  // ── Catalog ───────────────────────────────────────────────────────────────
+  let deliveryFee = 50;
+  let bankAccountNumber = "";
+
+  // ── Bank info ─────────────────────────────────────────────────────────────────
+  function renderBankInfo(config) {
+    const el = document.getElementById("bankInfo");
+    if (config.bank_name && config.bank_account) {
+      bankAccountNumber = config.bank_account;
+      el.innerHTML = `
+        <div class="bank-title">${config.bank_name}</div>
+        <div class="bank-account-row">
+          <span class="bank-account-num">${config.bank_account}</span>
+          <button class="copy-btn" onclick="copyBankAccount(event)">COPY</button>
+        </div>
+        <div class="bank-detail" style="margin-top:6px">${config.bank_account_name || ""}</div>`;
+    } else {
+      el.innerHTML = '<div class="bank-detail">โอนเงินตามที่แอดมินแจ้ง</div>';
+    }
+    if (config.delivery_fee) {
+      deliveryFee = Number(config.delivery_fee) || 50;
+    }
+  }
+
+  function copyBankAccount(e) {
+    e.stopPropagation();
+    if (!bankAccountNumber) return;
+    navigator.clipboard.writeText(bankAccountNumber).then(() => {
+      const btn = e.target;
+      btn.textContent = "COPIED!";
+      setTimeout(() => { btn.textContent = "COPY"; }, 1500);
+    }).catch(() => {
+      // Fallback
+      const ta = document.createElement("textarea");
+      ta.value = bankAccountNumber;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      const btn = e.target;
+      btn.textContent = "COPIED!";
+      setTimeout(() => { btn.textContent = "COPY"; }, 1500);
+    });
+  }
+
+  // ── Catalog ───────────────────────────────────────────────────────────────────
   function renderCatalog() {
     const container = document.getElementById("catalogContainer");
     const byCategory = {};
@@ -281,156 +843,479 @@
       if (!byCategory[cat]) byCategory[cat] = [];
       byCategory[cat].push(p);
     }
+
     for (const [cat, products] of Object.entries(byCategory)) {
       const catEl = document.createElement("div");
-      catEl.className = "category-title";
+      catEl.className = "cat-label";
       catEl.textContent = cat;
       container.appendChild(catEl);
 
-      const grid = document.createElement("div");
-      grid.className = "product-grid";
-      container.appendChild(grid);
-
       for (const p of products) {
-        quantities[p.name] = 0;
-        const imgHtml = p.imageUrl
-          ? `<img class="product-img" src="${p.imageUrl}" alt="${p.name}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="product-img-placeholder" style="display:none">🎴</div>`
-          : `<div class="product-img-placeholder">🎴</div>`;
+        const key = encodeKey(p.name);
+        quantities[key + "__box"]  = 0;
+        quantities[key + "__pack"] = 0;
+
         const card = document.createElement("div");
         card.className = "product-card";
-        card.id = `card_${esc(p.name)}`;
+        card.id = "card_" + key;
+
+        const imgHtml = p.imageUrl
+          ? `<img class="product-img" src="${p.imageUrl}" alt="" loading="lazy"
+               onclick="openLightbox(this.src)"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
+             <div class="product-img-placeholder" style="display:none">&#9876;</div>`
+          : `<div class="product-img-placeholder">&#9876;</div>`;
+
+        const boxRow  = typeRow("box",  "Box", p.name, p.price_box);
+        const packRow = typeRow("pack", "Pack", p.name, p.price_pack);
+
         card.innerHTML = `
-          ${imgHtml}
-          <div class="product-info">
-            <div class="product-name">${p.name}</div>
-            <div class="product-price">${p.price.toLocaleString()} บาท</div>
+          <div class="product-top">
+            <div class="product-img-wrap">${imgHtml}</div>
+            <div class="product-meta">
+              <div class="product-name">${p.name}</div>
+              <div class="product-cat">${p.category || ""}</div>
+            </div>
           </div>
-          <div class="qty-ctrl">
-            <button onclick="changeQty('${esc(p.name)}', ${p.price}, -1)">−</button>
-            <span class="qty-num" id="qty_${esc(p.name)}">0</span>
-            <button onclick="changeQty('${esc(p.name)}', ${p.price}, 1)">+</button>
-          </div>`;
-        grid.appendChild(card);
+          <div class="type-rows">${boxRow}${packRow}</div>`;
+
+        container.appendChild(card);
       }
     }
   }
 
-  function esc(s) { return s.replace(/['"\\]/g, "\\$&"); }
-
-  function changeQty(name, price, delta) {
-    quantities[name] = Math.max(0, (quantities[name] || 0) + delta);
-    document.getElementById("qty_" + name).textContent = quantities[name];
-    const card = document.getElementById("card_" + name);
-    if (card) card.classList.toggle("has-qty", quantities[name] > 0);
-    updateTotal();
+  function typeRow(type, label, name, price) {
+    if (!price || price <= 0) return "";
+    const key = encodeKey(name) + "__" + type;
+    return `
+      <div class="type-row">
+        <span class="type-label">${label}</span>
+        <span class="type-price">${price.toLocaleString()} .-</span>
+        <div class="qty-ctrl">
+          <button onclick="changeQty('${encodeKey(name)}','${type}',${price},-1)">-</button>
+          <span class="qty-num" id="qty_${key}">0</span>
+          <button onclick="changeQty('${encodeKey(name)}','${type}',${price},1)">+</button>
+        </div>
+      </div>`;
   }
 
-  // ── Pickup ────────────────────────────────────────────────────────────────
-  function selectPickup(label) {
-    document.querySelectorAll(".pickup-option").forEach(l => l.classList.remove("selected"));
+  function encodeKey(name) {
+    return name.replace(/[^a-zA-Z0-9ก-๙]/g, "_");
+  }
+
+  function changeQty(nameKey, type, price, delta) {
+    const k = nameKey + "__" + type;
+    quantities[k] = Math.max(0, (quantities[k] || 0) + delta);
+    document.getElementById("qty_" + k).textContent = quantities[k];
+
+    const card = document.getElementById("card_" + nameKey);
+    const total = (quantities[nameKey + "__box"] || 0) + (quantities[nameKey + "__pack"] || 0);
+    if (card) card.classList.toggle("active", total > 0);
+
+    updateTotal();
+    updateSummary();
+  }
+
+  // ── Thai address DB ───────────────────────────────────────────────────────────
+  let thaiAddr = [];
+
+  async function loadThaiAddress() {
+    try {
+      const res = await fetch("thai-address.json");
+      thaiAddr = await res.json();
+      const sel = document.getElementById("addrProv");
+      for (const p of thaiAddr) {
+        const opt = document.createElement("option");
+        opt.value = p.n; opt.textContent = p.n;
+        sel.appendChild(opt);
+      }
+    } catch (_) {}
+  }
+
+  function onProvChange() {
+    const prov = document.getElementById("addrProv").value;
+    const ampSel = document.getElementById("addrAmp");
+    const distSel = document.getElementById("addrDist");
+    ampSel.innerHTML = '<option value="">-- เลือกอำเภอ --</option>';
+    distSel.innerHTML = '<option value="">-- เลือกตำบล --</option>';
+    document.getElementById("addrZip").value = "";
+    const p = thaiAddr.find(x => x.n === prov);
+    if (!p) return;
+    for (const a of p.a) {
+      const opt = document.createElement("option");
+      opt.value = a.n; opt.textContent = a.n;
+      ampSel.appendChild(opt);
+    }
+  }
+
+  function onAmpChange() {
+    const prov = document.getElementById("addrProv").value;
+    const amp = document.getElementById("addrAmp").value;
+    const distSel = document.getElementById("addrDist");
+    distSel.innerHTML = '<option value="">-- เลือกตำบล --</option>';
+    document.getElementById("addrZip").value = "";
+    const p = thaiAddr.find(x => x.n === prov);
+    if (!p) return;
+    const a = p.a.find(x => x.n === amp);
+    if (!a) return;
+    for (const d of a.d) {
+      const opt = document.createElement("option");
+      opt.value = d.n; opt.textContent = d.n;
+      distSel.appendChild(opt);
+    }
+  }
+
+  function onDistChange() {
+    const prov = document.getElementById("addrProv").value;
+    const amp = document.getElementById("addrAmp").value;
+    const dist = document.getElementById("addrDist").value;
+    const p = thaiAddr.find(x => x.n === prov);
+    if (!p) return;
+    const a = p.a.find(x => x.n === amp);
+    if (!a) return;
+    const d = a.d.find(x => x.n === dist);
+    if (d) document.getElementById("addrZip").value = d.z;
+  }
+
+  function getFullAddress() {
+    const line = document.getElementById("addrLine").value.trim();
+    const dist = document.getElementById("addrDist").value;
+    const amp  = document.getElementById("addrAmp").value;
+    const prov = document.getElementById("addrProv").value;
+    const zip  = document.getElementById("addrZip").value;
+    if (!line || !prov || !amp || !dist) return "";
+    return line + " " + dist + " " + amp + " " + prov + " " + zip;
+  }
+
+  // ── Fulfillment toggle ────────────────────────────────────────────────────────
+  let currentFulfillment = "pickup";
+
+  function switchFulfillment(mode) {
+    currentFulfillment = mode;
+    document.getElementById("togglePickup").classList.toggle("active", mode === "pickup");
+    document.getElementById("toggleDelivery").classList.toggle("active", mode === "delivery");
+    document.getElementById("branchSection").style.display = mode === "pickup" ? "block" : "none";
+    document.getElementById("deliverySection").style.display = mode === "delivery" ? "block" : "none";
+
+    if (mode === "delivery") {
+      if (thaiAddr.length === 0) loadThaiAddress();
+      // Uncheck branch radios in pickup section
+      document.querySelectorAll('#branchSection input[name="branch"]').forEach(r => {
+        r.checked = false;
+        r.closest('.branch-opt').classList.remove('selected');
+      });
+    } else {
+      // Uncheck delivery radio
+      const delRadio = document.querySelector('#deliverySection input[name="branch"]');
+      if (delRadio) delRadio.checked = false;
+    }
+
+    updateTotal();
+    updateSummary();
+  }
+
+  // ── Branch ────────────────────────────────────────────────────────────────────
+  function selectBranch(label) {
+    document.querySelectorAll("#branchSection .branch-opt").forEach(l => l.classList.remove("selected"));
     label.classList.add("selected");
+    label.querySelector('input').checked = true;
     updateTotal();
+    updateSummary();
   }
 
-  function getPickup() {
-    const r = document.querySelector('input[name="pickup"]:checked');
+  function getBranch() {
+    if (currentFulfillment === "delivery") return "จัดส่ง";
+    const r = document.querySelector('#branchSection input[name="branch"]:checked');
     return r ? r.value : null;
   }
 
-  // ── Total ─────────────────────────────────────────────────────────────────
+  // ── Total ─────────────────────────────────────────────────────────────────────
   function updateTotal() {
     let total = 0;
-    for (const [name, qty] of Object.entries(quantities)) {
-      if (qty > 0) {
-        const p = catalog.find(p => p.name === name);
-        if (p) total += p.price * qty;
-      }
+    for (const p of catalog) {
+      const key = encodeKey(p.name);
+      total += (quantities[key + "__box"]  || 0) * (p.price_box  || 0);
+      total += (quantities[key + "__pack"] || 0) * (p.price_pack || 0);
     }
-    if (getPickup() === "จัดส่งพัสดุ") total += DELIVERY_FEE;
-    document.getElementById("totalDisplay").textContent = total.toLocaleString();
+    if (getBranch() === "จัดส่ง") total += deliveryFee;
     return total;
   }
 
-  // ── Slip preview ──────────────────────────────────────────────────────────
+  // ── Order summary ─────────────────────────────────────────────────────────────
+  function updateSummary() {
+    const container = document.getElementById("summaryLines");
+    const items = getSelectedItems();
+
+    if (items.length === 0) {
+      container.innerHTML = '<div class="summary-empty">ยังไม่ได้เลือกสินค้า</div>';
+      return;
+    }
+
+    let html = "";
+    let subtotal = 0;
+
+    for (const item of items) {
+      const lineTotal = item.qty * item.price;
+      subtotal += lineTotal;
+      const typeLabel = item.type === "box" ? "Box" : "Pack";
+      html += `<div class="summary-line">
+        <span class="item-name">${item.name} (${typeLabel} x${item.qty})</span>
+        <span class="item-price">${lineTotal.toLocaleString()}</span>
+      </div>`;
+    }
+
+    html += '<hr class="summary-divider">';
+
+    html += `<div class="summary-line">
+      <span class="item-name">Subtotal</span>
+      <span class="item-price">${subtotal.toLocaleString()}</span>
+    </div>`;
+
+    const isDelivery = getBranch() === "จัดส่ง";
+    if (isDelivery) {
+      html += `<div class="summary-line">
+        <span class="item-name">Delivery</span>
+        <span class="item-price">+${deliveryFee.toLocaleString()}</span>
+      </div>`;
+    }
+
+    const total = subtotal + (isDelivery ? deliveryFee : 0);
+    html += `<div class="summary-total">
+      <span class="total-label">Total</span>
+      <span class="total-price">${total.toLocaleString()} .-</span>
+    </div>`;
+
+    container.innerHTML = html;
+  }
+
+  function getSelectedItems() {
+    const items = [];
+    for (const p of catalog) {
+      const key = encodeKey(p.name);
+      const qBox  = quantities[key + "__box"]  || 0;
+      const qPack = quantities[key + "__pack"] || 0;
+      if (qBox  > 0) items.push({ name: p.name, type: "box",  qty: qBox,  price: p.price_box  });
+      if (qPack > 0) items.push({ name: p.name, type: "pack", qty: qPack, price: p.price_pack });
+    }
+    return items;
+  }
+
+  // ── Phone validation ──────────────────────────────────────────────────────────
+  function validatePhoneInput() {
+    const phone = document.getElementById("phone").value.trim();
+    const errorEl = document.getElementById("phoneError");
+    const input = document.getElementById("phone");
+
+    if (phone.length === 0) {
+      input.classList.remove("input-error");
+      errorEl.style.display = "none";
+      return;
+    }
+
+    const valid = /^0\d{9}$/.test(phone);
+    if (phone.length >= 10 && !valid) {
+      input.classList.add("input-error");
+      errorEl.style.display = "block";
+    } else {
+      input.classList.remove("input-error");
+      errorEl.style.display = "none";
+    }
+  }
+
+  function isPhoneValid(phone) {
+    return /^0\d{9}$/.test(phone);
+  }
+
+  // ── Slip (resize before upload) ─────────────────────────────────────────────
   function previewSlip(input) {
     const file = input.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = e => {
+    resizeImage(file, 1200, 0.85, function(dataUrl) {
       const img = document.getElementById("slipPreview");
-      img.src = e.target.result;
+      img.src = dataUrl;
       img.style.display = "block";
       document.getElementById("slipPlaceholder").style.display = "none";
-      // เก็บแค่ base64 ไม่รวม data:image/...;base64,
-      slipBase64 = e.target.result.split(",")[1];
+      slipBase64 = dataUrl.split(",")[1];
+    });
+  }
+
+  function resizeImage(file, maxSize, quality, callback) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var img = new Image();
+      img.onload = function() {
+        var w = img.width, h = img.height;
+        if (w > maxSize || h > maxSize) {
+          if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
+          else       { w = Math.round(w * maxSize / h); h = maxSize; }
+        }
+        var canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        callback(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = e.target.result;
     };
     reader.readAsDataURL(file);
   }
 
-  // ── Submit ────────────────────────────────────────────────────────────────
+  // ── Submit ────────────────────────────────────────────────────────────────────
   async function submitOrder() {
-    const items = [];
-    for (const [name, qty] of Object.entries(quantities)) {
-      if (qty > 0) {
-        const p = catalog.find(p => p.name === name);
-        if (p) items.push({ name, qty, price: p.price });
-      }
-    }
+    const items = getSelectedItems();
 
-    if (items.length === 0)      { alert("กรุณาเลือกสินค้าอย่างน้อย 1 รายการ"); return; }
-    if (!getPickup())            { alert("กรุณาเลือกวิธีรับสินค้า"); return; }
-    if (!document.getElementById("realName").value.trim()) { alert("กรุณากรอกชื่อ-นามสกุลจริง"); return; }
-    if (!slipBase64)             { alert("กรุณาแนบสลิปโอนเงิน"); return; }
+    if (items.length === 0) { alert("กรุณาเลือกสินค้าอย่างน้อย 1 รายการ"); return; }
+    if (!getBranch()) { alert("กรุณาเลือกสาขาที่ต้องการรับสินค้า"); return; }
+
+    const realName = document.getElementById("realName").value.trim();
+    const phone    = document.getElementById("phone").value.trim();
+    const address  = getBranch() === "จัดส่ง" ? getFullAddress() : "";
+
+    if (!realName) { alert("กรุณากรอกชื่อ-นามสกุลจริง"); return; }
+    if (!phone) { alert("กรุณากรอกเบอร์โทร"); return; }
+    if (!isPhoneValid(phone)) {
+      document.getElementById("phone").classList.add("input-error");
+      document.getElementById("phoneError").style.display = "block";
+      alert("กรุณากรอกเบอร์โทร 10 หลัก เริ่มต้นด้วย 0");
+      return;
+    }
+    if (getBranch() === "จัดส่ง" && !address) {
+      alert("กรุณากรอกที่อยู่จัดส่งให้ครบ (บ้านเลขที่ + จังหวัด + อำเภอ + ตำบล)");
+      return;
+    }
 
     const btn = document.getElementById("submitBtn");
     btn.disabled    = true;
     btn.textContent = "กำลังส่ง...";
 
     const total = updateTotal();
-    const body  = {
+    const body = {
       lineUserId:  lineProfile.userId,
       displayName: lineProfile.displayName,
       items,
       total,
-      pickup:      getPickup(),
-      realName:    document.getElementById("realName").value.trim(),
-      nickname:    document.getElementById("nickname").value.trim(),
-      slipBase64,
+      branch:   getBranch(),
+      realName,
+      phone,
+      address:  address || "",
+      slipBase64: slipBase64 || null,
     };
 
     try {
       const res  = await fetch(GAS_URL, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(body),
+        method: "POST",
+        body:   JSON.stringify(body),
       });
       const data = await res.json();
-
       if (data.success) {
-        showOverlay("✅", "สั่งซื้อสำเร็จ!",
-          `เลขออเดอร์: ${data.orderId}\nสถานะสลิป: ${data.slipStatus}\n\nเราจะแจ้งให้ทราบเมื่อของพร้อม`);
+        showSuccess(data, total);
       } else {
-        showOverlay("❌", "เกิดข้อผิดพลาด", data.error || "กรุณาลองใหม่อีกครั้ง");
+        alert(data.error || "เกิดข้อผิดพลาด กรุณาลองใหม่");
       }
     } catch (e) {
-      showOverlay("❌", "ส่งออเดอร์ไม่ได้", "กรุณาตรวจสอบ Internet แล้วลองใหม่");
+      alert("ส่งออเดอร์ไม่ได้ กรุณาตรวจสอบ Internet แล้วลองใหม่");
     }
 
     btn.disabled    = false;
     btn.textContent = "ยืนยันสั่งซื้อ";
   }
 
-  // ── Overlay ───────────────────────────────────────────────────────────────
-  function showOverlay(icon, title, msg) {
-    document.getElementById("overlayIcon").textContent  = icon;
-    document.getElementById("overlayTitle").textContent = title;
-    document.getElementById("overlayMsg").textContent   = msg;
-    document.getElementById("overlay").classList.add("show");
+  // ── Success view ──────────────────────────────────────────────────────────────
+  function showSuccess(data, total) {
+    const branch = getBranch();
+    const fulfillment = branch === "จัดส่ง" ? "จัดส่งพัสดุ" : "รับที่ " + branch;
+
+    document.getElementById("successOrderId").textContent = "ORDER " + data.orderId;
+    document.getElementById("successFulfillment").textContent = fulfillment;
+    document.getElementById("successTotal").textContent = total.toLocaleString() + " .-";
+
+    let title = "สั่งซื้อสำเร็จ!";
+    let msg = "";
+    let isWarn = false;
+
+    if (data.slipStatus === "ยืนยัน") {
+      title = "สั่งซื้อสำเร็จ!";
+      msg = "ยืนยันการชำระเงินแล้ว\nรอรับสินค้าได้เลย";
+    } else if (data.slipStatus === "ยอดไม่ตรง") {
+      title = "รับออเดอร์แล้ว";
+      msg = "ยอดในสลิปไม่ตรง\nกรุณาติดต่อแอดมิน";
+      isWarn = true;
+    } else if (data.slipStatus === "สลิปซ้ำ") {
+      title = "รับออเดอร์แล้ว";
+      msg = "สลิปนี้เคยใช้แล้ว\nกรุณาส่งสลิปใหม่";
+      isWarn = true;
+    } else if (data.slipStatus === "บัญชีไม่ตรง") {
+      title = "รับออเดอร์แล้ว";
+      msg = "บัญชีปลายทางไม่ตรง\nกรุณาตรวจสอบ";
+      isWarn = true;
+    } else {
+      title = "รับออเดอร์แล้ว";
+      msg = "ทีมงานจะแจ้งให้ทราบ\nเมื่อยืนยันแล้ว";
+    }
+
+    document.getElementById("successTitle").textContent = title;
+    const msgEl = document.getElementById("successMsg");
+    msgEl.textContent = msg;
+    msgEl.className = "success-msg" + (isWarn ? " warn" : "");
+
+    document.getElementById("orderView").style.display = "none";
+    document.getElementById("successView").style.display = "block";
+
+    // Scroll to top of card
+    document.querySelector(".card").scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function closeOverlay() {
-    document.getElementById("overlay").classList.remove("show");
-    if (liff.isInClient()) liff.closeWindow();
+  // ── Back / Close ──────────────────────────────────────────────────────────────
+  function handleBack() {
+    try {
+      if (liff.isInClient()) {
+        liff.closeWindow();
+        return;
+      }
+    } catch (_) {}
+
+    // If not in LINE client, reset form and go back to order view
+    resetForm();
+    document.getElementById("successView").style.display = "none";
+    document.getElementById("orderView").style.display = "block";
+  }
+
+  function resetForm() {
+    // Reset quantities
+    for (const key in quantities) {
+      quantities[key] = 0;
+      const el = document.getElementById("qty_" + key);
+      if (el) el.textContent = "0";
+    }
+    // Reset product card active states
+    document.querySelectorAll(".product-card.active").forEach(c => c.classList.remove("active"));
+
+    // Reset fulfillment
+    switchFulfillment("pickup");
+
+    // Reset branch selection
+    document.querySelectorAll(".branch-opt").forEach(l => l.classList.remove("selected"));
+    document.querySelectorAll('input[name="branch"]').forEach(r => r.checked = false);
+
+    // Reset form fields
+    document.getElementById("realName").value = "";
+    document.getElementById("phone").value = "";
+    document.getElementById("phone").classList.remove("input-error");
+    document.getElementById("phoneError").style.display = "none";
+    document.getElementById("addrLine").value = "";
+    document.getElementById("addrProv").value = "";
+    document.getElementById("addrAmp").innerHTML = '<option value="">-- เลือกอำเภอ --</option>';
+    document.getElementById("addrDist").innerHTML = '<option value="">-- เลือกตำบล --</option>';
+    document.getElementById("addrZip").value = "";
+
+    // Reset slip
+    slipBase64 = null;
+    document.getElementById("slipPreview").style.display = "none";
+    document.getElementById("slipPreview").src = "";
+    document.getElementById("slipPlaceholder").style.display = "block";
+    document.getElementById("slipInput").value = "";
+
+    // Reset summary
+    updateSummary();
   }
 
   init();
