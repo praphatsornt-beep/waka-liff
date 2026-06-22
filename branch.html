@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WAKA SPACE - สาขา</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #e7e5df;
+      --card-bg: #ffffff;
+      --card-shadow: 0 4px 20px rgba(40,38,34,.08);
+      --card-border: #ddd9d2;
+      --accent: #111740;
+      --white: #ffffff;
+      --text-primary: #1a1a1a;
+      --text-secondary: #666666;
+      --label: #a8a8a8;
+      --green: #2d8f4e;
+      --orange: #d97706;
+      --red: #d64545;
+      --blue: #2563eb;
+      --input-bg: #f5f5f5;
+      --field-radius: 14px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Anuphan', 'Space Grotesk', sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* PIN */
+    #pinOverlay {
+      position: fixed; inset: 0;
+      background: var(--bg);
+      z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .pin-card {
+      background: var(--card-bg);
+      border-radius: 14px;
+      box-shadow: 0 24px 60px rgba(40,38,34,.18);
+      border: 1px solid var(--card-border);
+      padding: 32px;
+      width: 320px;
+      text-align: center;
+    }
+    .pin-card h2 { margin-bottom: 4px; }
+    .pin-card .sub { color: var(--text-secondary); margin-bottom: 16px; font-size: 13px; }
+    .pin-card input {
+      width: 100%;
+      padding: 14px;
+      border: 1px solid var(--card-border);
+      border-radius: var(--field-radius);
+      font-size: 18px;
+      text-align: center;
+      letter-spacing: 8px;
+      background: var(--input-bg);
+      font-family: inherit;
+    }
+    .pin-card button {
+      width: 100%;
+      margin-top: 12px;
+      padding: 14px;
+      background: var(--accent);
+      color: var(--white);
+      border: none;
+      border-radius: var(--field-radius);
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .pin-error { color: var(--red); margin-top: 8px; display: none; font-size: 13px; }
+
+    .container { max-width: 500px; margin: 0 auto; padding: 16px; }
+
+    .header {
+      text-align: center;
+      margin-bottom: 16px;
+    }
+    .header h1 { font-size: 18px; }
+    .header .branch-name { color: var(--green); font-size: 22px; font-weight: 700; }
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 16px;
+      background: var(--card-bg);
+      border-radius: 12px;
+      padding: 4px;
+      border: 1px solid var(--card-border);
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 10px 8px;
+      border: none;
+      border-radius: 10px;
+      background: transparent;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--text-secondary);
+      transition: all .2s;
+    }
+    .tab-btn.active { background: var(--accent); color: var(--white); }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: 14px;
+      box-shadow: var(--card-shadow);
+      border: 1px solid var(--card-border);
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .card h3 { font-size: 15px; margin-bottom: 10px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 8px 6px; text-align: left; border-bottom: 1px solid #f0ede8; }
+    th { color: var(--label); font-weight: 500; font-size: 12px; }
+
+    .order-card {
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 10px;
+      background: var(--card-bg);
+    }
+    .order-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .order-id { font-weight: 700; font-size: 14px; }
+    .order-customer { font-size: 13px; color: var(--text-secondary); }
+    .order-items { font-size: 13px; margin: 6px 0; }
+    .order-items span { display: inline-block; background: #f5f3ef; padding: 2px 8px; border-radius: 6px; margin: 2px 2px; font-size: 12px; }
+    .order-total { font-weight: 600; color: var(--green); font-size: 13px; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-waiting { background: #f5f5f5; color: #999; }
+    .badge-shipping { background: #e0f2fe; color: #0369a1; }
+    .badge-ready { background: #fef3c7; color: #92400e; }
+    .badge-done { background: #d1fae5; color: #065f46; }
+    .badge-received { background: #dbeafe; color: #1e40af; }
+
+    .kpi-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .kpi {
+      flex: 1;
+      background: var(--card-bg);
+      border-radius: 12px;
+      border: 1px solid var(--card-border);
+      padding: 12px;
+      text-align: center;
+    }
+    .kpi-num { font-size: 22px; font-weight: 700; }
+    .kpi-label { font-size: 11px; color: var(--label); }
+
+    .empty { text-align: center; color: var(--label); padding: 24px; }
+
+    .filter-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .filter-btn {
+      padding: 6px 12px;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      background: var(--card-bg);
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      color: var(--text-secondary);
+    }
+    .filter-btn.active {
+      background: var(--accent);
+      color: var(--white);
+      border-color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+
+<!-- PIN -->
+<div id="pinOverlay">
+  <div class="pin-card">
+    <h2>🏬 WAKA SPACE</h2>
+    <div class="sub" id="pinBranchLabel">สาขา</div>
+    <input type="password" id="pinInput" maxlength="8" inputmode="numeric" placeholder="••••"
+      onkeydown="if(event.key==='Enter')checkPin()">
+    <button onclick="checkPin()">เข้าสู่ระบบ</button>
+    <div class="pin-error" id="pinError">PIN ไม่ถูกต้อง</div>
+  </div>
+</div>
+
+<div class="container" id="app" style="display:none">
+  <div class="header">
+    <h1>🏬 WAKA SPACE</h1>
+    <div class="branch-name" id="branchTitle"></div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpi-row" id="kpiRow"></div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('orders', this)">📋 ออเดอร์</button>
+    <button class="tab-btn" onclick="switchTab('stock', this)">📦 สต็อก</button>
+  </div>
+
+  <!-- Orders -->
+  <div id="tab-orders">
+    <div class="filter-row" id="filterRow"></div>
+    <div id="ordersList"><div class="empty">กำลังโหลด...</div></div>
+  </div>
+
+  <!-- Stock -->
+  <div id="tab-stock" style="display:none">
+    <div class="card">
+      <h3>📦 สต็อกคงเหลือ</h3>
+      <div id="stockContent"><div class="empty">กำลังโหลด...</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
+const params = new URLSearchParams(location.search);
+const branch = params.get('branch') || '';
+const PIN = 'waka2024';
+
+let allOrders = [];
+let currentFilter = 'all';
+
+if (!branch) {
+  document.getElementById('pinOverlay').innerHTML = '<div class="pin-card"><h2>ไม่ได้ระบุสาขา</h2><div class="sub">ใช้ ?branch=ชื่อสาขา</div></div>';
+} else {
+  document.getElementById('pinBranchLabel').textContent = 'สาขา' + branch;
+}
+
+function checkPin() {
+  if (document.getElementById('pinInput').value === PIN) {
+    document.getElementById('pinOverlay').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('branchTitle').textContent = 'สาขา' + branch;
+    loadAll();
+  } else {
+    document.getElementById('pinError').style.display = 'block';
+    setTimeout(() => document.getElementById('pinError').style.display = 'none', 2000);
+  }
+}
+
+function switchTab(tab, btn) {
+  document.querySelectorAll('[id^="tab-"]').forEach(el => el.style.display = 'none');
+  document.getElementById('tab-' + tab).style.display = 'block';
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (tab === 'stock') loadStock();
+}
+
+async function loadAll() {
+  await loadOrders();
+}
+
+async function loadOrders() {
+  try {
+    const res = await fetch(GAS_URL + '?action=api&do=branch_orders&branch=' + encodeURIComponent(branch));
+    const data = await res.json();
+    if (data.error) { document.getElementById('ordersList').innerHTML = '<div class="empty">' + esc(data.error) + '</div>'; return; }
+    allOrders = data.orders || [];
+    renderKPIs();
+    renderFilters();
+    renderOrders();
+  } catch (err) {
+    document.getElementById('ordersList').innerHTML = '<div class="empty">โหลดไม่ได้: ' + esc(err.message) + '</div>';
+  }
+}
+
+function renderKPIs() {
+  const waiting = allOrders.filter(o => !o.fulfillment || o.fulfillment === 'รอเตรียม' || o.fulfillment === '').length;
+  const ready = allOrders.filter(o => o.fulfillment === 'พร้อมรับ').length;
+  const done = allOrders.filter(o => o.fulfillment === 'สาขายืนยัน' || o.fulfillment === 'รับแล้ว').length;
+  const total = allOrders.reduce((s, o) => s + (Number(o.total) || 0), 0);
+
+  document.getElementById('kpiRow').innerHTML =
+    '<div class="kpi"><div class="kpi-num">' + allOrders.length + '</div><div class="kpi-label">ทั้งหมด</div></div>' +
+    '<div class="kpi"><div class="kpi-num" style="color:var(--orange)">' + waiting + '</div><div class="kpi-label">รอของ</div></div>' +
+    '<div class="kpi"><div class="kpi-num" style="color:var(--blue)">' + ready + '</div><div class="kpi-label">พร้อมรับ</div></div>' +
+    '<div class="kpi"><div class="kpi-num" style="color:var(--green)">' + done + '</div><div class="kpi-label">เสร็จ</div></div>';
+}
+
+function renderFilters() {
+  const filters = [
+    { key: 'all', label: 'ทั้งหมด' },
+    { key: 'waiting', label: 'รอของ' },
+    { key: 'ready', label: 'พร้อมรับ' },
+    { key: 'done', label: 'เสร็จแล้ว' },
+  ];
+  document.getElementById('filterRow').innerHTML = filters.map(f =>
+    '<button class="filter-btn ' + (currentFilter === f.key ? 'active' : '') + '" onclick="setFilter(\'' + f.key + '\')">' + f.label + '</button>'
+  ).join('');
+}
+
+function setFilter(key) {
+  currentFilter = key;
+  renderFilters();
+  renderOrders();
+}
+
+function renderOrders() {
+  let filtered = allOrders;
+  if (currentFilter === 'waiting') filtered = allOrders.filter(o => !o.fulfillment || o.fulfillment === 'รอเตรียม' || o.fulfillment === '' || o.fulfillment === 'กำลังจัดส่งไปสาขา');
+  else if (currentFilter === 'ready') filtered = allOrders.filter(o => o.fulfillment === 'พร้อมรับ');
+  else if (currentFilter === 'done') filtered = allOrders.filter(o => o.fulfillment === 'สาขายืนยัน' || o.fulfillment === 'รับแล้ว');
+
+  if (filtered.length === 0) {
+    document.getElementById('ordersList').innerHTML = '<div class="empty">ไม่มีออเดอร์</div>';
+    return;
+  }
+
+  let html = '';
+  for (const o of filtered) {
+    const items = JSON.parse(o.items_json || '[]');
+    const ff = o.fulfillment || 'รอเตรียม';
+    const badge = ffBadge(ff);
+
+    html += '<div class="order-card">';
+    html += '<div class="order-header"><span class="order-id">#' + esc(o.order_id) + '</span>' + badge + '</div>';
+    html += '<div class="order-customer">👤 ' + esc(o.real_name || o.display_name) + ' · 📱 ' + esc(o.phone) + '</div>';
+    html += '<div class="order-items">';
+    for (const it of items) {
+      const unit = it.type === 'box' ? 'กล่อง' : 'ซอง';
+      html += '<span>' + esc(it.name) + ' (' + unit + ') ×' + (it.qty || 1) + '</span>';
+    }
+    html += '</div>';
+    html += '<div class="order-total">฿' + Number(o.total).toLocaleString() + '</div>';
+
+    if (o.customer_confirmed_at) {
+      html += '<div style="font-size:12px;color:var(--green);margin-top:4px">✅ ลูกค้ายืนยันรับ ' + esc(o.customer_confirmed_at) + '</div>';
+    } else if (o.staff_confirmed_at) {
+      html += '<div style="font-size:12px;color:var(--blue);margin-top:4px">🤝 ส่งมอบแล้ว ' + esc(o.staff_confirmed_at) + ' · รอลูกค้ายืนยัน</div>';
+    }
+    html += '</div>';
+  }
+  document.getElementById('ordersList').innerHTML = html;
+}
+
+function ffBadge(ff) {
+  if (ff === 'รับแล้ว') return '<span class="badge badge-done">✅ รับแล้ว</span>';
+  if (ff === 'สาขายืนยัน') return '<span class="badge badge-done">🤝 ส่งมอบแล้ว</span>';
+  if (ff === 'พร้อมรับ') return '<span class="badge badge-ready">📍 พร้อมรับ</span>';
+  if (ff === 'กำลังจัดส่งไปสาขา') return '<span class="badge badge-shipping">🚚 กำลังส่งมา</span>';
+  return '<span class="badge badge-waiting">⏳ รอของ</span>';
+}
+
+async function loadStock() {
+  const el = document.getElementById('stockContent');
+  el.innerHTML = '<div class="empty">กำลังโหลด...</div>';
+  try {
+    const res = await fetch(GAS_URL + '?action=api&do=branch_stock&branch=' + encodeURIComponent(branch));
+    const data = await res.json();
+    const stock = data.stock || [];
+    if (stock.length === 0) {
+      el.innerHTML = '<div class="empty">ยังไม่มีสต็อก</div>';
+      return;
+    }
+    let html = '<table><tr><th>สินค้า</th><th>กล่อง</th><th>ซอง</th></tr>';
+    for (const s of stock) {
+      const boxStyle = s.qty_box <= 0 ? 'color:var(--red);font-weight:700' : '';
+      const packStyle = s.qty_pack <= 0 ? 'color:var(--red);font-weight:700' : '';
+      html += '<tr><td>' + esc(s.name) + '</td><td style="' + boxStyle + '">' + s.qty_box + '</td><td style="' + packStyle + '">' + s.qty_pack + '</td></tr>';
+    }
+    html += '</table>';
+    el.innerHTML = html;
+  } catch (err) {
+    el.innerHTML = '<div class="empty">โหลดไม่ได้</div>';
+  }
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WAKA SPACE - Staff Portal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #e7e5df;
+      --card-bg: #ffffff;
+      --card-shadow: 0 24px 60px rgba(40,38,34,.18);
+      --card-border: #ddd9d2;
+      --accent: #111740;
+      --white: #ffffff;
+      --text-primary: #1a1a1a;
+      --text-secondary: #666666;
+      --green: #2d8f4e;
+      --orange: #d97706;
+      --blue: #2563eb;
+      --red: #d64545;
+      --input-bg: #f5f5f5;
+      --field-radius: 14px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Anuphan', 'Space Grotesk', sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container { max-width: 420px; width: 100%; }
+
+    /* PIN */
+    #pinOverlay {
+      position: fixed; inset: 0;
+      background: var(--bg);
+      z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .pin-card {
+      background: var(--card-bg);
+      border-radius: 14px;
+      box-shadow: var(--card-shadow);
+      border: 1px solid var(--card-border);
+      padding: 32px;
+      width: 320px;
+      text-align: center;
+    }
+    .pin-card h2 { margin-bottom: 4px; }
+    .pin-card .sub { color: var(--text-secondary); margin-bottom: 16px; font-size: 13px; }
+    .pin-card input {
+      width: 100%;
+      padding: 14px;
+      border: 1px solid var(--card-border);
+      border-radius: var(--field-radius);
+      font-size: 18px;
+      text-align: center;
+      letter-spacing: 8px;
+      background: var(--input-bg);
+      font-family: inherit;
+    }
+    .pin-card button {
+      width: 100%;
+      margin-top: 12px;
+      padding: 14px;
+      background: var(--accent);
+      color: var(--white);
+      border: none;
+      border-radius: var(--field-radius);
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .pin-error { color: var(--red); margin-top: 8px; display: none; font-size: 13px; }
+
+    .header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .header h1 { font-size: 24px; font-weight: 700; }
+    .header .sub { color: var(--text-secondary); font-size: 13px; }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin: 20px 0 8px;
+    }
+
+    .menu-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .menu-card {
+      background: var(--card-bg);
+      border-radius: 14px;
+      border: 1px solid var(--card-border);
+      box-shadow: 0 4px 16px rgba(40,38,34,.06);
+      padding: 20px 14px;
+      text-align: center;
+      text-decoration: none;
+      color: var(--text-primary);
+      transition: transform .15s, box-shadow .15s;
+      display: block;
+    }
+    .menu-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(40,38,34,.12);
+    }
+    .menu-icon { font-size: 32px; margin-bottom: 8px; }
+    .menu-title { font-size: 14px; font-weight: 600; }
+    .menu-desc { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+    .menu-card.full-width {
+      grid-column: 1 / -1;
+    }
+
+    .branch-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .branch-link {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--card-bg);
+      border-radius: 12px;
+      border: 1px solid var(--card-border);
+      padding: 14px 16px;
+      text-decoration: none;
+      color: var(--text-primary);
+      transition: transform .15s;
+    }
+    .branch-link:hover { transform: translateX(4px); }
+    .branch-link .icon { font-size: 24px; }
+    .branch-link .info { flex: 1; }
+    .branch-link .name { font-weight: 600; font-size: 14px; }
+    .branch-link .arrow { color: var(--label); font-size: 18px; }
+  </style>
+</head>
+<body>
+
+<!-- PIN -->
+<div id="pinOverlay">
+  <div class="pin-card">
+    <h2>WAKA SPACE</h2>
+    <div class="sub">Staff Portal</div>
+    <input type="password" id="pinInput" maxlength="8" inputmode="numeric" placeholder="••••"
+      onkeydown="if(event.key==='Enter')checkPin()">
+    <button onclick="checkPin()">เข้าสู่ระบบ</button>
+    <div class="pin-error" id="pinError">PIN ไม่ถูกต้อง</div>
+  </div>
+</div>
+
+<div class="container" id="app" style="display:none">
+  <div class="header">
+    <h1>WAKA SPACE</h1>
+    <div class="sub">Staff Portal</div>
+  </div>
+
+  <!-- เมนูหลัก -->
+  <div class="section-title">จัดการ</div>
+  <div class="menu-grid">
+    <a class="menu-card" href="warehouse.html">
+      <div class="menu-icon">🏭</div>
+      <div class="menu-title">คลังกลาง</div>
+      <div class="menu-desc">สต็อก / สร้างล็อต / ส่งสาขา</div>
+    </a>
+    <a class="menu-card" href="staff.html">
+      <div class="menu-icon">📋</div>
+      <div class="menu-title">จัดการออเดอร์</div>
+      <div class="menu-desc">ค้นหา / ส่งมอบลูกค้า</div>
+    </a>
+  </div>
+
+  <!-- สาขา -->
+  <div class="section-title">สาขา</div>
+  <div class="branch-list">
+    <a class="branch-link" href="branch.html?branch=ต้นสัก">
+      <span class="icon">🏬</span>
+      <div class="info"><div class="name">สาขาต้นสัก</div></div>
+      <span class="arrow">&rsaquo;</span>
+    </a>
+    <a class="branch-link" href="branch.html?branch=เมืองทอง">
+      <span class="icon">🏬</span>
+      <div class="info"><div class="name">สาขาเมืองทอง</div></div>
+      <span class="arrow">&rsaquo;</span>
+    </a>
+    <a class="branch-link" href="branch.html?branch=ศรีนครินทร์">
+      <span class="icon">🏬</span>
+      <div class="info"><div class="name">สาขาศรีนครินทร์</div></div>
+      <span class="arrow">&rsaquo;</span>
+    </a>
+  </div>
+
+  <!-- ลิงก์เพิ่ม -->
+  <div class="section-title">อื่นๆ</div>
+  <div class="menu-grid">
+    <a class="menu-card" href="https://waka-tournament-e6wsqmhuhhexratyiub65f.streamlit.app" target="_blank">
+      <div class="menu-icon">📊</div>
+      <div class="menu-title">Admin Dashboard</div>
+      <div class="menu-desc">Streamlit รายงาน</div>
+    </a>
+    <a class="menu-card" href="index.html">
+      <div class="menu-icon">🛒</div>
+      <div class="menu-title">หน้าสั่งซื้อ</div>
+      <div class="menu-desc">LIFF ลูกค้า</div>
+    </a>
+  </div>
+</div>
+
+<script>
+const PIN = 'waka2024';
+
+function checkPin() {
+  if (document.getElementById('pinInput').value === PIN) {
+    document.getElementById('pinOverlay').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    sessionStorage.setItem('waka_portal_auth', '1');
+  } else {
+    document.getElementById('pinError').style.display = 'block';
+    setTimeout(() => document.getElementById('pinError').style.display = 'none', 2000);
+  }
+}
+
+if (sessionStorage.getItem('waka_portal_auth') === '1') {
+  document.getElementById('pinOverlay').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+}
+</script>
+</body>
+</html>

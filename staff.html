@@ -764,13 +764,11 @@
         return '<button class="action-btn action-btn-primary" onclick="updateStatus(\'' + orderId + '\', \'handover\', this)">'
           + '<span>&#x1F69A;</span> จัดส่งพัสดุแล้ว</button>';
       }
-      return '<button class="action-btn action-btn-primary" onclick="updateStatus(\'' + orderId + '\', \'shipping\', this)">'
-        + '<span>&#x1F4E4;</span> จัดส่งไปสาขาแล้ว</button>';
+      return '<div style="text-align:center;padding:12px;background:#f5f5f5;border-radius:10px;font-family:Anuphan,sans-serif;font-size:13px;color:#999">รอคลังกลางส่งของมาสาขา</div>';
     }
 
     if (f === "กำลังจัดส่งไปสาขา") {
-      return '<button class="action-btn action-btn-primary" onclick="updateStatus(\'' + orderId + '\', \'ready\', this)">'
-        + '<span>&#x1F4CD;</span> ถึงสาขา/พร้อมรับ</button>';
+      return '<div style="text-align:center;padding:12px;background:#fff8e1;border-radius:10px;font-family:Anuphan,sans-serif;font-size:13px;color:#92400e">🚚 กำลังส่งมาสาขา</div>';
     }
 
     if (f === "พร้อมรับ") {
@@ -796,8 +794,16 @@
     btnEl.innerHTML = '<span class="spinner-inline" style="border-top-color:#fff"></span> กำลังอัปเดต...';
 
     try {
-      const url = GAS_URL + "?action=api&do=update&order=" + encodeURIComponent(orderId) + "&status=" + encodeURIComponent(newStatus);
-      const res = await fetch(url);
+      let res;
+      if (newStatus === "handover") {
+        res = await fetch(GAS_URL, {
+          method: "POST",
+          body: JSON.stringify({ _action: "handoverOrder", order_id: orderId })
+        });
+      } else {
+        const url = GAS_URL + "?action=api&do=update&order=" + encodeURIComponent(orderId) + "&status=" + encodeURIComponent(newStatus);
+        res = await fetch(url);
+      }
       const data = await res.json();
 
       if (data.error) {
@@ -808,8 +814,6 @@
       }
 
       showToast("อัปเดตสำเร็จ: " + newStatus, "success");
-
-      // Re-search to refresh the card
       setTimeout(() => doSearch(), 500);
 
     } catch (e) {

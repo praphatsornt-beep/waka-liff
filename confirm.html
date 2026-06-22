@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WAKA SPACE - สถานะออเดอร์</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #e7e5df;
+      --card-bg: #ffffff;
+      --card-shadow: 0 24px 60px rgba(40,38,34,.18);
+      --card-border: #ddd9d2;
+      --accent: #111740;
+      --green: #06c755;
+      --text-primary: #1a1a1a;
+      --text-secondary: #666666;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Anuphan', 'Space Grotesk', sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      max-width: 420px;
+      width: 100%;
+    }
+    .card {
+      background: var(--card-bg);
+      border-radius: 16px;
+      box-shadow: var(--card-shadow);
+      border: 1px solid var(--card-border);
+      padding: 24px;
+      margin-bottom: 16px;
+    }
+    h2 {
+      text-align: center;
+      color: var(--green);
+      font-size: 20px;
+      margin-bottom: 4px;
+    }
+    .order-id {
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+    .step {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin: 10px 0;
+    }
+    .step-icon { font-size: 22px; flex-shrink: 0; }
+    .step-label { font-weight: 600; font-size: 14px; }
+    .step-label.done { color: var(--text-primary); }
+    .step-label.pending { color: #bbb; }
+    .step-time { font-size: 12px; color: var(--text-secondary); }
+    .step-line {
+      margin-left: 11px;
+      border-left: 2px solid #ccc;
+      height: 18px;
+    }
+    .step-line.done { border-color: var(--green); }
+    .confirm-btn {
+      display: block;
+      width: 100%;
+      padding: 16px;
+      background: var(--green);
+      color: #fff;
+      border: none;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      margin-top: 20px;
+      transition: opacity .2s;
+    }
+    .confirm-btn:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+    .confirm-btn:hover:not(:disabled) { opacity: .9; }
+    .ask-text {
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 14px;
+      margin-top: 16px;
+    }
+    .success-box {
+      text-align: center;
+      padding: 20px;
+      background: #f0fbf4;
+      border-radius: 12px;
+      margin-top: 16px;
+    }
+    .success-box h3 { color: var(--green); margin-bottom: 4px; }
+    .success-box p { color: var(--text-secondary); font-size: 13px; }
+    .footer {
+      text-align: center;
+      color: #aaa;
+      font-size: 12px;
+      margin-top: 20px;
+      padding-bottom: 20px;
+    }
+    .loading {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-secondary);
+    }
+    .error-msg {
+      text-align: center;
+      padding: 40px 20px;
+      color: #d64545;
+      font-weight: 600;
+    }
+    .total-line {
+      text-align: center;
+      font-size: 15px;
+      color: var(--text-secondary);
+      margin-top: 8px;
+    }
+    .total-line b { color: var(--green); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card" id="main">
+      <div class="loading" id="loadingView">กำลังโหลด...</div>
+    </div>
+    <div class="footer">ขอบคุณที่ใช้บริการ WAKA SPACE 🎴</div>
+  </div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
+const params = new URLSearchParams(location.search);
+const orderId = params.get('order') || '';
+
+if (!orderId) {
+  document.getElementById('main').innerHTML = '<div class="error-msg">ไม่พบเลขออเดอร์</div>';
+} else {
+  loadOrder();
+}
+
+async function loadOrder() {
+  try {
+    const res = await fetch(GAS_URL + '?action=api&do=order_status&order=' + encodeURIComponent(orderId));
+    const data = await res.json();
+    if (data.error) {
+      document.getElementById('main').innerHTML = '<div class="error-msg">' + escHtml(data.error) + '</div>';
+      return;
+    }
+    renderTimeline(data);
+  } catch (err) {
+    document.getElementById('main').innerHTML = '<div class="error-msg">โหลดไม่ได้: ' + escHtml(err.message) + '</div>';
+  }
+}
+
+function renderTimeline(d) {
+  const ff = d.fulfillment || 'รอเตรียม';
+  const slipSt = d.slip_status || '';
+  const staffAt = d.staff_confirmed_at || '';
+  const custAt = d.customer_confirmed_at || '';
+  const branch = d.branch || '';
+  const isDelivery = branch === 'จัดส่ง';
+  const ts = d.timestamp || '';
+
+  const steps = [];
+  steps.push({ label: 'สั่งซื้อสำเร็จ', done: true, time: ts ? ts.substring(0, 16).replace('T', ' ') : '' });
+  steps.push({ label: 'ยืนยันชำระเงิน', done: slipSt === 'ยืนยัน', time: slipSt === 'ยืนยัน' ? 'ผ่าน' : '' });
+
+  if (isDelivery) {
+    steps.push({ label: 'จัดส่งแล้ว', done: ff === 'จัดส่งแล้ว' || ff === 'รับแล้ว', time: '' });
+  } else {
+    steps.push({ label: 'กำลังจัดส่งไปสาขา', done: ['กำลังจัดส่งไปสาขา','พร้อมรับ','สาขายืนยัน','รับแล้ว'].includes(ff), time: '' });
+    steps.push({ label: 'พร้อมรับที่สาขา' + branch, done: ['พร้อมรับ','สาขายืนยัน','รับแล้ว'].includes(ff), time: '' });
+    steps.push({ label: 'สาขาส่งมอบ', done: !!staffAt, time: staffAt });
+  }
+  steps.push({ label: 'ลูกค้ายืนยันรับ', done: !!custAt, time: custAt });
+
+  const canConfirm = !custAt && !!staffAt;
+
+  let html = '<h2>📦 สถานะออเดอร์</h2>';
+  html += '<div class="order-id">#' + escHtml(orderId) + '</div>';
+
+  if (d.total) {
+    html += '<div class="total-line">ยอดรวม: <b>฿' + Number(d.total).toLocaleString() + '</b></div>';
+  }
+
+  html += '<div style="margin-top:16px">';
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
+    const icon = s.done ? '✅' : '⏳';
+    html += '<div class="step">';
+    html += '<span class="step-icon">' + icon + '</span>';
+    html += '<div>';
+    html += '<div class="step-label ' + (s.done ? 'done' : 'pending') + '">' + escHtml(s.label) + '</div>';
+    if (s.time) html += '<div class="step-time">' + escHtml(s.time) + '</div>';
+    html += '</div></div>';
+    if (i < steps.length - 1) html += '<div class="step-line ' + (s.done ? 'done' : '') + '"></div>';
+  }
+  html += '</div>';
+
+  if (custAt) {
+    html += '<div class="success-box"><h3>✅ ยืนยันรับของสำเร็จ!</h3><p>บันทึกเมื่อ: ' + escHtml(custAt) + '</p></div>';
+  } else if (canConfirm) {
+    html += '<div class="ask-text">ได้รับสินค้าเรียบร้อยแล้วใช่ไหมครับ?</div>';
+    html += '<button class="confirm-btn" id="confirmBtn" onclick="doConfirm()">✅ ยืนยันรับของแล้ว</button>';
+  }
+
+  document.getElementById('main').innerHTML = html;
+}
+
+async function doConfirm() {
+  const btn = document.getElementById('confirmBtn');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = 'กำลังบันทึก...';
+
+  try {
+    const res = await fetch(GAS_URL + '?action=api&do=customer_confirm&order=' + encodeURIComponent(orderId));
+    const data = await res.json();
+    if (data.error) {
+      alert(data.error);
+      btn.disabled = false;
+      btn.textContent = '✅ ยืนยันรับของแล้ว';
+      return;
+    }
+    loadOrder();
+  } catch (err) {
+    alert('เกิดข้อผิดพลาด: ' + err.message);
+    btn.disabled = false;
+    btn.textContent = '✅ ยืนยันรับของแล้ว';
+  }
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+</script>
+</body>
+</html>

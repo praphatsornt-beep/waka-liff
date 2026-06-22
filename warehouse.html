@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WAKA SPACE - คลังกลาง</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #e7e5df;
+      --card-bg: #ffffff;
+      --card-shadow: 0 24px 60px rgba(40,38,34,.18);
+      --card-border: #ddd9d2;
+      --accent: #111740;
+      --accent-hover: #222222;
+      --label: #a8a8a8;
+      --input-bg: #f5f5f5;
+      --field-radius: 14px;
+      --red: #d64545;
+      --white: #ffffff;
+      --text-primary: #1a1a1a;
+      --text-secondary: #666666;
+      --green: #2d8f4e;
+      --orange: #d97706;
+      --blue: #2563eb;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Anuphan', 'Space Grotesk', sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* PIN */
+    #pinOverlay {
+      position: fixed; inset: 0;
+      background: var(--bg);
+      z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .pin-card {
+      background: var(--card-bg);
+      border-radius: 14px;
+      box-shadow: var(--card-shadow);
+      border: 1px solid var(--card-border);
+      padding: 32px;
+      width: 320px;
+      text-align: center;
+    }
+    .pin-card h2 { margin-bottom: 16px; }
+    .pin-card input {
+      width: 100%;
+      padding: 14px;
+      border: 1px solid var(--card-border);
+      border-radius: var(--field-radius);
+      font-size: 18px;
+      text-align: center;
+      letter-spacing: 8px;
+      background: var(--input-bg);
+      font-family: inherit;
+    }
+    .pin-card button {
+      width: 100%;
+      margin-top: 12px;
+      padding: 14px;
+      background: var(--accent);
+      color: var(--white);
+      border: none;
+      border-radius: var(--field-radius);
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .container { max-width: 600px; margin: 0 auto; padding: 16px; }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 16px;
+      background: var(--card-bg);
+      border-radius: 12px;
+      padding: 4px;
+      border: 1px solid var(--card-border);
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 10px 8px;
+      border: none;
+      border-radius: 10px;
+      background: transparent;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--text-secondary);
+      transition: all .2s;
+    }
+    .tab-btn.active {
+      background: var(--accent);
+      color: var(--white);
+    }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: 14px;
+      box-shadow: 0 4px 20px rgba(40,38,34,.08);
+      border: 1px solid var(--card-border);
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .card h3 {
+      font-size: 15px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 8px 6px;
+      text-align: left;
+      border-bottom: 1px solid #f0ede8;
+    }
+    th {
+      color: var(--label);
+      font-weight: 500;
+      font-size: 12px;
+    }
+    .qty-input {
+      width: 54px;
+      padding: 6px;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      text-align: center;
+      font-size: 13px;
+      font-family: inherit;
+      background: var(--input-bg);
+    }
+
+    select {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--card-border);
+      border-radius: var(--field-radius);
+      font-size: 14px;
+      font-family: inherit;
+      background: var(--input-bg);
+      margin-bottom: 12px;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: var(--field-radius);
+      font-size: 15px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      transition: opacity .2s;
+    }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: var(--white); }
+    .btn-green { background: var(--green); color: var(--white); }
+    .btn-blue { background: var(--blue); color: var(--white); }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-pending { background: #fef3c7; color: #92400e; }
+    .badge-done { background: #d1fae5; color: #065f46; }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin: 16px 0 8px;
+    }
+
+    .extra-label {
+      font-size: 11px;
+      color: var(--orange);
+      font-weight: 600;
+    }
+
+    .empty { text-align: center; color: var(--label); padding: 24px; }
+
+    .shipment-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid #f5f3ef;
+      font-size: 13px;
+    }
+    .shipment-item:last-child { border: none; }
+  </style>
+</head>
+<body>
+
+<!-- PIN overlay -->
+<div id="pinOverlay">
+  <div class="pin-card">
+    <h2>🏭 คลังกลาง</h2>
+    <p style="color:var(--text-secondary);margin-bottom:16px">กรอก PIN เพื่อเข้าใช้งาน</p>
+    <input type="password" id="pinInput" maxlength="8" inputmode="numeric" placeholder="••••">
+    <button onclick="checkPin()">เข้าสู่ระบบ</button>
+    <p id="pinError" style="color:var(--red);margin-top:8px;display:none">PIN ไม่ถูกต้อง</p>
+  </div>
+</div>
+
+<div class="container" id="app" style="display:none">
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('summary')">📊 สรุปสาขา</button>
+    <button class="tab-btn" onclick="switchTab('shipment')">📦 สร้างล็อต</button>
+    <button class="tab-btn" onclick="switchTab('history')">📋 ประวัติ</button>
+    <button class="tab-btn" onclick="switchTab('stock')">🏪 สต็อก</button>
+  </div>
+
+  <!-- Tab: สรุปออเดอร์ตามสาขา -->
+  <div id="tab-summary">
+    <div class="card">
+      <h3>📊 สรุปออเดอร์ที่ยังไม่ส่ง (รายสินค้า)</h3>
+      <div id="summaryContent"><div class="empty">กำลังโหลด...</div></div>
+    </div>
+  </div>
+
+  <!-- Tab: สร้างล็อตส่งสาขา -->
+  <div id="tab-shipment" style="display:none">
+    <div class="card">
+      <h3>📦 สร้างล็อตส่งสาขา</h3>
+      <select id="shipBranch" onchange="loadShipmentForm()">
+        <option value="">-- เลือกสาขาปลายทาง --</option>
+        <option value="ต้นสัก">ต้นสัก</option>
+        <option value="เมืองทอง">เมืองทอง</option>
+        <option value="ศรีนครินทร์">ศรีนครินทร์</option>
+      </select>
+      <div id="shipmentForm"></div>
+    </div>
+  </div>
+
+  <!-- Tab: ประวัติล็อต -->
+  <div id="tab-history" style="display:none">
+    <div class="card">
+      <h3>📋 ประวัติล็อตส่งสาขา</h3>
+      <div id="historyContent"><div class="empty">กำลังโหลด...</div></div>
+    </div>
+  </div>
+
+  <!-- Tab: สต็อก -->
+  <div id="tab-stock" style="display:none">
+    <div class="card">
+      <h3>🏪 สต็อกกลาง</h3>
+      <div id="centralStockContent"><div class="empty">กำลังโหลด...</div></div>
+    </div>
+    <div class="card">
+      <h3>🏬 สต็อกสาขา</h3>
+      <div id="branchStockContent"><div class="empty">กำลังโหลด...</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
+const CORRECT_PIN = localStorage.getItem('waka_pin') || 'waka2024';
+
+let branchSummary = {};
+let centralStock = [];
+
+// ── PIN ──
+function checkPin() {
+  const pin = document.getElementById('pinInput').value;
+  if (pin === CORRECT_PIN) {
+    document.getElementById('pinOverlay').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    loadAll();
+  } else {
+    document.getElementById('pinError').style.display = 'block';
+  }
+}
+document.getElementById('pinInput').addEventListener('keydown', e => { if (e.key === 'Enter') checkPin(); });
+
+// ── Tabs ──
+function switchTab(tab) {
+  document.querySelectorAll('[id^="tab-"]').forEach(el => el.style.display = 'none');
+  document.getElementById('tab-' + tab).style.display = 'block';
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  if (tab === 'history') loadHistory();
+  if (tab === 'stock') loadStock();
+}
+
+// ── Load all ──
+async function loadAll() {
+  await Promise.all([loadSummary(), loadCentralStock()]);
+}
+
+// ── สรุปสาขา ──
+async function loadSummary() {
+  try {
+    const res = await fetch(GAS_URL + '?action=api&do=branch_summary');
+    const data = await res.json();
+    branchSummary = data.branches || {};
+    renderSummary();
+  } catch (err) {
+    document.getElementById('summaryContent').innerHTML = '<div class="empty">โหลดไม่ได้: ' + esc(err.message) + '</div>';
+  }
+}
+
+function renderSummary() {
+  const el = document.getElementById('summaryContent');
+  const branches = Object.keys(branchSummary);
+  if (branches.length === 0) {
+    el.innerHTML = '<div class="empty">ไม่มีออเดอร์ที่ยังไม่ส่ง</div>';
+    return;
+  }
+  let html = '';
+  for (const branch of branches) {
+    if (branch === 'จัดส่ง') continue;
+    const items = branchSummary[branch];
+    html += '<div class="section-title">🏬 ' + esc(branch) + '</div><table><tr><th>สินค้า</th><th>กล่อง</th><th>ซอง</th><th>ออเดอร์</th></tr>';
+    for (const it of items) {
+      html += '<tr><td>' + esc(it.name) + '</td><td>' + (it.qty_box || '-') + '</td><td>' + (it.qty_pack || '-') + '</td><td>' + it.order_count + '</td></tr>';
+    }
+    html += '</table>';
+  }
+  if (branchSummary['จัดส่ง']) {
+    const dItems = branchSummary['จัดส่ง'];
+    html += '<div class="section-title">🚚 จัดส่งพัสดุ</div><table><tr><th>สินค้า</th><th>กล่อง</th><th>ซอง</th><th>ออเดอร์</th></tr>';
+    for (const it of dItems) {
+      html += '<tr><td>' + esc(it.name) + '</td><td>' + (it.qty_box || '-') + '</td><td>' + (it.qty_pack || '-') + '</td><td>' + it.order_count + '</td></tr>';
+    }
+    html += '</table>';
+  }
+  el.innerHTML = html;
+}
+
+// ── สต็อกกลาง ──
+async function loadCentralStock() {
+  try {
+    const res = await fetch(GAS_URL + '?action=api&do=central_stock');
+    const data = await res.json();
+    centralStock = data.stock || [];
+  } catch (err) {}
+}
+
+// ── Shipment form ──
+function loadShipmentForm() {
+  const branch = document.getElementById('shipBranch').value;
+  const el = document.getElementById('shipmentForm');
+  if (!branch) { el.innerHTML = ''; return; }
+
+  const needs = branchSummary[branch] || [];
+  const allProducts = [...new Set([...centralStock.map(s => s.name), ...needs.map(n => n.name)])];
+
+  let html = '<table><tr><th>สินค้า</th><th>สต็อก</th><th>ออเดอร์</th><th>ส่ง</th><th>เผื่อ</th></tr>';
+  for (const name of allProducts) {
+    const need = needs.find(n => n.name === name) || { qty_box: 0, qty_pack: 0 };
+    const stock = centralStock.find(s => s.name === name) || { qty_box: 0, qty_pack: 0 };
+    const hasBox = stock.qty_box > 0 || need.qty_box > 0;
+    const hasPack = stock.qty_pack > 0 || need.qty_pack > 0;
+
+    if (hasBox) {
+      html += '<tr data-name="' + esc(name) + '" data-type="box">';
+      html += '<td>' + esc(name) + ' <small style="color:var(--label)">(กล่อง)</small></td>';
+      html += '<td>' + stock.qty_box + '</td>';
+      html += '<td>' + (need.qty_box || 0) + '</td>';
+      html += '<td><input type="number" class="qty-input ship-qty" value="' + (need.qty_box || 0) + '" min="0"></td>';
+      html += '<td><input type="number" class="qty-input ship-extra" value="0" min="0"> <span class="extra-label">เผื่อ</span></td>';
+      html += '</tr>';
+    }
+    if (hasPack) {
+      html += '<tr data-name="' + esc(name) + '" data-type="pack">';
+      html += '<td>' + esc(name) + ' <small style="color:var(--label)">(ซอง)</small></td>';
+      html += '<td>' + stock.qty_pack + '</td>';
+      html += '<td>' + (need.qty_pack || 0) + '</td>';
+      html += '<td><input type="number" class="qty-input ship-qty" value="' + (need.qty_pack || 0) + '" min="0"></td>';
+      html += '<td><input type="number" class="qty-input ship-extra" value="0" min="0"> <span class="extra-label">เผื่อ</span></td>';
+      html += '</tr>';
+    }
+  }
+  html += '</table>';
+  html += '<button class="btn btn-primary" style="margin-top:12px" onclick="createShipment()">📦 สร้างล็อตส่งสาขา</button>';
+  el.innerHTML = html;
+}
+
+async function createShipment() {
+  const branch = document.getElementById('shipBranch').value;
+  if (!branch) return alert('เลือกสาขาก่อน');
+
+  const rows = document.querySelectorAll('#shipmentForm tr[data-name]');
+  const itemMap = {};
+  rows.forEach(row => {
+    const name = row.dataset.name;
+    const type = row.dataset.type;
+    const qty = parseInt(row.querySelector('.ship-qty').value) || 0;
+    const extra = parseInt(row.querySelector('.ship-extra').value) || 0;
+    if (qty === 0 && extra === 0) return;
+    if (!itemMap[name]) itemMap[name] = { name, qty_box: 0, qty_pack: 0, qty_box_extra: 0, qty_pack_extra: 0 };
+    if (type === 'box') {
+      itemMap[name].qty_box = qty;
+      itemMap[name].qty_box_extra = extra;
+    } else {
+      itemMap[name].qty_pack = qty;
+      itemMap[name].qty_pack_extra = extra;
+    }
+  });
+
+  const items = Object.values(itemMap);
+  if (items.length === 0) return alert('ไม่มีสินค้าที่จะส่ง');
+
+  const totalItems = items.reduce((sum, it) => sum + it.qty_box + it.qty_pack + it.qty_box_extra + it.qty_pack_extra, 0);
+  if (!confirm('ส่งไปสาขา ' + branch + ' รวม ' + totalItems + ' ชิ้น\nยืนยัน?')) return;
+
+  const btn = document.querySelector('#shipmentForm .btn');
+  btn.disabled = true;
+  btn.textContent = 'กำลังสร้าง...';
+
+  try {
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ _action: 'createShipment', to_branch: branch, items })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    alert('สร้างล็อต ' + data.shipment_id + ' สำเร็จ!');
+    loadAll();
+    loadShipmentForm();
+  } catch (err) {
+    alert('เกิดข้อผิดพลาด: ' + err.message);
+    btn.disabled = false;
+    btn.textContent = '📦 สร้างล็อตส่งสาขา';
+  }
+}
+
+// ── History ──
+async function loadHistory() {
+  const el = document.getElementById('historyContent');
+  el.innerHTML = '<div class="empty">กำลังโหลด...</div>';
+  try {
+    const res = await fetch(GAS_URL + '?action=api&do=shipments');
+    const data = await res.json();
+    const shipments = data.shipments || [];
+    if (shipments.length === 0) {
+      el.innerHTML = '<div class="empty">ยังไม่มีล็อต</div>';
+      return;
+    }
+    let html = '';
+    for (const sh of shipments) {
+      const items = JSON.parse(sh.items_json || '[]');
+      const isDone = sh.status === 'รับแล้ว';
+      html += '<div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #f0ede8">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+      html += '<b>' + esc(sh.shipment_id) + '</b>';
+      html += '<span class="badge ' + (isDone ? 'badge-done' : 'badge-pending') + '">' + esc(sh.status) + '</span>';
+      html += '</div>';
+      html += '<div style="font-size:12px;color:var(--text-secondary)">🏬 ' + esc(sh.to_branch) + ' · ' + esc(sh.timestamp) + '</div>';
+      for (const it of items) {
+        const parts = [];
+        if (it.qty_box) parts.push('กล่อง ' + it.qty_box + (it.qty_box_extra ? ' (+' + it.qty_box_extra + ' เผื่อ)' : ''));
+        if (it.qty_pack) parts.push('ซอง ' + it.qty_pack + (it.qty_pack_extra ? ' (+' + it.qty_pack_extra + ' เผื่อ)' : ''));
+        html += '<div class="shipment-item"><span>' + esc(it.name) + '</span><span>' + parts.join(' · ') + '</span></div>';
+      }
+      if (!isDone) {
+        html += '<button class="btn btn-green" style="margin-top:8px;padding:10px;font-size:13px" onclick="receiveShipment(\'' + esc(sh.shipment_id) + '\')">✅ สาขารับของแล้ว</button>';
+      } else {
+        html += '<div style="font-size:12px;color:var(--green);margin-top:4px">รับเมื่อ: ' + esc(sh.received_at) + '</div>';
+      }
+      html += '</div>';
+    }
+    el.innerHTML = html;
+  } catch (err) {
+    el.innerHTML = '<div class="empty">โหลดไม่ได้: ' + esc(err.message) + '</div>';
+  }
+}
+
+async function receiveShipment(shipmentId) {
+  if (!confirm('ยืนยันว่าสาขาได้รับของล็อต ' + shipmentId + ' ครบแล้ว?\n\nระบบจะ:\n- อัปเดตสต็อกสาขา\n- แจ้งลูกค้าทุกคนที่มีออเดอร์')) return;
+
+  try {
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ _action: 'receiveShipment', shipment_id: shipmentId })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    if (data.already) alert('ล็อตนี้รับแล้ว');
+    else alert('รับของสำเร็จ! แจ้งลูกค้าแล้ว');
+    loadHistory();
+  } catch (err) {
+    alert('เกิดข้อผิดพลาด: ' + err.message);
+  }
+}
+
+// ── Stock view ──
+async function loadStock() {
+  const cEl = document.getElementById('centralStockContent');
+  const bEl = document.getElementById('branchStockContent');
+  cEl.innerHTML = '<div class="empty">กำลังโหลด...</div>';
+  bEl.innerHTML = '<div class="empty">กำลังโหลด...</div>';
+
+  try {
+    const [cRes, bRes] = await Promise.all([
+      fetch(GAS_URL + '?action=api&do=central_stock'),
+      fetch(GAS_URL + '?action=api&do=branch_stock')
+    ]);
+    const cData = await cRes.json();
+    const bData = await bRes.json();
+
+    // Central
+    const cStock = cData.stock || [];
+    if (cStock.length === 0) {
+      cEl.innerHTML = '<div class="empty">ไม่มีสต็อก</div>';
+    } else {
+      let html = '<table><tr><th>สินค้า</th><th>กล่อง</th><th>ซอง</th></tr>';
+      for (const s of cStock) {
+        html += '<tr><td>' + esc(s.name) + '</td><td>' + s.qty_box + '</td><td>' + s.qty_pack + '</td></tr>';
+      }
+      html += '</table>';
+      cEl.innerHTML = html;
+    }
+
+    // Branch
+    const bStock = bData.stock || [];
+    if (bStock.length === 0) {
+      bEl.innerHTML = '<div class="empty">ยังไม่มีสต็อกสาขา</div>';
+    } else {
+      const byBranch = {};
+      for (const s of bStock) {
+        if (!byBranch[s.branch]) byBranch[s.branch] = [];
+        byBranch[s.branch].push(s);
+      }
+      let html = '';
+      for (const branch of Object.keys(byBranch)) {
+        html += '<div class="section-title">🏬 ' + esc(branch) + '</div>';
+        html += '<table><tr><th>สินค้า</th><th>กล่อง</th><th>ซอง</th></tr>';
+        for (const s of byBranch[branch]) {
+          html += '<tr><td>' + esc(s.name) + '</td><td>' + s.qty_box + '</td><td>' + s.qty_pack + '</td></tr>';
+        }
+        html += '</table>';
+      }
+      bEl.innerHTML = html;
+    }
+  } catch (err) {
+    cEl.innerHTML = '<div class="empty">โหลดไม่ได้</div>';
+    bEl.innerHTML = '<div class="empty">โหลดไม่ได้</div>';
+  }
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+</script>
+</body>
+</html>
