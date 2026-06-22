@@ -215,15 +215,23 @@
       <div class="menu-title">Admin Dashboard</div>
       <div class="menu-desc">Streamlit รายงาน</div>
     </a>
-    <a class="menu-card" href="index.html">
+    <a class="menu-card" href="https://liff.line.me/2010457385-UpJLXxJ0" target="_blank">
       <div class="menu-icon">🛒</div>
-      <div class="menu-title">หน้าสั่งซื้อ</div>
-      <div class="menu-desc">LIFF ลูกค้า</div>
+      <div class="menu-title">สั่งซื้อ (ทุกสินค้า)</div>
+      <div class="menu-desc">เปิดใน LINE</div>
     </a>
+  </div>
+
+  <!-- ลิงก์สั่งซื้อแต่ละสินค้า -->
+  <div class="section-title">ลิงก์สั่งซื้อแยกสินค้า</div>
+  <div class="branch-list" id="productLinks">
+    <div style="text-align:center;color:#a8a8a8;padding:16px">กำลังโหลด...</div>
   </div>
 </div>
 
 <script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
+const LIFF_BASE = 'https://liff.line.me/2010457385-UpJLXxJ0';
 const PIN = 'waka2024';
 
 function checkPin() {
@@ -231,6 +239,7 @@ function checkPin() {
     document.getElementById('pinOverlay').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     sessionStorage.setItem('waka_portal_auth', '1');
+    loadProductLinks();
   } else {
     document.getElementById('pinError').style.display = 'block';
     setTimeout(() => document.getElementById('pinError').style.display = 'none', 2000);
@@ -240,7 +249,44 @@ function checkPin() {
 if (sessionStorage.getItem('waka_portal_auth') === '1') {
   document.getElementById('pinOverlay').style.display = 'none';
   document.getElementById('app').style.display = 'block';
+  loadProductLinks();
 }
+
+async function loadProductLinks() {
+  try {
+    const res = await fetch(GAS_URL);
+    const data = await res.json();
+    const catalog = data.catalog || [];
+    const el = document.getElementById('productLinks');
+    if (catalog.length === 0) { el.innerHTML = '<div style="text-align:center;color:#a8a8a8;padding:16px">ไม่มีสินค้า</div>'; return; }
+    let html = '';
+    for (const p of catalog) {
+      const link = p.slug ? LIFF_BASE + '/' + p.slug : LIFF_BASE + '?product=' + encodeURIComponent(p.name);
+      const prices = [];
+      if (p.price_box) prices.push('Box ' + p.price_box.toLocaleString() + '.-');
+      if (p.price_pack) prices.push('Pack ' + p.price_pack.toLocaleString() + '.-');
+      html += '<div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:12px;border:1px solid #ddd9d2;padding:12px 16px;margin-bottom:6px">';
+      html += '<span style="font-size:20px">🎴</span>';
+      html += '<div style="flex:1"><div style="font-weight:600;font-size:14px">' + esc(p.name) + '</div>';
+      html += '<div style="font-size:11px;color:#a8a8a8">' + prices.join(' · ') + '</div></div>';
+      html += '<button onclick="copyLink(\'' + link.replace(/'/g, "\\'") + '\')" style="padding:6px 12px;border:1px solid #ddd9d2;border-radius:8px;background:#f5f5f5;font-family:inherit;font-size:12px;cursor:pointer">คัดลอก</button>';
+      html += '</div>';
+    }
+    el.innerHTML = html;
+  } catch (err) {
+    document.getElementById('productLinks').innerHTML = '<div style="text-align:center;color:#d64545;padding:16px">โหลดไม่ได้</div>';
+  }
+}
+
+function copyLink(url) {
+  navigator.clipboard.writeText(url).then(() => {
+    alert('คัดลอกลิงก์แล้ว!');
+  }).catch(() => {
+    prompt('คัดลอกลิงก์:', url);
+  });
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 </script>
 </body>
 </html>
