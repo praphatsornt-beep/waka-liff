@@ -779,11 +779,12 @@
       catalog    = data.catalog || [];
       configData = data.config || {};
 
-      // filter ตาม path slug, ?product= หรือ ?category=
+      // filter ตาม path slug, liff.state, ?product= หรือ ?category=
       const urlParams = new URLSearchParams(window.location.search);
       const productFilter = urlParams.get("product");
       const categoryFilter = urlParams.get("category");
-      const pathSlug = window.location.pathname.replace(/^\//, "").replace(/\.html$/, "");
+      const liffState = (urlParams.get("liff.state") || "").replace(/^\//, "");
+      const pathSlug = liffState || window.location.pathname.replace(/^\//, "").replace(/\.html$/, "");
 
       if (pathSlug && pathSlug !== "index" && pathSlug !== "") {
         const matched = catalog.filter(p => p.slug === pathSlug);
