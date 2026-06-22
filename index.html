@@ -778,6 +778,15 @@
       if (data.error) throw new Error(data.error);
       catalog    = data.catalog || [];
       configData = data.config || {};
+
+      // filter ตาม ?product= ถ้ามี
+      const urlParams = new URLSearchParams(window.location.search);
+      const productFilter = urlParams.get("product");
+      if (productFilter) {
+        catalog = catalog.filter(p => p.name === productFilter);
+        document.title = productFilter + " — WAKA SPACE";
+      }
+
       renderBankInfo(configData);
       renderCatalog();
       document.getElementById("loadingState").style.display = "none";
