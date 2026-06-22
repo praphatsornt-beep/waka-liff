@@ -779,12 +779,16 @@
       catalog    = data.catalog || [];
       configData = data.config || {};
 
-      // filter ตาม ?product= ถ้ามี
+      // filter ตาม ?product= หรือ ?category=
       const urlParams = new URLSearchParams(window.location.search);
       const productFilter = urlParams.get("product");
+      const categoryFilter = urlParams.get("category");
       if (productFilter) {
         catalog = catalog.filter(p => p.name === productFilter);
         document.title = productFilter + " — WAKA SPACE";
+      } else if (categoryFilter) {
+        catalog = catalog.filter(p => p.category === categoryFilter);
+        document.title = categoryFilter + " — WAKA SPACE";
       }
 
       renderBankInfo(configData);
