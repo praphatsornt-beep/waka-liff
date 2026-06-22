@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WAKA SPACE - รายงานยอดขาย</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #e7e5df;
+      --card-bg: #ffffff;
+      --card-shadow: 0 4px 20px rgba(40,38,34,.08);
+      --card-border: #ddd9d2;
+      --accent: #111740;
+      --white: #ffffff;
+      --text-primary: #1a1a1a;
+      --text-secondary: #666666;
+      --label: #a8a8a8;
+      --green: #2d8f4e;
+      --red: #d64545;
+      --blue: #2563eb;
+      --orange: #d97706;
+      --input-bg: #f5f5f5;
+      --field-radius: 14px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Anuphan', 'Space Grotesk', sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    #pinOverlay {
+      position: fixed; inset: 0;
+      background: var(--bg); z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .pin-card {
+      background: var(--card-bg); border-radius: 14px;
+      box-shadow: 0 24px 60px rgba(40,38,34,.18);
+      border: 1px solid var(--card-border);
+      padding: 32px; width: 320px; text-align: center;
+    }
+    .pin-card h2 { margin-bottom: 4px; }
+    .pin-card .sub { color: var(--text-secondary); margin-bottom: 16px; font-size: 13px; }
+    .pin-card input {
+      width: 100%; padding: 14px; border: 1px solid var(--card-border);
+      border-radius: var(--field-radius); font-size: 18px; text-align: center;
+      letter-spacing: 8px; background: var(--input-bg); font-family: inherit;
+    }
+    .pin-card button {
+      width: 100%; margin-top: 12px; padding: 14px; background: var(--accent);
+      color: var(--white); border: none; border-radius: var(--field-radius);
+      font-size: 16px; font-weight: 600; cursor: pointer; font-family: inherit;
+    }
+    .pin-error { color: var(--red); margin-top: 8px; display: none; font-size: 13px; }
+
+    .container { max-width: 540px; margin: 0 auto; padding: 16px; }
+    .header { text-align: center; margin-bottom: 16px; }
+    .header h1 { font-size: 18px; }
+    .header .sub { color: var(--text-secondary); font-size: 13px; }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .kpi {
+      background: var(--card-bg); border-radius: 12px;
+      border: 1px solid var(--card-border); padding: 14px; text-align: center;
+    }
+    .kpi-num { font-size: 20px; font-weight: 700; }
+    .kpi-label { font-size: 11px; color: var(--label); margin-top: 2px; }
+
+    .card {
+      background: var(--card-bg); border-radius: 14px;
+      box-shadow: var(--card-shadow); border: 1px solid var(--card-border);
+      padding: 16px; margin-bottom: 12px;
+    }
+    .card h3 { font-size: 15px; margin-bottom: 10px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 8px 6px; text-align: left; border-bottom: 1px solid #f0ede8; }
+    th { color: var(--label); font-weight: 500; font-size: 12px; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    th.num { text-align: right; }
+
+    .profit { color: var(--green); font-weight: 600; }
+    .loss { color: var(--red); font-weight: 600; }
+
+    .section-title {
+      font-size: 12px; font-weight: 600; color: var(--text-secondary);
+      text-transform: uppercase; letter-spacing: 1px; margin: 16px 0 8px;
+    }
+
+    .bar-wrap { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+    .bar-label { width: 80px; font-size: 12px; text-align: right; flex-shrink: 0; }
+    .bar-track { flex: 1; height: 20px; background: #f0ede8; border-radius: 4px; overflow: hidden; position: relative; }
+    .bar-fill { height: 100%; border-radius: 4px; transition: width .5s; }
+    .bar-fill.revenue { background: var(--blue); }
+    .bar-fill.profit { background: var(--green); }
+    .bar-val { width: 70px; font-size: 12px; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+
+    .empty { text-align: center; color: var(--label); padding: 24px; }
+    .loading { text-align: center; color: var(--text-secondary); padding: 40px; }
+
+    .back-link {
+      display: inline-block; margin-bottom: 12px; color: var(--accent);
+      text-decoration: none; font-size: 13px; font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+<div id="pinOverlay">
+  <div class="pin-card">
+    <h2>📊 รายงานยอดขาย</h2>
+    <div class="sub">WAKA SPACE</div>
+    <input type="password" id="pinInput" maxlength="8" inputmode="numeric" placeholder="••••"
+      onkeydown="if(event.key==='Enter')checkPin()">
+    <button onclick="checkPin()">เข้าสู่ระบบ</button>
+    <div class="pin-error" id="pinError">PIN ไม่ถูกต้อง</div>
+  </div>
+</div>
+
+<div class="container" id="app" style="display:none">
+  <a class="back-link" href="menu.html">&larr; กลับเมนู</a>
+  <div class="header">
+    <h1>📊 รายงานยอดขาย</h1>
+    <div class="sub">เฉพาะออเดอร์ที่ยืนยันแล้ว</div>
+  </div>
+
+  <!-- KPI -->
+  <div class="kpi-grid">
+    <div class="kpi">
+      <div class="kpi-num" id="kpiRevenue">-</div>
+      <div class="kpi-label">ยอดขาย</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-num" id="kpiCost">-</div>
+      <div class="kpi-label">ต้นทุน</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-num profit" id="kpiProfit">-</div>
+      <div class="kpi-label">กำไร</div>
+    </div>
+  </div>
+
+  <!-- รายสาขา -->
+  <div class="card">
+    <h3>🏬 ยอดขายแต่ละสาขา</h3>
+    <div id="branchReport"><div class="loading">กำลังโหลด...</div></div>
+  </div>
+
+  <!-- รายสินค้า -->
+  <div class="card">
+    <h3>🎴 ยอดขายแต่ละสินค้า</h3>
+    <div id="productReport"><div class="loading">กำลังโหลด...</div></div>
+  </div>
+
+  <!-- รายวัน -->
+  <div class="card">
+    <h3>📅 ยอดขายรายวัน</h3>
+    <div id="dateReport"><div class="loading">กำลังโหลด...</div></div>
+  </div>
+</div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
+const PIN = 'waka2024';
+
+function checkPin() {
+  if (document.getElementById('pinInput').value === PIN) {
+    document.getElementById('pinOverlay').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    loadReport();
+  } else {
+    document.getElementById('pinError').style.display = 'block';
+    setTimeout(() => document.getElementById('pinError').style.display = 'none', 2000);
+  }
+}
+
+function fmt(n) { return '฿' + Number(n).toLocaleString(); }
+
+async function loadReport() {
+  try {
+    const res = await fetch(GAS_URL + '?action=api&do=report');
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+
+    // KPI
+    document.getElementById('kpiRevenue').textContent = fmt(d.total.revenue);
+    document.getElementById('kpiCost').textContent = fmt(d.total.cost);
+    const profitEl = document.getElementById('kpiProfit');
+    profitEl.textContent = fmt(d.total.profit);
+    profitEl.className = 'kpi-num ' + (d.total.profit >= 0 ? 'profit' : 'loss');
+
+    // Branch
+    renderBranch(d.by_branch, d.total.revenue);
+
+    // Product
+    renderProduct(d.by_product);
+
+    // Date
+    renderDate(d.by_date);
+  } catch (err) {
+    document.getElementById('branchReport').innerHTML = '<div class="empty">' + esc(err.message) + '</div>';
+  }
+}
+
+function renderBranch(data, maxRev) {
+  const el = document.getElementById('branchReport');
+  const entries = Object.entries(data).sort((a, b) => b[1].revenue - a[1].revenue);
+  if (entries.length === 0) { el.innerHTML = '<div class="empty">ไม่มีข้อมูล</div>'; return; }
+
+  let html = '<table><tr><th>สาขา</th><th class="num">ออเดอร์</th><th class="num">ยอดขาย</th><th class="num">ต้นทุน</th><th class="num">กำไร</th></tr>';
+  for (const [branch, d] of entries) {
+    const profit = d.revenue - d.cost;
+    html += '<tr><td>' + esc(branch) + '</td>';
+    html += '<td class="num">' + d.orders + '</td>';
+    html += '<td class="num">' + fmt(d.revenue) + '</td>';
+    html += '<td class="num">' + fmt(d.cost) + '</td>';
+    html += '<td class="num ' + (profit >= 0 ? 'profit' : 'loss') + '">' + fmt(profit) + '</td></tr>';
+  }
+  html += '</table>';
+
+  // Bar chart
+  const maxVal = Math.max(...entries.map(e => e[1].revenue)) || 1;
+  html += '<div style="margin-top:12px">';
+  for (const [branch, d] of entries) {
+    const profit = d.revenue - d.cost;
+    const revPct = (d.revenue / maxVal * 100).toFixed(1);
+    const profitPct = (profit / maxVal * 100).toFixed(1);
+    html += '<div class="bar-wrap"><div class="bar-label">' + esc(branch) + '</div>';
+    html += '<div class="bar-track"><div class="bar-fill revenue" style="width:' + revPct + '%"></div></div>';
+    html += '<div class="bar-val">' + fmt(d.revenue) + '</div></div>';
+  }
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function renderProduct(products) {
+  const el = document.getElementById('productReport');
+  if (products.length === 0) { el.innerHTML = '<div class="empty">ไม่มีข้อมูล</div>'; return; }
+  products.sort((a, b) => b.revenue - a.revenue);
+
+  let html = '<table><tr><th>สินค้า</th><th class="num">จำนวน</th><th class="num">ยอดขาย</th><th class="num">ต้นทุน</th><th class="num">กำไร</th></tr>';
+  for (const p of products) {
+    const profit = p.revenue - p.cost;
+    const unit = p.type === 'box' ? 'กล่อง' : 'ซอง';
+    html += '<tr><td>' + esc(p.name) + ' <small style="color:var(--label)">(' + unit + ')</small></td>';
+    html += '<td class="num">' + p.qty + '</td>';
+    html += '<td class="num">' + fmt(p.revenue) + '</td>';
+    html += '<td class="num">' + fmt(p.cost) + '</td>';
+    html += '<td class="num ' + (profit >= 0 ? 'profit' : 'loss') + '">' + fmt(profit) + '</td></tr>';
+  }
+  html += '</table>';
+  el.innerHTML = html;
+}
+
+function renderDate(data) {
+  const el = document.getElementById('dateReport');
+  const entries = Object.entries(data).sort((a, b) => b[0].localeCompare(a[0]));
+  if (entries.length === 0) { el.innerHTML = '<div class="empty">ไม่มีข้อมูล</div>'; return; }
+
+  let html = '<table><tr><th>วันที่</th><th class="num">ออเดอร์</th><th class="num">ยอดขาย</th><th class="num">ต้นทุน</th><th class="num">กำไร</th></tr>';
+  for (const [date, d] of entries) {
+    const profit = d.revenue - d.cost;
+    html += '<tr><td>' + esc(date) + '</td>';
+    html += '<td class="num">' + d.orders + '</td>';
+    html += '<td class="num">' + fmt(d.revenue) + '</td>';
+    html += '<td class="num">' + fmt(d.cost) + '</td>';
+    html += '<td class="num ' + (profit >= 0 ? 'profit' : 'loss') + '">' + fmt(profit) + '</td></tr>';
+  }
+  html += '</table>';
+  el.innerHTML = html;
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+</script>
+</body>
+</html>
