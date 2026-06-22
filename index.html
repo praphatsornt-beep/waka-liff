@@ -779,11 +779,19 @@
       catalog    = data.catalog || [];
       configData = data.config || {};
 
-      // filter ตาม ?product= หรือ ?category=
+      // filter ตาม path slug, ?product= หรือ ?category=
       const urlParams = new URLSearchParams(window.location.search);
       const productFilter = urlParams.get("product");
       const categoryFilter = urlParams.get("category");
-      if (productFilter) {
+      const pathSlug = window.location.pathname.replace(/^\//, "").replace(/\.html$/, "");
+
+      if (pathSlug && pathSlug !== "index" && pathSlug !== "") {
+        const matched = catalog.filter(p => p.slug === pathSlug);
+        if (matched.length > 0) {
+          catalog = matched;
+          document.title = matched[0].name + " — WAKA SPACE";
+        }
+      } else if (productFilter) {
         catalog = catalog.filter(p => p.name === productFilter);
         document.title = productFilter + " — WAKA SPACE";
       } else if (categoryFilter) {
