@@ -824,9 +824,13 @@ async function searchOrders() {
   try{const r=await fetch(G+'?action=api&do=search&q='+encodeURIComponent(q));const d=await r.json();
     const el=gid('searchResults');if(!d.orders||!d.orders.length){el.innerHTML='<div class="empty">ไม่พบ</div>';return;}
     el.innerHTML=d.orders.map(o=>{const ff=o.fulfillment||'รอ';const canHandover=['พร้อมรับ','รอเตรียม'].includes(ff);
+      let items=[];try{items=JSON.parse(o.items_json||'[]');}catch(_){}
+      const itemsHtml=items.map(i=>{const u=i.type==='box'?'กล่อง':'ซอง';return `<div style="font-size:12px;padding:2px 0">• ${esc(i.name)} (${u}) ×${i.qty||1} = ฿${((i.price||0)*(i.qty||1)).toLocaleString()}</div>`;}).join('');
       return `<div class="card"><div style="display:flex;justify-content:space-between"><strong>#${esc(o.order_id)}</strong><span class="status ${ff==='รับแล้ว'||ff==='สาขายืนยัน'?'s-done':'s-wait'}">${esc(ff)}</span></div>
       <div style="font-size:13px;margin-top:4px">${esc(o.real_name||o.display_name)} · ${esc(o.phone)} · ${esc(o.branch)}</div>
-      <div style="font-size:13px;margin-top:2px">฿${Number(o.total).toLocaleString()} · สลิป: ${esc(o.slip_status)}</div>
+      <div style="margin:6px 0;padding:8px;background:#f9f8f5;border-radius:8px">${itemsHtml}</div>
+      <div style="font-size:14px;font-weight:700;color:#2d8f4e">฿${Number(o.total).toLocaleString()}</div>
+      <div style="font-size:12px;color:#888;margin-top:2px">สลิป: ${esc(o.slip_status)}</div>
       ${canHandover?'<button class="btn btn-green btn-sm" style="margin-top:8px" onclick="handoverOrder(\''+o.order_id+'\')">🤝 ส่งมอบ</button>':''}
       </div>`;
     }).join('');
