@@ -485,6 +485,7 @@ async function loadDashboard() {
           <div style="font-weight:600;margin-bottom:4px">รายการ</div>
           ${itemsHtml||'<div style="font-size:13px;color:var(--label)">ไม่มีรายการ</div>'}
           <div style="margin-top:6px;font-size:12px;color:var(--text2)">สั่งเมื่อ: ${esc(o.timestamp||'')}</div>
+          ${o.slip_status!=='ยืนยัน'&&o.slip_status!=='ไม่มีสลิป'?'<button class="btn btn-green" style="margin-top:10px" onclick="event.stopPropagation();confirmSlip(\''+o.order_id+'\')">✅ ยืนยันสลิป + แจ้งลูกค้า</button>':''}
         </div>
       </div>`;
     }).join('');
@@ -830,6 +831,13 @@ async function searchOrders() {
       </div>`;
     }).join('');
   }catch(e){gid('searchResults').innerHTML='<div class="empty">ค้นหาไม่ได้</div>';}
+}
+
+async function confirmSlip(oid) {
+  if(!confirm('ยืนยันสลิปออเดอร์ #'+oid+' + ส่ง LINE แจ้งลูกค้า?'))return;
+  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'confirmSlip',order_id:oid})});const d=await r.json();
+    if(d.ok){toast('ยืนยันสลิป + แจ้งลูกค้าแล้ว');loadDashboard();}else alert(d.error||'ผิดพลาด');
+  }catch(e){alert('ผิดพลาด');}
 }
 
 async function handoverOrder(oid) {
