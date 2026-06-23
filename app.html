@@ -315,21 +315,36 @@
 
 <script>
 const G = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
-const PIN = 'waka2024';
+const PIN_ADMIN = 'waka2024';
+const PIN_STAFF = 'waka1111';
 const LIFF_BASE = 'https://liff.line.me/2010457385-UpJLXxJ0';
 let products = [], centralStock = [], branchSummary = {}, selectedProduct = null;
 let scanner = null, scannerNew = null;
+let userRole = 'staff';
 function gid(id) { return document.getElementById(id); }
 function esc(s) { const d=document.createElement('div');d.textContent=s;return d.innerHTML; }
 
+function applyRole(role) {
+  userRole = role;
+  const adminTabs = ['nav_receive','nav_warehouse','nav_menu'];
+  adminTabs.forEach(id => gid(id).style.display = role === 'admin' ? 'flex' : 'none');
+}
+
 // ── PIN ──
 function checkPin() {
-  if (gid('pinInput').value === PIN) {
+  const val = gid('pinInput').value;
+  if (val === PIN_ADMIN) {
+    sessionStorage.setItem('waka_app_auth','admin');
     gid('pinOverlay').style.display='none'; gid('app').style.display='block';
-    sessionStorage.setItem('waka_app_auth','1'); initApp();
+    applyRole('admin'); initApp();
+  } else if (val === PIN_STAFF) {
+    sessionStorage.setItem('waka_app_auth','staff');
+    gid('pinOverlay').style.display='none'; gid('app').style.display='block';
+    applyRole('staff'); switchTab('branch'); initApp();
   } else { gid('pinError').style.display='block'; setTimeout(()=>gid('pinError').style.display='none',2000); }
 }
-if (sessionStorage.getItem('waka_app_auth')==='1') { gid('pinOverlay').style.display='none'; gid('app').style.display='block'; initApp(); }
+const savedAuth = sessionStorage.getItem('waka_app_auth');
+if (savedAuth) { gid('pinOverlay').style.display='none'; gid('app').style.display='block'; applyRole(savedAuth); if(savedAuth==='staff')switchTab('branch'); initApp(); }
 
 function initApp() { loadDashboard(); loadProducts(); loadCatalogLinks(); }
 
