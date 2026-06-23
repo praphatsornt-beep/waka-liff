@@ -253,19 +253,30 @@
         <div id="branchLoginError" style="color:var(--red);font-size:13px;margin-top:8px;display:none">รหัสไม่ถูกต้อง</div>
       </div>
       <!-- เลือกสาขา (สำหรับ admin) -->
-      <div id="branchAdminPicker" style="display:none;text-align:center;margin-bottom:12px">
-        <select class="branch-sel" id="adminBranchPick" onchange="adminPickBranch(this.value)" style="font-size:16px;padding:14px">
-          <option value="">-- เลือกสาขา --</option>
-          <option value="ต้นสัก">สาขาต้นสัก</option>
-          <option value="เมืองทอง">สาขาเมืองทอง</option>
-          <option value="ศรีนครินทร์">สาขาศรีนครินทร์</option>
-        </select>
+      <div id="branchAdminPicker" style="display:none">
+        <div style="text-align:center;margin-bottom:16px">
+          <div style="font-size:18px;font-weight:700">🏬 เลือกสาขา</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div class="br-menu-card" onclick="adminPickBranch('ต้นสัก')" style="padding:32px 16px">
+            <div style="font-size:48px">🏬</div>
+            <div class="br-menu-title" style="font-size:20px">สาขาต้นสัก</div>
+          </div>
+          <div class="br-menu-card" onclick="adminPickBranch('เมืองทอง')" style="padding:32px 16px">
+            <div style="font-size:48px">🏬</div>
+            <div class="br-menu-title" style="font-size:20px">สาขาเมืองทอง</div>
+          </div>
+          <div class="br-menu-card" onclick="adminPickBranch('ศรีนครินทร์')" style="padding:32px 16px">
+            <div style="font-size:48px">🏬</div>
+            <div class="br-menu-title" style="font-size:20px">สาขาศรีนครินทร์</div>
+          </div>
+        </div>
       </div>
       <!-- หลังล็อกอิน -->
       <div id="branchApp" style="display:none">
         <div style="text-align:center;margin-bottom:12px">
           <div style="font-size:18px;font-weight:700">🏬 <span id="branchTitle"></span></div>
-          <div style="color:var(--text2);font-size:12px;cursor:pointer" onclick="logoutBranch()">เปลี่ยนสาขา</div>
+          <div style="color:var(--text2);font-size:12px;cursor:pointer" onclick="userRole==='admin'?adminBackToPicker():logoutBranch()">เปลี่ยนสาขา</div>
         </div>
         <input type="hidden" id="branchSelect">
         <!-- เมนูหลักสาขา -->
@@ -686,10 +697,16 @@ async function loadWhStock() {
 // ══════════════════════════════════════════════════════════
 // ── Branch login ──
 function adminPickBranch(name) {
-  if(!name){gid('branchApp').style.display='none';return;}
+  if(!name){gid('branchApp').style.display='none';gid('branchAdminPicker').style.display='block';return;}
   gid('branchSelect').value=name;
+  gid('branchAdminPicker').style.display='none';
   gid('branchApp').style.display='block';
   gid('branchTitle').textContent='สาขา'+name;
+}
+function adminBackToPicker() {
+  gid('branchApp').style.display='none';
+  gid('branchAdminPicker').style.display='block';
+  closeBrView();
 }
 
 function autoLoginBranch(name) {
