@@ -103,6 +103,16 @@
 
     .link-item { display:flex;align-items:center;gap:10px;background:var(--card-bg);border:1px solid var(--card-border);border-radius:12px;padding:12px 14px;margin-bottom:6px; }
     .link-item .info { flex:1; }
+    .br-menu-card {
+      background: var(--card-bg); border-radius: 16px; border: 1px solid var(--card-border);
+      box-shadow: 0 4px 20px rgba(40,38,34,.06); padding: 28px 16px; text-align: center;
+      cursor: pointer; transition: transform .15s, box-shadow .15s;
+    }
+    .br-menu-card:active { transform: scale(.97); }
+    .br-menu-card:hover { box-shadow: 0 8px 28px rgba(40,38,34,.12); }
+    .br-menu-title { font-size: 16px; font-weight: 700; margin-top: 8px; }
+    .br-menu-desc { font-size: 12px; color: var(--text2); margin-top: 4px; }
+
     .link-item .lname { font-weight:600;font-size:14px; }
     .link-item .ldesc { font-size:11px;color:var(--label); }
     .copy-btn { padding:6px 12px;border:1px solid var(--card-border);border-radius:8px;background:var(--input-bg);font-family:inherit;font-size:12px;cursor:pointer; }
@@ -227,49 +237,74 @@
         <option value="เมืองทอง">สาขาเมืองทอง</option>
         <option value="ศรีนครินทร์">สาขาศรีนครินทร์</option>
       </select>
-      <div class="sub-tabs">
-        <button class="sub-tab active" onclick="switchBrSub('orders')">ออเดอร์</button>
-        <button class="sub-tab" onclick="switchBrSub('handover')">ส่งมอบ</button>
-        <button class="sub-tab" onclick="switchBrSub('bstock')">สต็อก</button>
-        <button class="sub-tab" onclick="switchBrSub('withdraw')">เบิกสินค้า</button>
-      </div>
-      <div id="brOrders"><div class="empty">เลือกสาขาก่อน</div></div>
-      <div id="brHandover" style="display:none">
-        <div class="card">
-          <h3>ค้นหาออเดอร์</h3>
-          <div class="manual-row" style="margin:0">
-            <input type="text" id="searchOrder" placeholder="ชื่อ / เบอร์ / Order ID">
-            <button onclick="searchOrders()">ค้นหา</button>
+      <!-- เมนูหลักสาขา -->
+      <div id="brMenu">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="br-menu-card" onclick="openBrView('orders')">
+            <div style="font-size:40px">📋</div>
+            <div class="br-menu-title">ออเดอร์</div>
+            <div class="br-menu-desc">รายการออเดอร์ทั้งหมด</div>
+          </div>
+          <div class="br-menu-card" onclick="openBrView('handover')">
+            <div style="font-size:40px">🤝</div>
+            <div class="br-menu-title">ส่งมอบ</div>
+            <div class="br-menu-desc">ค้นหา + ส่งมอบลูกค้า</div>
+          </div>
+          <div class="br-menu-card" onclick="openBrView('bstock')">
+            <div style="font-size:40px">📦</div>
+            <div class="br-menu-title">สต็อกสาขา</div>
+            <div class="br-menu-desc">สินค้าคงเหลือ</div>
+          </div>
+          <div class="br-menu-card" onclick="openBrView('withdraw')">
+            <div style="font-size:40px">📤</div>
+            <div class="br-menu-title">เบิกสินค้า</div>
+            <div class="br-menu-desc">เบิกสำหรับกิจกรรม</div>
           </div>
         </div>
-        <div id="searchResults"></div>
       </div>
-      <div id="brStock" style="display:none"><div class="empty">เลือกสาขาก่อน</div></div>
-      <div id="brWithdraw" style="display:none">
-        <div class="card">
-          <h3>เบิกสินค้า</h3>
-          <div class="form-group"><label>สินค้า</label>
-            <select id="wdProduct" class="branch-sel" style="margin:0"><option value="">-- เลือก --</option></select>
-          </div>
-          <div class="form-row">
-            <div class="form-group"><label>ประเภท</label>
-              <select id="wdType" class="branch-sel" style="margin:0"><option value="box">Box (กล่อง)</option><option value="pack">Pack (ซอง)</option></select>
+
+      <!-- sub-views (ซ่อนจนกว่าจะกด) -->
+      <div id="brSubView" style="display:none">
+        <button onclick="closeBrView()" style="background:none;border:none;font-family:inherit;font-size:14px;font-weight:600;color:var(--accent);cursor:pointer;margin-bottom:12px">&larr; กลับเมนูสาขา</button>
+
+        <div id="brOrders" style="display:none"><div class="empty">เลือกสาขาก่อน</div></div>
+        <div id="brHandover" style="display:none">
+          <div class="card">
+            <h3>ค้นหาออเดอร์</h3>
+            <div class="manual-row" style="margin:0">
+              <input type="text" id="searchOrder" placeholder="ชื่อ / เบอร์ / Order ID">
+              <button onclick="searchOrders()">ค้นหา</button>
             </div>
-            <div class="form-group"><label>จำนวน</label><input type="number" id="wdQty" min="1" value="1" inputmode="numeric"></div>
           </div>
-          <div class="form-group"><label>เหตุผล</label>
-            <select id="wdReason" class="branch-sel" style="margin:0">
-              <option value="จัดกิจกรรม">จัดกิจกรรม</option>
-              <option value="ของชำรุด">ของชำรุด</option>
-              <option value="ตัวอย่าง">ตัวอย่าง/โชว์</option>
-              <option value="อื่นๆ">อื่นๆ</option>
-            </select>
-          </div>
-          <button class="btn btn-orange" onclick="submitWithdraw()">📤 เบิกสินค้า</button>
+          <div id="searchResults"></div>
         </div>
-        <div class="card">
-          <h3>ประวัติเบิก</h3>
-          <div id="wdHistory"><div class="empty">ยังไม่มีรายการ</div></div>
+        <div id="brStock" style="display:none"><div class="empty">เลือกสาขาก่อน</div></div>
+        <div id="brWithdraw" style="display:none">
+          <div class="card">
+            <h3>เบิกสินค้า</h3>
+            <div class="form-group"><label>สินค้า</label>
+              <select id="wdProduct" class="branch-sel" style="margin:0"><option value="">-- เลือก --</option></select>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>ประเภท</label>
+                <select id="wdType" class="branch-sel" style="margin:0"><option value="box">Box (กล่อง)</option><option value="pack">Pack (ซอง)</option></select>
+              </div>
+              <div class="form-group"><label>จำนวน</label><input type="number" id="wdQty" min="1" value="1" inputmode="numeric"></div>
+            </div>
+            <div class="form-group"><label>เหตุผล</label>
+              <select id="wdReason" class="branch-sel" style="margin:0">
+                <option value="จัดกิจกรรม">จัดกิจกรรม</option>
+                <option value="ของชำรุด">ของชำรุด</option>
+                <option value="ตัวอย่าง">ตัวอย่าง/โชว์</option>
+                <option value="อื่นๆ">อื่นๆ</option>
+              </select>
+            </div>
+            <button class="btn btn-orange" onclick="submitWithdraw()">📤 เบิกสินค้า</button>
+          </div>
+          <div class="card">
+            <h3>ประวัติเบิก</h3>
+            <div id="wdHistory"><div class="empty">ยังไม่มีรายการ</div></div>
+          </div>
         </div>
       </div>
     </div>
@@ -550,14 +585,19 @@ async function loadWhStock() {
 // ══════════════════════════════════════════════════════════
 // TAB 4: สาขา
 // ══════════════════════════════════════════════════════════
-function switchBrSub(s) {
-  const subs=['orders','handover','bstock','withdraw'];
-  document.querySelectorAll('#t_branch .sub-tab').forEach((b,i)=>b.classList.toggle('active',subs[i]===s));
+function openBrView(s) {
+  if(!gid('branchSelect').value){alert('เลือกสาขาก่อน');return;}
+  gid('brMenu').style.display='none';
+  gid('brSubView').style.display='block';
   gid('brOrders').style.display=s==='orders'?'block':'none';
   gid('brHandover').style.display=s==='handover'?'block':'none';
   gid('brStock').style.display=s==='bstock'?'block':'none';
   gid('brWithdraw').style.display=s==='withdraw'?'block':'none';
   if(s==='orders')loadBrOrders();if(s==='bstock')loadBrStock();if(s==='withdraw')loadWithdrawals();
+}
+function closeBrView() {
+  gid('brSubView').style.display='none';
+  gid('brMenu').style.display='block';
 }
 
 function onBranchChange() {
