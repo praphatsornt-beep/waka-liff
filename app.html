@@ -199,7 +199,12 @@
           <div id="reader2"></div>
           <div class="form-group" style="margin-top:10px"><label>Barcode</label><input type="text" id="newBarcode" inputmode="numeric"></div>
           <div class="form-group"><label>ชื่อสินค้า *</label><input type="text" id="newName"></div>
-          <div class="form-group"><label>หมวดหมู่</label><input type="text" id="newCategory"></div>
+          <div class="form-group"><label>หมวดหมู่</label>
+            <select id="newCategory" class="branch-sel" style="margin:0" onchange="if(this.value==='__new')gid('newCategoryCustom').style.display='block'; else gid('newCategoryCustom').style.display='none';">
+              <option value="">-- เลือก --</option>
+            </select>
+            <input type="text" id="newCategoryCustom" placeholder="พิมพ์หมวดหมู่ใหม่" style="display:none;margin-top:6px;width:100%;padding:12px;border:1px solid var(--card-border);border-radius:var(--radius);font-family:inherit;background:var(--input-bg)">
+          </div>
           <div class="form-row">
             <div class="form-group"><label>ราคาขาย Box</label><input type="number" id="newPriceBox" min="0" value="0" inputmode="numeric"></div>
             <div class="form-group"><label>ราคาขาย Pack</label><input type="number" id="newPricePack" min="0" value="0" inputmode="numeric"></div>
@@ -468,10 +473,15 @@ async function loadProducts() {
     products=d.products||[];
     const sel=gid('productSelect'); sel.innerHTML='<option value="">-- เลือกจากรายการ --</option>';
     const wd=gid('wdProduct'); wd.innerHTML='<option value="">-- เลือก --</option>';
+    const cats=new Set();
     for (const p of products) {
       const o=document.createElement('option'); o.value=p.name; o.textContent=p.name+(p.barcode?' ['+p.barcode+']':''); sel.appendChild(o);
       const o2=o.cloneNode(true); wd.appendChild(o2);
+      if(p.category)cats.add(p.category);
     }
+    const catSel=gid('newCategory'); catSel.innerHTML='<option value="">-- เลือก --</option>';
+    for(const c of [...cats].sort()){const o=document.createElement('option');o.value=c;o.textContent=c;catSel.appendChild(o);}
+    const oNew=document.createElement('option');oNew.value='__new';oNew.textContent='+ เพิ่มหมวดใหม่...';catSel.appendChild(oNew);
   } catch(_){}
 }
 
@@ -527,8 +537,10 @@ async function submitAddStock() {
 async function submitAddProduct() {
   const name=gid('newName').value.trim();if(!name)return alert('ใส่ชื่อสินค้า');
   const limBox=gid('newLimitBox').value,limPack=gid('newLimitPack').value;
-  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'addProduct',name,category:gid('newCategory').value.trim(),price_box:+gid('newPriceBox').value||0,price_pack:+gid('newPricePack').value||0,cost_box:+gid('newCostBox').value||0,cost_pack:+gid('newCostPack').value||0,barcode:gid('newBarcode').value.trim(),initial_box:+gid('newInitBox').value||0,initial_pack:+gid('newInitPack').value||0,limit_box:limBox===''?'':+limBox,limit_pack:limPack===''?'':+limPack})});const d=await r.json();
-    if(d.ok){toast('เพิ่ม: '+name);['newName','newCategory','newBarcode'].forEach(id=>gid(id).value='');['newPriceBox','newPricePack','newCostBox','newCostPack','newInitBox','newInitPack'].forEach(id=>gid(id).value=0);gid('newLimitBox').value='';gid('newLimitPack').value='';loadProducts();}
+  const catVal=gid('newCategory').value;
+  const category=catVal==='__new'?gid('newCategoryCustom').value.trim():(catVal||'');
+  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'addProduct',name,category,price_box:+gid('newPriceBox').value||0,price_pack:+gid('newPricePack').value||0,cost_box:+gid('newCostBox').value||0,cost_pack:+gid('newCostPack').value||0,barcode:gid('newBarcode').value.trim(),initial_box:+gid('newInitBox').value||0,initial_pack:+gid('newInitPack').value||0,limit_box:limBox===''?'':+limBox,limit_pack:limPack===''?'':+limPack})});const d=await r.json();
+    if(d.ok){toast('เพิ่ม: '+name);['newName','newBarcode'].forEach(id=>gid(id).value='');gid('newCategory').value='';gid('newCategoryCustom').value='';gid('newCategoryCustom').style.display='none';['newPriceBox','newPricePack','newCostBox','newCostPack','newInitBox','newInitPack'].forEach(id=>gid(id).value=0);gid('newLimitBox').value='';gid('newLimitPack').value='';loadProducts();}
     else alert(d.error||'ผิดพลาด');
   }catch(e){alert('บันทึกไม่ได้');}
 }
