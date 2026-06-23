@@ -401,8 +401,8 @@ function esc(s) { const d=document.createElement('div');d.textContent=s;return d
 
 function applyRole(role) {
   userRole = role;
-  const adminTabs = ['nav_receive','nav_warehouse','nav_menu'];
-  adminTabs.forEach(id => gid(id).style.display = role === 'admin' ? 'flex' : 'none');
+  const adminOnly = ['nav_receive','nav_warehouse','nav_menu','nav_home'];
+  adminOnly.forEach(id => gid(id).style.display = role === 'admin' ? 'flex' : 'none');
   if (role === 'admin') {
     gid('branchLogin').style.display='none';
     gid('branchAdminPicker').style.display='block';
