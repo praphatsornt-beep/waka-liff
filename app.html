@@ -243,7 +243,7 @@
 
     <!-- ══════ TAB 4: สาขา ══════ -->
     <div class="tab-content" id="t_branch">
-      <!-- ล็อกอินสาขา -->
+      <!-- ล็อกอินสาขา (สำหรับ staff) -->
       <div id="branchLogin" style="text-align:center;padding:40px 0">
         <div style="font-size:40px;margin-bottom:12px">🏬</div>
         <div style="font-size:18px;font-weight:700;margin-bottom:4px">เข้าสู่ระบบสาขา</div>
@@ -251,6 +251,15 @@
         <input type="text" id="branchCodeInput" placeholder="รหัสสาขา" style="width:200px;padding:14px;border:1px solid var(--card-border);border-radius:var(--radius);font-size:18px;text-align:center;letter-spacing:4px;background:var(--input-bg);font-family:inherit" onkeydown="if(event.key==='Enter')loginBranch()">
         <br><button class="btn btn-accent" style="width:200px;margin-top:8px" onclick="loginBranch()">เข้าสู่ระบบ</button>
         <div id="branchLoginError" style="color:var(--red);font-size:13px;margin-top:8px;display:none">รหัสไม่ถูกต้อง</div>
+      </div>
+      <!-- เลือกสาขา (สำหรับ admin) -->
+      <div id="branchAdminPicker" style="display:none;text-align:center;margin-bottom:12px">
+        <select class="branch-sel" id="adminBranchPick" onchange="adminPickBranch(this.value)" style="font-size:16px;padding:14px">
+          <option value="">-- เลือกสาขา --</option>
+          <option value="ต้นสัก">สาขาต้นสัก</option>
+          <option value="เมืองทอง">สาขาเมืองทอง</option>
+          <option value="ศรีนครินทร์">สาขาศรีนครินทร์</option>
+        </select>
       </div>
       <!-- หลังล็อกอิน -->
       <div id="branchApp" style="display:none">
@@ -394,6 +403,10 @@ function applyRole(role) {
   userRole = role;
   const adminTabs = ['nav_receive','nav_warehouse','nav_menu'];
   adminTabs.forEach(id => gid(id).style.display = role === 'admin' ? 'flex' : 'none');
+  if (role === 'admin') {
+    gid('branchLogin').style.display='none';
+    gid('branchAdminPicker').style.display='block';
+  }
 }
 
 // ── PIN ──
@@ -672,6 +685,13 @@ async function loadWhStock() {
 // TAB 4: สาขา
 // ══════════════════════════════════════════════════════════
 // ── Branch login ──
+function adminPickBranch(name) {
+  if(!name){gid('branchApp').style.display='none';return;}
+  gid('branchSelect').value=name;
+  gid('branchApp').style.display='block';
+  gid('branchTitle').textContent='สาขา'+name;
+}
+
 function autoLoginBranch(name) {
   gid('branchSelect').value=name;
   gid('branchLogin').style.display='none';
