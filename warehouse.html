@@ -242,10 +242,10 @@
 <div class="container" id="app" style="display:none">
   <!-- Tabs -->
   <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('summary')">📊 สรุปสาขา</button>
-    <button class="tab-btn" onclick="switchTab('shipment')">📦 สร้างล็อต</button>
-    <button class="tab-btn" onclick="switchTab('history')">📋 ประวัติ</button>
-    <button class="tab-btn" onclick="switchTab('stock')">🏪 สต็อก</button>
+    <button class="tab-btn active" onclick="switchTab('summary',this)">📊 สรุปสาขา</button>
+    <button class="tab-btn" onclick="switchTab('shipment',this)">📦 สร้างล็อต</button>
+    <button class="tab-btn" onclick="switchTab('history',this)">📋 ประวัติ</button>
+    <button class="tab-btn" onclick="switchTab('stock',this)">🏪 สต็อก</button>
   </div>
 
   <!-- Tab: สรุปออเดอร์ตามสาขา -->
@@ -312,11 +312,11 @@ function checkPin() {
 document.getElementById('pinInput').addEventListener('keydown', e => { if (e.key === 'Enter') checkPin(); });
 
 // ── Tabs ──
-function switchTab(tab) {
-  document.querySelectorAll('[id^="tab-"]').forEach(el => el.style.display = 'none');
+function switchTab(tab, el) {
+  document.querySelectorAll('[id^="tab-"]').forEach(e => e.style.display = 'none');
   document.getElementById('tab-' + tab).style.display = 'block';
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  event.target.classList.add('active');
+  (el || event.target).classList.add('active');
   if (tab === 'history') loadHistory();
   if (tab === 'stock') loadStock();
 }
@@ -324,6 +324,11 @@ function switchTab(tab) {
 // ── Load all ──
 async function loadAll() {
   await Promise.all([loadSummary(), loadCentralStock()]);
+  const urlTab = new URLSearchParams(location.search).get('tab');
+  if (urlTab) {
+    const btn = document.querySelector('.tab-btn[onclick*="' + urlTab + '"]');
+    if (btn) { btn.click(); }
+  }
 }
 
 // ── สรุปสาขา ──
