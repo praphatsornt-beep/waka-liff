@@ -859,6 +859,7 @@
   // ── Catalog ───────────────────────────────────────────────────────────────────
   function renderCatalog() {
     const container = document.getElementById("catalogContainer");
+    container.innerHTML = "";
     const byCategory = {};
     for (const p of catalog) {
       const cat = p.category || "อื่นๆ";
@@ -888,8 +889,10 @@
              <div class="product-img-placeholder" style="display:none">&#9876;</div>`
           : `<div class="product-img-placeholder">&#9876;</div>`;
 
-        const boxRow  = typeRow("box",  "Box", p.name, p.price_box);
-        const packRow = typeRow("pack", "Pack", p.name, p.price_pack);
+        const limBox  = (p.limit_box  !== undefined && p.limit_box  >= 0) ? p.limit_box  : undefined;
+        const limPack = (p.limit_pack !== undefined && p.limit_pack >= 0) ? p.limit_pack : undefined;
+        const boxRow  = typeRow("box",  "Box",  p.name, p.price_box,  limBox);
+        const packRow = typeRow("pack", "Pack", p.name, p.price_pack, limPack);
 
         card.innerHTML = `
           <div class="product-top">
@@ -906,17 +909,25 @@
     }
   }
 
-  function typeRow(type, label, name, price) {
+  function typeRow(type, label, name, price, limit) {
     if (!price || price <= 0) return "";
     const key = encodeKey(name) + "__" + type;
+    const limitAttr = (limit !== undefined && limit >= 0) ? ` data-limit="${limit}"` : "";
+    const soldOut = (limit !== undefined && limit === 0);
+    let stockHint = "";
+    if (soldOut) {
+      stockHint = `<span style="color:var(--red);font-size:11px;margin-left:6px">หมด</span>`;
+    } else if (limit !== undefined && limit > 0 && limit <= 20) {
+      stockHint = `<span style="color:var(--label);font-size:11px;margin-left:6px">เหลือ ${limit}</span>`;
+    }
     return `
       <div class="type-row">
-        <span class="type-label">${label}</span>
+        <span class="type-label">${label}${stockHint}</span>
         <span class="type-price">${price.toLocaleString()} .-</span>
         <div class="qty-ctrl">
-          <button onclick="changeQty('${encodeKey(name)}','${type}',${price},-1)">-</button>
-          <span class="qty-num" id="qty_${key}">0</span>
-          <button onclick="changeQty('${encodeKey(name)}','${type}',${price},1)">+</button>
+          <button onclick="changeQty('${encodeKey(name)}','${type}',${price},-1)" ${soldOut ? "disabled" : ""}>-</button>
+          <span class="qty-num" id="qty_${key}"${limitAttr}>0</span>
+          <button onclick="changeQty('${encodeKey(name)}','${type}',${price},1)" ${soldOut ? "disabled" : ""}>+</button>
         </div>
       </div>`;
   }
@@ -927,8 +938,18 @@
 
   function changeQty(nameKey, type, price, delta) {
     const k = nameKey + "__" + type;
-    quantities[k] = Math.max(0, (quantities[k] || 0) + delta);
-    document.getElementById("qty_" + k).textContent = quantities[k];
+    let newQty = Math.max(0, (quantities[k] || 0) + delta);
+    const el = document.getElementById("qty_" + k);
+    const limit = el.dataset.limit;
+    if (limit !== undefined && limit !== "") {
+      const max = Number(limit);
+      if (newQty > max) {
+        newQty = max;
+        if (max <= 0) return;
+      }
+    }
+    quantities[k] = newQty;
+    el.textContent = quantities[k];
 
     const card = document.getElementById("card_" + nameKey);
     const total = (quantities[nameKey + "__box"] || 0) + (quantities[nameKey + "__pack"] || 0);
@@ -1232,6 +1253,9 @@
         showSuccess(data, total);
       } else {
         alert(data.error || "เกิดข้อผิดพลาด กรุณาลองใหม่");
+        if (data.error && (data.error.includes("เหลือเพียง") || data.error.includes("หมดแล้ว"))) {
+          try { const r = await fetch(GAS_URL); const d = await r.json(); catalog = d.catalog || []; renderCatalog(); } catch(_) {}
+        }
       }
     } catch (e) {
       alert("ส่งออเดอร์ไม่ได้ กรุณาตรวจสอบ Internet แล้วลองใหม่");
