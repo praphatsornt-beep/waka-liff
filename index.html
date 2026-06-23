@@ -768,7 +768,11 @@
       await liff.init({ liffId: LIFF_ID });
       if (!liff.isLoggedIn()) { liff.login(); return; }
       lineProfile = await liff.getProfile();
-    } catch (_) {
+    } catch (e) {
+      console.error("LIFF error:", e);
+      if (liff.isInClient && liff.isInClient()) {
+        alert("LIFF error: " + (e.message || e));
+      }
       lineProfile = { userId: "dev_user", displayName: "Dev" };
     }
 
