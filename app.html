@@ -183,6 +183,10 @@
               <div class="form-group"><label>เพิ่ม Box</label><input type="number" id="addBox" min="0" value="0" inputmode="numeric"></div>
               <div class="form-group"><label>เพิ่ม Pack</label><input type="number" id="addPack" min="0" value="0" inputmode="numeric"></div>
             </div>
+            <div class="form-row">
+              <div class="form-group"><label>จำกัดขาย Box</label><input type="number" id="editLimitBox" min="0" placeholder="ว่าง=ไม่จำกัด" inputmode="numeric"></div>
+              <div class="form-group"><label>จำกัดขาย Pack</label><input type="number" id="editLimitPack" min="0" placeholder="ว่าง=ไม่จำกัด" inputmode="numeric"></div>
+            </div>
             <button class="btn btn-green" id="addStockBtn" onclick="submitAddStock()">✅ เพิ่มสต็อก</button>
           </div>
         </div>
@@ -475,15 +479,22 @@ function showProduct(p) {
   selectedProduct=p; gid('foundName').textContent=p.name;
   const d=[];if(p.price_box)d.push('ขาย Box: '+p.price_box.toLocaleString());if(p.price_pack)d.push('Pack: '+p.price_pack.toLocaleString());
   d.push('สต็อก: Box '+(p.stock_box||0)+' / Pack '+(p.stock_pack||0));if(p.barcode)d.push('BC: '+p.barcode);
-  gid('foundDetail').textContent=d.join(' · '); gid('addBox').value=0;gid('addPack').value=0;gid('addStockForm').style.display='block';gid('productSelect').value=p.name;
+  if(p.limit_box!==undefined&&p.limit_box>=0)d.push('Limit Box: '+p.limit_box);
+  if(p.limit_pack!==undefined&&p.limit_pack>=0)d.push('Limit Pack: '+p.limit_pack);
+  gid('foundDetail').textContent=d.join(' · '); gid('addBox').value=0;gid('addPack').value=0;
+  gid('editLimitBox').value=(p.limit_box!==undefined&&p.limit_box>=0)?p.limit_box:'';
+  gid('editLimitPack').value=(p.limit_pack!==undefined&&p.limit_pack>=0)?p.limit_pack:'';
+  gid('addStockForm').style.display='block';gid('productSelect').value=p.name;
 }
 
 async function submitAddStock() {
   if(!selectedProduct)return;const ab=+gid('addBox').value||0,ap=+gid('addPack').value||0;
-  if(ab<=0&&ap<=0)return alert('ใส่จำนวน');
+  const lb=gid('editLimitBox').value,lp=gid('editLimitPack').value;
+  const limChanged=(lb!==''||lp!=='');
+  if(ab<=0&&ap<=0&&!limChanged)return alert('ใส่จำนวนหรือแก้ limit');
   const b=gid('addStockBtn');b.disabled=1;b.textContent='บันทึก...';
-  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'addStock',name:selectedProduct.name,category:selectedProduct.category,add_box:ab,add_pack:ap})});const d=await r.json();
-    if(d.ok){let m=selectedProduct.name+': ';if(ab>0)m+='+'+ab+' Box ';if(ap>0)m+='+'+ap+' Pack';toast(m);selectedProduct.stock_box=(selectedProduct.stock_box||0)+ab;selectedProduct.stock_pack=(selectedProduct.stock_pack||0)+ap;showProduct(selectedProduct);}
+  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'addStock',name:selectedProduct.name,category:selectedProduct.category,add_box:ab,add_pack:ap,limit_box:lb===''?null:+lb,limit_pack:lp===''?null:+lp})});const d=await r.json();
+    if(d.ok){let m=selectedProduct.name+': ';if(ab>0)m+='+'+ab+' Box ';if(ap>0)m+='+'+ap+' Pack';if(limChanged)m+=' (limit อัปเดต)';toast(m);selectedProduct.stock_box=(selectedProduct.stock_box||0)+ab;selectedProduct.stock_pack=(selectedProduct.stock_pack||0)+ap;if(lb!=='')selectedProduct.limit_box=+lb;if(lp!=='')selectedProduct.limit_pack=+lp;showProduct(selectedProduct);}
     else alert(d.error||'ผิดพลาด');
   }catch(e){alert('บันทึกไม่ได้');}b.disabled=0;b.textContent='✅ เพิ่มสต็อก';
 }
