@@ -208,6 +208,10 @@
             <div class="form-group"><label>จำนวน Box</label><input type="number" id="newInitBox" min="0" value="0" inputmode="numeric"></div>
             <div class="form-group"><label>จำนวน Pack</label><input type="number" id="newInitPack" min="0" value="0" inputmode="numeric"></div>
           </div>
+          <div class="form-row">
+            <div class="form-group"><label>จำกัดขาย Box</label><input type="number" id="newLimitBox" min="0" placeholder="ว่าง=ไม่จำกัด" inputmode="numeric"></div>
+            <div class="form-group"><label>จำกัดขาย Pack</label><input type="number" id="newLimitPack" min="0" placeholder="ว่าง=ไม่จำกัด" inputmode="numeric"></div>
+          </div>
           <button class="btn btn-blue" onclick="submitAddProduct()">➕ เพิ่มสินค้าใหม่</button>
         </div>
       </div>
@@ -486,8 +490,9 @@ async function submitAddStock() {
 
 async function submitAddProduct() {
   const name=gid('newName').value.trim();if(!name)return alert('ใส่ชื่อสินค้า');
-  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'addProduct',name,category:gid('newCategory').value.trim(),price_box:+gid('newPriceBox').value||0,price_pack:+gid('newPricePack').value||0,cost_box:+gid('newCostBox').value||0,cost_pack:+gid('newCostPack').value||0,barcode:gid('newBarcode').value.trim(),initial_box:+gid('newInitBox').value||0,initial_pack:+gid('newInitPack').value||0})});const d=await r.json();
-    if(d.ok){toast('เพิ่ม: '+name);['newName','newCategory','newBarcode'].forEach(id=>gid(id).value='');['newPriceBox','newPricePack','newCostBox','newCostPack','newInitBox','newInitPack'].forEach(id=>gid(id).value=0);loadProducts();}
+  const limBox=gid('newLimitBox').value,limPack=gid('newLimitPack').value;
+  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'addProduct',name,category:gid('newCategory').value.trim(),price_box:+gid('newPriceBox').value||0,price_pack:+gid('newPricePack').value||0,cost_box:+gid('newCostBox').value||0,cost_pack:+gid('newCostPack').value||0,barcode:gid('newBarcode').value.trim(),initial_box:+gid('newInitBox').value||0,initial_pack:+gid('newInitPack').value||0,limit_box:limBox===''?'':+limBox,limit_pack:limPack===''?'':+limPack})});const d=await r.json();
+    if(d.ok){toast('เพิ่ม: '+name);['newName','newCategory','newBarcode'].forEach(id=>gid(id).value='');['newPriceBox','newPricePack','newCostBox','newCostPack','newInitBox','newInitPack'].forEach(id=>gid(id).value=0);gid('newLimitBox').value='';gid('newLimitPack').value='';loadProducts();}
     else alert(d.error||'ผิดพลาด');
   }catch(e){alert('บันทึกไม่ได้');}
 }
