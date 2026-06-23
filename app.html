@@ -238,44 +238,61 @@
 
     <!-- ══════ TAB 4: สาขา ══════ -->
     <div class="tab-content" id="t_branch">
-      <div style="text-align:center;margin-bottom:12px"><div style="font-size:18px;font-weight:700">🏬 สาขา</div></div>
-      <select class="branch-sel" id="branchSelect" onchange="onBranchChange()">
-        <option value="">-- เลือกสาขา --</option>
-        <option value="ต้นสัก">สาขาต้นสัก</option>
-        <option value="เมืองทอง">สาขาเมืองทอง</option>
-        <option value="ศรีนครินทร์">สาขาศรีนครินทร์</option>
-      </select>
-      <!-- เมนูหลักสาขา -->
-      <div id="brMenu">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div class="br-menu-card" onclick="openBrView('orders')">
-            <div style="font-size:40px">📋</div>
-            <div class="br-menu-title">ออเดอร์</div>
-            <div class="br-menu-desc">รายการออเดอร์ทั้งหมด</div>
-          </div>
-          <div class="br-menu-card" onclick="openBrView('handover')">
-            <div style="font-size:40px">🤝</div>
-            <div class="br-menu-title">ส่งมอบ</div>
-            <div class="br-menu-desc">ค้นหา + ส่งมอบลูกค้า</div>
-          </div>
-          <div class="br-menu-card" onclick="openBrView('bstock')">
-            <div style="font-size:40px">📦</div>
-            <div class="br-menu-title">สต็อกสาขา</div>
-            <div class="br-menu-desc">สินค้าคงเหลือ</div>
-          </div>
-          <div class="br-menu-card" onclick="openBrView('withdraw')">
-            <div style="font-size:40px">📤</div>
-            <div class="br-menu-title">เบิกสินค้า</div>
-            <div class="br-menu-desc">เบิกสำหรับกิจกรรม</div>
+      <!-- ล็อกอินสาขา -->
+      <div id="branchLogin" style="text-align:center;padding:40px 0">
+        <div style="font-size:40px;margin-bottom:12px">🏬</div>
+        <div style="font-size:18px;font-weight:700;margin-bottom:4px">เข้าสู่ระบบสาขา</div>
+        <div style="color:var(--text2);font-size:13px;margin-bottom:16px">กรอกรหัสสาขาของคุณ</div>
+        <input type="text" id="branchCodeInput" placeholder="รหัสสาขา" style="width:200px;padding:14px;border:1px solid var(--card-border);border-radius:var(--radius);font-size:18px;text-align:center;letter-spacing:4px;background:var(--input-bg);font-family:inherit" onkeydown="if(event.key==='Enter')loginBranch()">
+        <br><button class="btn btn-accent" style="width:200px;margin-top:8px" onclick="loginBranch()">เข้าสู่ระบบ</button>
+        <div id="branchLoginError" style="color:var(--red);font-size:13px;margin-top:8px;display:none">รหัสไม่ถูกต้อง</div>
+      </div>
+      <!-- หลังล็อกอิน -->
+      <div id="branchApp" style="display:none">
+        <div style="text-align:center;margin-bottom:12px">
+          <div style="font-size:18px;font-weight:700">🏬 <span id="branchTitle"></span></div>
+          <div style="color:var(--text2);font-size:12px;cursor:pointer" onclick="logoutBranch()">เปลี่ยนสาขา</div>
+        </div>
+        <input type="hidden" id="branchSelect">
+        <!-- เมนูหลักสาขา -->
+        <div id="brMenu">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="br-menu-card" onclick="openBrView('incoming')">
+              <div style="font-size:40px">📥</div>
+              <div class="br-menu-title">รับของจากคลัง</div>
+              <div class="br-menu-desc">ตรวจรับล็อตที่ส่งมา</div>
+            </div>
+            <div class="br-menu-card" onclick="openBrView('orders')">
+              <div style="font-size:40px">📋</div>
+              <div class="br-menu-title">ออเดอร์</div>
+              <div class="br-menu-desc">รายการออเดอร์ทั้งหมด</div>
+            </div>
+            <div class="br-menu-card" onclick="openBrView('handover')">
+              <div style="font-size:40px">🤝</div>
+              <div class="br-menu-title">ส่งมอบ</div>
+              <div class="br-menu-desc">ค้นหา + ส่งมอบลูกค้า</div>
+            </div>
+            <div class="br-menu-card" onclick="openBrView('bstock')">
+              <div style="font-size:40px">📦</div>
+              <div class="br-menu-title">สต็อกสาขา</div>
+              <div class="br-menu-desc">สินค้าคงเหลือ</div>
+            </div>
+            <div class="br-menu-card" onclick="openBrView('withdraw')">
+              <div style="font-size:40px">📤</div>
+              <div class="br-menu-title">เบิกสินค้า</div>
+              <div class="br-menu-desc">เบิกสำหรับกิจกรรม</div>
+            </div>
           </div>
         </div>
-      </div>
 
       <!-- sub-views (ซ่อนจนกว่าจะกด) -->
       <div id="brSubView" style="display:none">
         <button onclick="closeBrView()" style="background:none;border:none;font-family:inherit;font-size:14px;font-weight:600;color:var(--accent);cursor:pointer;margin-bottom:12px">&larr; กลับเมนูสาขา</button>
 
-        <div id="brOrders" style="display:none"><div class="empty">เลือกสาขาก่อน</div></div>
+        <div id="brIncoming" style="display:none">
+          <div class="card"><h3>📥 ล็อตที่รอรับ</h3><div id="incomingList"><div class="loading">กำลังโหลด...</div></div></div>
+        </div>
+        <div id="brOrders" style="display:none"><div class="empty">กำลังโหลด...</div></div>
         <div id="brHandover" style="display:none">
           <div class="card">
             <h3>ค้นหาออเดอร์</h3>
@@ -314,6 +331,7 @@
             <div id="wdHistory"><div class="empty">ยังไม่มีรายการ</div></div>
           </div>
         </div>
+      </div>
       </div>
     </div>
 
@@ -359,7 +377,7 @@
 <script>
 const G = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
 const PIN_ADMIN = 'waka99';
-const PIN_STAFF = 'waka2024';
+const BRANCH_CODES = { 'ts01': 'ต้นสัก', 'mt01': 'เมืองทอง', 'sn01': 'ศรีนครินทร์' };
 const LIFF_BASE = 'https://liff.line.me/2010457385-UpJLXxJ0';
 let products = [], centralStock = [], branchSummary = {}, selectedProduct = null;
 let scanner = null, scannerNew = null;
@@ -380,14 +398,21 @@ function checkPin() {
     sessionStorage.setItem('waka_app_auth','admin');
     gid('pinOverlay').style.display='none'; gid('app').style.display='block';
     applyRole('admin'); initApp();
-  } else if (val === PIN_STAFF) {
+  } else if (BRANCH_CODES[val]) {
     sessionStorage.setItem('waka_app_auth','staff');
+    sessionStorage.setItem('waka_branch', BRANCH_CODES[val]);
+    sessionStorage.setItem('waka_branch_code', val);
     gid('pinOverlay').style.display='none'; gid('app').style.display='block';
-    applyRole('staff'); switchTab('branch'); initApp();
+    applyRole('staff'); autoLoginBranch(BRANCH_CODES[val]); switchTab('branch'); initApp();
   } else { gid('pinError').style.display='block'; setTimeout(()=>gid('pinError').style.display='none',2000); }
 }
 const savedAuth = sessionStorage.getItem('waka_app_auth');
-if (savedAuth) { gid('pinOverlay').style.display='none'; gid('app').style.display='block'; applyRole(savedAuth); if(savedAuth==='staff')switchTab('branch'); initApp(); }
+if (savedAuth) {
+  gid('pinOverlay').style.display='none'; gid('app').style.display='block'; applyRole(savedAuth);
+  const sb=sessionStorage.getItem('waka_branch');
+  if(savedAuth==='staff'&&sb){autoLoginBranch(sb);switchTab('branch');}
+  initApp();
+}
 
 function initApp() { loadDashboard(); loadProducts(); loadCatalogLinks(); }
 
@@ -601,25 +626,78 @@ async function loadWhStock() {
 // ══════════════════════════════════════════════════════════
 // TAB 4: สาขา
 // ══════════════════════════════════════════════════════════
+// ── Branch login ──
+function autoLoginBranch(name) {
+  gid('branchSelect').value=name;
+  gid('branchLogin').style.display='none';
+  gid('branchApp').style.display='block';
+  gid('branchTitle').textContent='สาขา'+name;
+}
+function loginBranch() {
+  const code=gid('branchCodeInput').value.trim();
+  if(BRANCH_CODES[code]){
+    sessionStorage.setItem('waka_branch',BRANCH_CODES[code]);
+    sessionStorage.setItem('waka_branch_code',code);
+    autoLoginBranch(BRANCH_CODES[code]);
+  } else if(userRole==='admin') {
+    // admin สามารถพิมพ์ชื่อสาขาตรงๆ
+    const match=['ต้นสัก','เมืองทอง','ศรีนครินทร์'].find(b=>code.includes(b));
+    if(match){sessionStorage.setItem('waka_branch',match);autoLoginBranch(match);}
+    else{gid('branchLoginError').style.display='block';setTimeout(()=>gid('branchLoginError').style.display='none',2000);}
+  } else {
+    gid('branchLoginError').style.display='block';setTimeout(()=>gid('branchLoginError').style.display='none',2000);
+  }
+}
+function logoutBranch() {
+  sessionStorage.removeItem('waka_branch');sessionStorage.removeItem('waka_branch_code');
+  gid('branchApp').style.display='none';gid('branchLogin').style.display='block';
+  gid('branchCodeInput').value='';
+}
+
 function openBrView(s) {
   if(!gid('branchSelect').value){alert('เลือกสาขาก่อน');return;}
   gid('brMenu').style.display='none';
   gid('brSubView').style.display='block';
-  gid('brOrders').style.display=s==='orders'?'block':'none';
-  gid('brHandover').style.display=s==='handover'?'block':'none';
-  gid('brStock').style.display=s==='bstock'?'block':'none';
-  gid('brWithdraw').style.display=s==='withdraw'?'block':'none';
-  if(s==='orders')loadBrOrders();if(s==='bstock')loadBrStock();if(s==='withdraw')loadWithdrawals();
+  ['brIncoming','brOrders','brHandover','brStock','brWithdraw'].forEach(id=>gid(id).style.display='none');
+  if(s==='incoming'){gid('brIncoming').style.display='block';loadIncoming();}
+  if(s==='orders'){gid('brOrders').style.display='block';loadBrOrders();}
+  if(s==='handover')gid('brHandover').style.display='block';
+  if(s==='bstock'){gid('brStock').style.display='block';loadBrStock();}
+  if(s==='withdraw'){gid('brWithdraw').style.display='block';loadWithdrawals();}
 }
 function closeBrView() {
   gid('brSubView').style.display='none';
   gid('brMenu').style.display='block';
 }
 
-function onBranchChange() {
-  const b=gid('branchSelect').value;sessionStorage.setItem('waka_branch',b);
-  if(b){loadBrOrders();loadBrStock();loadWithdrawals();}
+// ── รับของจากคลัง ──
+async function loadIncoming() {
+  const branch=gid('branchSelect').value;if(!branch)return;
+  try{const r=await fetch(G+'?action=api&do=shipments');const d=await r.json();
+    const pending=(d.shipments||[]).filter(s=>s.to_branch===branch&&s.status!=='รับแล้ว');
+    const el=gid('incomingList');
+    if(!pending.length){el.innerHTML='<div class="empty">ไม่มีล็อตที่รอรับ ✅</div>';return;}
+    el.innerHTML=pending.map(s=>{
+      const items=JSON.parse(s.items_json||'[]');
+      const itemStr=items.map(i=>{const tb=(i.qty_box||0)+(i.qty_box_extra||0),tp=(i.qty_pack||0)+(i.qty_pack_extra||0);return i.name+(tb?' Box:'+tb:'')+(tp?' Pack:'+tp:'');}).join(', ');
+      return `<div class="card" style="border-left:4px solid var(--orange)">
+        <div style="display:flex;justify-content:space-between"><strong>${esc(s.shipment_id)}</strong><span style="font-size:12px;color:var(--text2)">${esc(s.timestamp)}</span></div>
+        <div style="font-size:13px;margin-top:6px">${esc(itemStr)}</div>
+        <button class="btn btn-green" style="margin-top:10px" onclick="confirmReceive('${s.shipment_id}')">✅ ยืนยันรับของครบแล้ว</button>
+      </div>`;
+    }).join('');
+  }catch(e){gid('incomingList').innerHTML='<div class="empty">โหลดไม่ได้</div>';}
 }
+
+async function confirmReceive(id) {
+  if(!confirm('ยืนยันว่าได้รับของครบตามรายการ '+id+'?'))return;
+  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'receiveShipment',shipment_id:id})});const d=await r.json();
+    if(d.ok||d.already){toast('รับของแล้ว — สต็อกอัปเดต + แจ้งลูกค้าแล้ว');loadIncoming();}
+    else alert(d.error);
+  }catch(e){alert('ผิดพลาด');}
+}
+
+function onBranchChange() {}
 
 async function loadBrOrders() {
   const b=gid('branchSelect').value;if(!b){gid('brOrders').innerHTML='<div class="empty">เลือกสาขาก่อน</div>';return;}
@@ -700,9 +778,6 @@ function copyLink(url){navigator.clipboard.writeText(url).then(()=>toast('คั
 // ── Toast ──
 function toast(msg,err){const el=gid('toast');el.textContent=msg;el.style.background=err?'var(--red)':'var(--green)';el.style.display='block';setTimeout(()=>el.style.display='none',3000);}
 
-// restore branch
-const savedBranch=sessionStorage.getItem('waka_branch');
-if(savedBranch)gid('branchSelect').value=savedBranch;
 </script>
 </body>
 </html>
