@@ -568,22 +568,55 @@ async function loadWhCreate() {
 function renderShipForm() {
   const branch=gid('shipBranch').value;const el=gid('shipForm');if(!branch){el.innerHTML='';return;}
   const needs=branchSummary[branch]||[];const all=[...new Set([...centralStock.map(s=>s.name),...needs.map(n=>n.name)])];
-  let h='<table><tr><th>สินค้า</th><th class="num">สต็อก</th><th class="num">ออเดอร์</th><th>ส่ง</th><th>เผื่อ</th></tr>';
+  let h='';let totalItems=0;
   for(const name of all){
     const need=needs.find(n=>n.name===name)||{qty_box:0,qty_pack:0};const stock=centralStock.find(s=>s.name===name)||{qty_box:0,qty_pack:0};
-    if(stock.qty_box>0||need.qty_box>0)h+='<tr data-name="'+esc(name)+'" data-type="box"><td>'+esc(name)+' <small style="color:var(--label)">(กล่อง)</small></td><td class="num">'+stock.qty_box+'</td><td class="num">'+(need.qty_box||0)+'</td><td><input type="number" class="ship-qty" value="'+(need.qty_box||0)+'" min="0" style="width:50px;padding:6px;border:1px solid var(--card-border);border-radius:8px;text-align:center"></td><td><input type="number" class="ship-extra" value="0" min="0" style="width:50px;padding:6px;border:1px solid var(--card-border);border-radius:8px;text-align:center"></td></tr>';
-    if(stock.qty_pack>0||need.qty_pack>0)h+='<tr data-name="'+esc(name)+'" data-type="pack"><td>'+esc(name)+' <small style="color:var(--label)">(ซอง)</small></td><td class="num">'+stock.qty_pack+'</td><td class="num">'+(need.qty_pack||0)+'</td><td><input type="number" class="ship-qty" value="'+(need.qty_pack||0)+'" min="0" style="width:50px;padding:6px;border:1px solid var(--card-border);border-radius:8px;text-align:center"></td><td><input type="number" class="ship-extra" value="0" min="0" style="width:50px;padding:6px;border:1px solid var(--card-border);border-radius:8px;text-align:center"></td></tr>';
+    const hasBox=stock.qty_box>0||need.qty_box>0, hasPack=stock.qty_pack>0||need.qty_pack>0;
+    if(!hasBox&&!hasPack)continue;
+    h+='<div class="card" style="margin-bottom:10px">';
+    h+='<div style="font-weight:700;font-size:15px;margin-bottom:8px">'+esc(name)+'</div>';
+    h+='<div style="font-size:12px;color:var(--text2);margin-bottom:8px">สต็อกกลาง: Box '+stock.qty_box+' / Pack '+stock.qty_pack+'</div>';
+    if(hasBox){
+      const oq=need.qty_box||0;
+      h+='<div data-name="'+esc(name)+'" data-type="box" data-order="'+oq+'" style="background:var(--input-bg);border-radius:10px;padding:12px;margin-bottom:8px">';
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-weight:600">Box (กล่อง)</span><span style="color:var(--text2);font-size:13px">ออเดอร์: <strong>'+oq+'</strong></span></div>';
+      h+='<div style="display:flex;align-items:center;gap:12px"><label style="font-size:13px;color:var(--text2);width:60px">เผื่อ</label><input type="number" class="ship-extra" value="0" min="0" oninput="updateShipTotal(this)" style="flex:1;padding:12px;border:1px solid var(--card-border);border-radius:10px;font-size:16px;text-align:center;font-family:inherit;background:#fff"></div>';
+      h+='<div style="text-align:right;margin-top:8px;font-weight:700;font-size:15px">รวมส่ง: <span class="ship-total">'+ oq+'</span></div>';
+      h+='</div>';
+      totalItems+=oq;
+    }
+    if(hasPack){
+      const oq=need.qty_pack||0;
+      h+='<div data-name="'+esc(name)+'" data-type="pack" data-order="'+oq+'" style="background:var(--input-bg);border-radius:10px;padding:12px;margin-bottom:8px">';
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-weight:600">Pack (ซอง)</span><span style="color:var(--text2);font-size:13px">ออเดอร์: <strong>'+oq+'</strong></span></div>';
+      h+='<div style="display:flex;align-items:center;gap:12px"><label style="font-size:13px;color:var(--text2);width:60px">เผื่อ</label><input type="number" class="ship-extra" value="0" min="0" oninput="updateShipTotal(this)" style="flex:1;padding:12px;border:1px solid var(--card-border);border-radius:10px;font-size:16px;text-align:center;font-family:inherit;background:#fff"></div>';
+      h+='<div style="text-align:right;margin-top:8px;font-weight:700;font-size:15px">รวมส่ง: <span class="ship-total">'+oq+'</span></div>';
+      h+='</div>';
+      totalItems+=oq;
+    }
+    h+='</div>';
   }
-  h+='</table><button class="btn btn-accent" style="margin-top:12px" onclick="createShipment()">📦 สร้างล็อต</button>';
+  h+='<div style="text-align:center;font-size:13px;color:var(--text2);margin-bottom:8px">รวมทั้งหมด: <strong id="shipGrandTotal">'+totalItems+'</strong> ชิ้น</div>';
+  h+='<button class="btn btn-accent" onclick="createShipment()">📦 สร้างล็อตส่ง '+esc(branch)+'</button>';
   el.innerHTML=h;
+}
+
+function updateShipTotal(input) {
+  const row=input.closest('[data-order]');
+  const order=+row.dataset.order||0;
+  const extra=+input.value||0;
+  row.querySelector('.ship-total').textContent=order+extra;
+  let grand=0;
+  document.querySelectorAll('#shipForm [data-order]').forEach(r=>{grand+=(+r.dataset.order||0)+(+r.querySelector('.ship-extra').value||0);});
+  gid('shipGrandTotal').textContent=grand;
 }
 
 async function createShipment() {
   const branch=gid('shipBranch').value;if(!branch)return alert('เลือกสาขา');
-  const rows=document.querySelectorAll('#shipForm tr[data-name]');const itemMap={};
-  rows.forEach(row=>{const n=row.dataset.name,t=row.dataset.type,q=+row.querySelector('.ship-qty').value||0,e=+row.querySelector('.ship-extra').value||0;
+  const rows=document.querySelectorAll('#shipForm [data-name][data-type]');const itemMap={};
+  rows.forEach(row=>{const n=row.dataset.name,t=row.dataset.type,oq=+row.dataset.order||0,e=+row.querySelector('.ship-extra').value||0;
     if(!itemMap[n])itemMap[n]={name:n,qty_box:0,qty_pack:0,qty_box_extra:0,qty_pack_extra:0};
-    if(t==='box'){itemMap[n].qty_box=q;itemMap[n].qty_box_extra=e;}else{itemMap[n].qty_pack=q;itemMap[n].qty_pack_extra=e;}
+    if(t==='box'){itemMap[n].qty_box=oq;itemMap[n].qty_box_extra=e;}else{itemMap[n].qty_pack=oq;itemMap[n].qty_pack_extra=e;}
   });
   const items=Object.values(itemMap).filter(i=>i.qty_box+i.qty_pack+i.qty_box_extra+i.qty_pack_extra>0);
   if(!items.length)return alert('ไม่มีรายการ');
