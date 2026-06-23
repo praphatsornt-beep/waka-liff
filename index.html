@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>WAKA SPACE — สั่งซื้อการ์ด</title>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <script defer src="https://static.line-scdn.net/liff/edge/versions/2.22.3/sdk.js"></script>
+  <script src="https://static.line-scdn.net/liff/edge/versions/2.22.3/sdk.js"></script>
   <style>
     :root {
       --bg: #e7e5df;
@@ -612,19 +612,19 @@
         <div id="branchSection">
           <div class="branch-options">
             <label class="branch-opt" onclick="selectBranch(this)">
-              <input type="radio" name="branch" value="ต้นสัก" />
+              <input type="radio" name="branch" value="ต้นสักคอร์เนอร์" />
               <span class="radio-circle"></span>
               <div class="branch-info">
-                <div class="branch-name">สาขาต้นสัก</div>
-                <div class="branch-hours">10:00 - 21:00</div>
+                <div class="branch-name">สาขาต้นสักคอร์เนอร์</div>
+                <div class="branch-hours">07:00 - 17:00</div>
               </div>
             </label>
             <label class="branch-opt" onclick="selectBranch(this)">
-              <input type="radio" name="branch" value="เมืองทอง" />
+              <input type="radio" name="branch" value="เมืองทองธานี" />
               <span class="radio-circle"></span>
               <div class="branch-info">
-                <div class="branch-name">สาขาเมืองทอง</div>
-                <div class="branch-hours">11:00 - 21:00</div>
+                <div class="branch-name">สาขาเมืองทองธานี</div>
+                <div class="branch-hours">07:00 - 17:00</div>
               </div>
             </label>
             <label class="branch-opt" onclick="selectBranch(this)">
@@ -632,7 +632,7 @@
               <span class="radio-circle"></span>
               <div class="branch-info">
                 <div class="branch-name">สาขาศรีนครินทร์</div>
-                <div class="branch-hours">11:00 - 21:00</div>
+                <div class="branch-hours">07:00 - 17:00</div>
               </div>
             </label>
           </div>
@@ -769,10 +769,7 @@
       if (!liff.isLoggedIn()) { liff.login(); return; }
       lineProfile = await liff.getProfile();
     } catch (e) {
-      console.error("LIFF error:", e);
-      if (liff.isInClient && liff.isInClient()) {
-        alert("LIFF error: " + (e.message || e));
-      }
+      console.error("LIFF init error:", e);
       lineProfile = { userId: "dev_user", displayName: "Dev" };
     }
 

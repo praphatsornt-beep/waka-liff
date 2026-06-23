@@ -245,8 +245,8 @@
       <h3>📦 สร้างล็อตส่งสาขา</h3>
       <select id="shipBranch" onchange="loadShipmentForm()">
         <option value="">-- เลือกสาขาปลายทาง --</option>
-        <option value="ต้นสัก">ต้นสัก</option>
-        <option value="เมืองทอง">เมืองทอง</option>
+        <option value="ต้นสักคอร์เนอร์">ต้นสักคอร์เนอร์</option>
+        <option value="เมืองทองธานี">เมืองทองธานี</option>
         <option value="ศรีนครินทร์">ศรีนครินทร์</option>
       </select>
       <div id="shipmentForm"></div>
@@ -367,7 +367,7 @@ function loadShipmentForm() {
   const needs = branchSummary[branch] || [];
   const allProducts = [...new Set([...centralStock.map(s => s.name), ...needs.map(n => n.name)])];
 
-  let html = '<table><tr><th>สินค้า</th><th>สต็อก</th><th>ออเดอร์</th><th>ส่ง</th><th>เผื่อ</th></tr>';
+  let html = '<table><tr><th>สินค้า</th><th>สต็อก</th><th>ออเดอร์</th><th>เผื่อ</th><th>รวมส่ง</th></tr>';
   for (const name of allProducts) {
     const need = needs.find(n => n.name === name) || { qty_box: 0, qty_pack: 0 };
     const stock = centralStock.find(s => s.name === name) || { qty_box: 0, qty_pack: 0 };
@@ -375,27 +375,36 @@ function loadShipmentForm() {
     const hasPack = stock.qty_pack > 0 || need.qty_pack > 0;
 
     if (hasBox) {
-      html += '<tr data-name="' + esc(name) + '" data-type="box">';
+      const orderQty = need.qty_box || 0;
+      html += '<tr data-name="' + esc(name) + '" data-type="box" data-order="' + orderQty + '">';
       html += '<td>' + esc(name) + ' <small style="color:var(--label)">(กล่อง)</small></td>';
       html += '<td>' + stock.qty_box + '</td>';
-      html += '<td>' + (need.qty_box || 0) + '</td>';
-      html += '<td><input type="number" class="qty-input ship-qty" value="' + (need.qty_box || 0) + '" min="0"></td>';
-      html += '<td><input type="number" class="qty-input ship-extra" value="0" min="0"> <span class="extra-label">เผื่อ</span></td>';
+      html += '<td>' + orderQty + '</td>';
+      html += '<td><input type="number" class="qty-input ship-extra" value="0" min="0" oninput="updateShipTotal(this)"></td>';
+      html += '<td class="ship-total" style="font-weight:700">' + orderQty + '</td>';
       html += '</tr>';
     }
     if (hasPack) {
-      html += '<tr data-name="' + esc(name) + '" data-type="pack">';
+      const orderQty = need.qty_pack || 0;
+      html += '<tr data-name="' + esc(name) + '" data-type="pack" data-order="' + orderQty + '">';
       html += '<td>' + esc(name) + ' <small style="color:var(--label)">(ซอง)</small></td>';
       html += '<td>' + stock.qty_pack + '</td>';
-      html += '<td>' + (need.qty_pack || 0) + '</td>';
-      html += '<td><input type="number" class="qty-input ship-qty" value="' + (need.qty_pack || 0) + '" min="0"></td>';
-      html += '<td><input type="number" class="qty-input ship-extra" value="0" min="0"> <span class="extra-label">เผื่อ</span></td>';
+      html += '<td>' + orderQty + '</td>';
+      html += '<td><input type="number" class="qty-input ship-extra" value="0" min="0" oninput="updateShipTotal(this)"></td>';
+      html += '<td class="ship-total" style="font-weight:700">' + orderQty + '</td>';
       html += '</tr>';
     }
   }
   html += '</table>';
   html += '<button class="btn btn-primary" style="margin-top:12px" onclick="createShipment()">📦 สร้างล็อตส่งสาขา</button>';
   el.innerHTML = html;
+}
+
+function updateShipTotal(input) {
+  const row = input.closest('tr');
+  const orderQty = parseInt(row.dataset.order) || 0;
+  const extra = parseInt(input.value) || 0;
+  row.querySelector('.ship-total').textContent = orderQty + extra;
 }
 
 async function createShipment() {
@@ -407,15 +416,15 @@ async function createShipment() {
   rows.forEach(row => {
     const name = row.dataset.name;
     const type = row.dataset.type;
-    const qty = parseInt(row.querySelector('.ship-qty').value) || 0;
+    const orderQty = parseInt(row.dataset.order) || 0;
     const extra = parseInt(row.querySelector('.ship-extra').value) || 0;
-    if (qty === 0 && extra === 0) return;
+    if (orderQty === 0 && extra === 0) return;
     if (!itemMap[name]) itemMap[name] = { name, qty_box: 0, qty_pack: 0, qty_box_extra: 0, qty_pack_extra: 0 };
     if (type === 'box') {
-      itemMap[name].qty_box = qty;
+      itemMap[name].qty_box = orderQty;
       itemMap[name].qty_box_extra = extra;
     } else {
-      itemMap[name].qty_pack = qty;
+      itemMap[name].qty_pack = orderQty;
       itemMap[name].qty_pack_extra = extra;
     }
   });

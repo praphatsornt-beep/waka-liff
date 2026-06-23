@@ -258,13 +258,13 @@
           <div style="font-size:18px;font-weight:700">🏬 เลือกสาขา</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:12px">
-          <div class="br-menu-card" onclick="adminPickBranch('ต้นสัก')" style="padding:32px 16px">
+          <div class="br-menu-card" onclick="adminPickBranch('ต้นสักคอร์เนอร์')" style="padding:32px 16px">
             <div style="font-size:48px">🏬</div>
-            <div class="br-menu-title" style="font-size:20px">สาขาต้นสัก</div>
+            <div class="br-menu-title" style="font-size:20px">สาขาต้นสักคอร์เนอร์</div>
           </div>
-          <div class="br-menu-card" onclick="adminPickBranch('เมืองทอง')" style="padding:32px 16px">
+          <div class="br-menu-card" onclick="adminPickBranch('เมืองทองธานี')" style="padding:32px 16px">
             <div style="font-size:48px">🏬</div>
-            <div class="br-menu-title" style="font-size:20px">สาขาเมืองทอง</div>
+            <div class="br-menu-title" style="font-size:20px">สาขาเมืองทองธานี</div>
           </div>
           <div class="br-menu-card" onclick="adminPickBranch('ศรีนครินทร์')" style="padding:32px 16px">
             <div style="font-size:48px">🏬</div>
@@ -402,7 +402,7 @@
 <script>
 const G = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
 const PIN_ADMIN = 'waka99';
-const BRANCH_CODES = { 'ts01': 'ต้นสัก', 'mt01': 'เมืองทอง', 'sn01': 'ศรีนครินทร์' };
+const BRANCH_CODES = { 'ts01': 'ต้นสักคอร์เนอร์', 'mt01': 'เมืองทองธานี', 'sn01': 'ศรีนครินทร์' };
 const LIFF_BASE = 'https://liff.line.me/2010457385-UpJLXxJ0';
 let products = [], centralStock = [], branchSummary = {}, selectedProduct = null;
 let scanner = null, scannerNew = null;
@@ -607,7 +607,7 @@ async function loadWhCreate() {
   try{const r=await fetch(G+'?action=api&do=central_stock');const d=await r.json();centralStock=d.stock||[];}catch(_){}
   const el=gid('whCreate');
   let h='<div class="card"><h3>📦 สร้างล็อตส่งสาขา</h3>';
-  h+='<select class="branch-sel" id="shipBranch" onchange="renderShipForm()"><option value="">-- เลือกสาขา --</option><option value="ต้นสัก">ต้นสัก</option><option value="เมืองทอง">เมืองทอง</option><option value="ศรีนครินทร์">ศรีนครินทร์</option></select>';
+  h+='<select class="branch-sel" id="shipBranch" onchange="renderShipForm()"><option value="">-- เลือกสาขา --</option><option value="ต้นสักคอร์เนอร์">ต้นสักคอร์เนอร์</option><option value="เมืองทองธานี">เมืองทองธานี</option><option value="ศรีนครินทร์">ศรีนครินทร์</option></select>';
   h+='<div id="shipForm"></div></div>';
   el.innerHTML=h;
 }
@@ -734,7 +734,7 @@ function loginBranch() {
     autoLoginBranch(BRANCH_CODES[code]);
   } else if(userRole==='admin') {
     // admin สามารถพิมพ์ชื่อสาขาตรงๆ
-    const match=['ต้นสัก','เมืองทอง','ศรีนครินทร์'].find(b=>code.includes(b));
+    const match=['ต้นสักคอร์เนอร์','เมืองทองธานี','ศรีนครินทร์'].find(b=>code.includes(b));
     if(match){sessionStorage.setItem('waka_branch',match);autoLoginBranch(match);}
     else{gid('branchLoginError').style.display='block';setTimeout(()=>gid('branchLoginError').style.display='none',2000);}
   } else {
