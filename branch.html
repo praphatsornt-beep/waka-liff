@@ -173,6 +173,23 @@
 
     .empty { text-align: center; color: var(--label); padding: 24px; }
 
+    .bottom-bar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      height: 54px; background: var(--card-bg);
+      border-top: 1px solid var(--card-border);
+      display: flex; z-index: 100;
+      box-shadow: 0 -2px 12px rgba(0,0,0,.06);
+    }
+    .bottom-bar a {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-decoration: none; color: var(--text-secondary);
+      font-size: 11px; font-weight: 600; gap: 2px;
+    }
+    .bottom-bar a .ico { font-size: 20px; }
+    .bottom-bar a.active { color: var(--accent); }
+    .container { padding-bottom: 70px; }
+
     .filter-row {
       display: flex;
       gap: 6px;
@@ -400,5 +417,12 @@ function esc(s) {
   return d.innerHTML;
 }
 </script>
+
+<nav class="bottom-bar">
+  <a onclick="history.back()"><span class="ico">←</span>ย้อนกลับ</a>
+  <a href="app.html"><span class="ico">🏠</span>หน้าหลัก</a>
+  <a href="warehouse.html"><span class="ico">🏭</span>คลัง</a>
+  <a href="report.html"><span class="ico">📊</span>รายงาน</a>
+</nav>
 </body>
 </html>
