@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WAKA SPACE - รับสินค้าเข้าคลัง</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    :root {
+      --bg: #e7e5df;
+      --card-bg: #ffffff;
+      --card-shadow: 0 4px 20px rgba(40,38,34,.08);
+      --card-border: #ddd9d2;
+      --accent: #111740;
+      --white: #ffffff;
+      --text-primary: #1a1a1a;
+      --text-secondary: #666666;
+      --label: #a8a8a8;
+      --green: #2d8f4e;
+      --red: #d64545;
+      --blue: #2563eb;
+      --orange: #d97706;
+      --input-bg: #f5f5f5;
+      --field-radius: 14px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Anuphan', 'Space Grotesk', sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    #pinOverlay {
+      position: fixed; inset: 0;
+      background: var(--bg); z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .pin-card {
+      background: var(--card-bg); border-radius: 14px;
+      box-shadow: 0 24px 60px rgba(40,38,34,.18);
+      border: 1px solid var(--card-border);
+      padding: 32px; width: 320px; text-align: center;
+    }
+    .pin-card h2 { margin-bottom: 4px; }
+    .pin-card .sub { color: var(--text-secondary); margin-bottom: 16px; font-size: 13px; }
+    .pin-card input {
+      width: 100%; padding: 14px; border: 1px solid var(--card-border);
+      border-radius: var(--field-radius); font-size: 18px; text-align: center;
+      letter-spacing: 8px; background: var(--input-bg); font-family: inherit;
+    }
+    .pin-card button {
+      width: 100%; margin-top: 12px; padding: 14px; background: var(--accent);
+      color: var(--white); border: none; border-radius: var(--field-radius);
+      font-size: 16px; font-weight: 600; cursor: pointer; font-family: inherit;
+    }
+    .pin-error { color: var(--red); margin-top: 8px; display: none; font-size: 13px; }
+
+    .container { max-width: 480px; margin: 0 auto; padding: 16px; }
+    .header { text-align: center; margin-bottom: 16px; }
+    .header h1 { font-size: 18px; }
+    .header .sub { color: var(--text-secondary); font-size: 13px; }
+
+    .back-link {
+      display: inline-block; margin-bottom: 12px; color: var(--accent);
+      text-decoration: none; font-size: 13px; font-weight: 600;
+    }
+
+    .card {
+      background: var(--card-bg); border-radius: 14px;
+      box-shadow: var(--card-shadow); border: 1px solid var(--card-border);
+      padding: 16px; margin-bottom: 12px;
+    }
+    .card h3 { font-size: 15px; margin-bottom: 12px; }
+
+    .scan-area { text-align: center; }
+    #scanBtn {
+      width: 100%; padding: 16px; background: var(--accent); color: var(--white);
+      border: none; border-radius: var(--field-radius); font-size: 16px;
+      font-weight: 600; cursor: pointer; font-family: inherit;
+    }
+    #scanBtn:disabled { opacity: .5; }
+    #reader { margin-top: 12px; border-radius: 12px; overflow: hidden; }
+
+    .manual-row {
+      display: flex; gap: 8px; margin-top: 12px;
+    }
+    .manual-row input {
+      flex: 1; padding: 12px; border: 1px solid var(--card-border);
+      border-radius: var(--field-radius); font-family: inherit; font-size: 14px;
+      background: var(--input-bg);
+    }
+    .manual-row button {
+      padding: 12px 16px; background: var(--blue); color: var(--white);
+      border: none; border-radius: var(--field-radius); font-weight: 600;
+      cursor: pointer; font-family: inherit; white-space: nowrap;
+    }
+
+    .or-divider {
+      text-align: center; color: var(--label); font-size: 12px;
+      margin: 12px 0; position: relative;
+    }
+    .or-divider::before, .or-divider::after {
+      content: ""; position: absolute; top: 50%; width: 40%; height: 1px; background: var(--card-border);
+    }
+    .or-divider::before { left: 0; }
+    .or-divider::after { right: 0; }
+
+    .select-product {
+      width: 100%; padding: 12px; border: 1px solid var(--card-border);
+      border-radius: var(--field-radius); font-family: inherit; font-size: 14px;
+      background: var(--input-bg); margin-top: 12px;
+    }
+
+    .product-info {
+      background: #f0fbf4; border-radius: 12px; padding: 14px; margin-bottom: 12px;
+    }
+    .product-info .name { font-weight: 700; font-size: 16px; }
+    .product-info .detail { color: var(--text-secondary); font-size: 13px; margin-top: 4px; }
+
+    .form-group { margin-bottom: 12px; }
+    .form-group label {
+      display: block; font-size: 12px; font-weight: 600;
+      color: var(--text-secondary); margin-bottom: 4px;
+    }
+    .form-group input, .form-group select {
+      width: 100%; padding: 12px; border: 1px solid var(--card-border);
+      border-radius: var(--field-radius); font-family: inherit; font-size: 14px;
+      background: var(--input-bg);
+    }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+    .btn {
+      width: 100%; padding: 14px; border: none; border-radius: var(--field-radius);
+      font-size: 16px; font-weight: 600; cursor: pointer; font-family: inherit;
+      color: var(--white); margin-top: 8px;
+    }
+    .btn-green { background: var(--green); }
+    .btn-blue { background: var(--blue); }
+    .btn-accent { background: var(--accent); }
+    .btn:disabled { opacity: .5; }
+
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: var(--green); color: #fff; padding: 12px 24px;
+      border-radius: 10px; font-weight: 600; z-index: 200;
+      display: none; animation: fadeIn .3s;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateX(-50%) translateY(10px); } }
+
+    .log-item {
+      padding: 10px 0; border-bottom: 1px solid #f0ede8; font-size: 13px;
+    }
+    .log-item:last-child { border: none; }
+    .log-time { color: var(--label); font-size: 11px; }
+
+    .tab-bar {
+      display: flex; gap: 4px; margin-bottom: 16px;
+    }
+    .tab-btn {
+      flex: 1; padding: 10px; border: 1px solid var(--card-border);
+      border-radius: 10px; background: var(--card-bg); text-align: center;
+      font-family: inherit; font-size: 13px; font-weight: 600;
+      cursor: pointer; color: var(--text-secondary);
+    }
+    .tab-btn.active { background: var(--accent); color: var(--white); border-color: var(--accent); }
+  </style>
+</head>
+<body>
+
+<div id="pinOverlay">
+  <div class="pin-card">
+    <h2>📦 รับสินค้าเข้าคลัง</h2>
+    <div class="sub">WAKA SPACE</div>
+    <input type="password" id="pinInput" maxlength="8" inputmode="text" placeholder="••••"
+      onkeydown="if(event.key==='Enter')checkPin()">
+    <button onclick="checkPin()">เข้าสู่ระบบ</button>
+    <div class="pin-error" id="pinError">PIN ไม่ถูกต้อง</div>
+  </div>
+</div>
+
+<div class="container" id="app" style="display:none">
+  <a class="back-link" href="menu.html">&larr; กลับเมนู</a>
+  <div class="header">
+    <h1>📦 รับสินค้าเข้าคลัง</h1>
+    <div class="sub">สแกน barcode หรือเลือกสินค้า</div>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('add')">เติมสต็อก</button>
+    <button class="tab-btn" onclick="switchTab('new')">เพิ่มสินค้าใหม่</button>
+  </div>
+
+  <!-- ── เติมสต็อก ── -->
+  <div id="tabAdd">
+    <div class="card">
+      <h3>📷 สแกน Barcode</h3>
+      <div class="scan-area">
+        <button id="scanBtn" onclick="toggleScan()">เปิดกล้องสแกน</button>
+        <div id="reader"></div>
+      </div>
+      <div class="manual-row">
+        <input type="text" id="barcodeInput" placeholder="พิมพ์ barcode..." inputmode="numeric">
+        <button onclick="lookupBarcode(document.getElementById('barcodeInput').value)">ค้นหา</button>
+      </div>
+      <div class="or-divider">หรือ เลือกจากรายการ</div>
+      <select class="select-product" id="productSelect" onchange="selectProduct()">
+        <option value="">-- เลือกสินค้า --</option>
+      </select>
+    </div>
+
+    <!-- ผลการค้นหา -->
+    <div id="addStockForm" style="display:none">
+      <div class="card">
+        <div class="product-info">
+          <div class="name" id="foundName"></div>
+          <div class="detail" id="foundDetail"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>เพิ่ม Box (กล่อง)</label>
+            <input type="number" id="addBox" min="0" value="0" inputmode="numeric">
+          </div>
+          <div class="form-group">
+            <label>เพิ่ม Pack (ซอง)</label>
+            <input type="number" id="addPack" min="0" value="0" inputmode="numeric">
+          </div>
+        </div>
+        <button class="btn btn-green" id="addStockBtn" onclick="submitAddStock()">✅ เพิ่มสต็อก</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── เพิ่มสินค้าใหม่ ── -->
+  <div id="tabNew" style="display:none">
+    <div class="card">
+      <h3>🆕 เพิ่มสินค้าใหม่</h3>
+      <div class="scan-area" style="margin-bottom:12px">
+        <button id="scanBtn2" onclick="toggleScanNew()">📷 สแกน Barcode (ไม่บังคับ)</button>
+        <div id="reader2"></div>
+      </div>
+      <div class="form-group">
+        <label>Barcode</label>
+        <input type="text" id="newBarcode" placeholder="สแกนหรือพิมพ์ (ไม่บังคับ)" inputmode="numeric">
+      </div>
+      <div class="form-group">
+        <label>ชื่อสินค้า *</label>
+        <input type="text" id="newName" placeholder="เช่น Pokemon Scarlet EX">
+      </div>
+      <div class="form-group">
+        <label>หมวดหมู่</label>
+        <input type="text" id="newCategory" placeholder="เช่น Pokemon, Lorcana">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>ราคาขาย Box</label>
+          <input type="number" id="newPriceBox" min="0" value="0" inputmode="numeric">
+        </div>
+        <div class="form-group">
+          <label>ราคาขาย Pack</label>
+          <input type="number" id="newPricePack" min="0" value="0" inputmode="numeric">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>ต้นทุน Box</label>
+          <input type="number" id="newCostBox" min="0" value="0" inputmode="numeric">
+        </div>
+        <div class="form-group">
+          <label>ต้นทุน Pack</label>
+          <input type="number" id="newCostPack" min="0" value="0" inputmode="numeric">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>จำนวน Box เริ่มต้น</label>
+          <input type="number" id="newInitBox" min="0" value="0" inputmode="numeric">
+        </div>
+        <div class="form-group">
+          <label>จำนวน Pack เริ่มต้น</label>
+          <input type="number" id="newInitPack" min="0" value="0" inputmode="numeric">
+        </div>
+      </div>
+      <button class="btn btn-blue" id="addProductBtn" onclick="submitAddProduct()">➕ เพิ่มสินค้าใหม่</button>
+    </div>
+  </div>
+
+  <!-- ── ประวัติ ── -->
+  <div class="card">
+    <h3>📋 ประวัติรับเข้าล่าสุด</h3>
+    <div id="logList"><div style="color:var(--label);text-align:center;padding:12px">ยังไม่มีรายการ</div></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
+const PIN = 'waka2024';
+let products = [];
+let selectedProduct = null;
+let scanner = null;
+let scannerNew = null;
+let logs = JSON.parse(sessionStorage.getItem('receive_logs') || '[]');
+
+function checkPin() {
+  if (document.getElementById('pinInput').value === PIN) {
+    document.getElementById('pinOverlay').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    sessionStorage.setItem('waka_receive_auth', '1');
+    loadProducts();
+    renderLog();
+  } else {
+    document.getElementById('pinError').style.display = 'block';
+    setTimeout(() => document.getElementById('pinError').style.display = 'none', 2000);
+  }
+}
+
+if (sessionStorage.getItem('waka_receive_auth') === '1') {
+  document.getElementById('pinOverlay').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  loadProducts();
+  renderLog();
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', (tab === 'add' ? i === 0 : i === 1)));
+  document.getElementById('tabAdd').style.display = tab === 'add' ? 'block' : 'none';
+  document.getElementById('tabNew').style.display = tab === 'new' ? 'block' : 'none';
+  stopScan(); stopScanNew();
+}
+
+async function loadProducts() {
+  try {
+    const res = await fetch(GAS_URL + '?action=api&do=product_list');
+    const data = await res.json();
+    products = data.products || [];
+    const sel = document.getElementById('productSelect');
+    sel.innerHTML = '<option value="">-- เลือกสินค้า --</option>';
+    for (const p of products) {
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name + (p.barcode ? ' [' + p.barcode + ']' : '');
+      sel.appendChild(opt);
+    }
+  } catch (_) {}
+}
+
+// ── Barcode Scanner ──
+function toggleScan() {
+  if (scanner) { stopScan(); return; }
+  document.getElementById('scanBtn').textContent = 'ปิดกล้อง';
+  scanner = new Html5Qrcode("reader");
+  scanner.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: { width: 280, height: 120 }, formatsToSupport: [
+      Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
+    ]},
+    (code) => { stopScan(); document.getElementById('barcodeInput').value = code; lookupBarcode(code); },
+    () => {}
+  ).catch(() => { stopScan(); toast('เปิดกล้องไม่ได้', true); });
+}
+
+function stopScan() {
+  if (scanner) { try { scanner.stop(); } catch(_) {} scanner = null; }
+  document.getElementById('scanBtn').textContent = 'เปิดกล้องสแกน';
+}
+
+function toggleScanNew() {
+  if (scannerNew) { stopScanNew(); return; }
+  document.getElementById('scanBtn2').textContent = 'ปิดกล้อง';
+  scannerNew = new Html5Qrcode("reader2");
+  scannerNew.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: { width: 280, height: 120 }, formatsToSupport: [
+      Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
+    ]},
+    (code) => { stopScanNew(); document.getElementById('newBarcode').value = code; },
+    () => {}
+  ).catch(() => { stopScanNew(); toast('เปิดกล้องไม่ได้', true); });
+}
+
+function stopScanNew() {
+  if (scannerNew) { try { scannerNew.stop(); } catch(_) {} scannerNew = null; }
+  document.getElementById('scanBtn2').textContent = '📷 สแกน Barcode (ไม่บังคับ)';
+}
+
+// ── Lookup ──
+async function lookupBarcode(code) {
+  code = String(code).trim();
+  if (!code) return;
+  // ค้นหาใน local ก่อน
+  const local = products.find(p => p.barcode === code);
+  if (local) { showProduct(local); return; }
+
+  try {
+    const res = await fetch(GAS_URL + '?action=api&do=lookup_barcode&barcode=' + encodeURIComponent(code));
+    const data = await res.json();
+    if (data.found) {
+      showProduct(data.product);
+    } else {
+      if (confirm('ไม่พบ barcode "' + code + '" ในระบบ\nต้องการเพิ่มเป็นสินค้าใหม่?')) {
+        switchTab('new');
+        document.getElementById('newBarcode').value = code;
+      }
+    }
+  } catch (err) {
+    toast('ค้นหาไม่ได้: ' + err.message, true);
+  }
+}
+
+function selectProduct() {
+  const name = document.getElementById('productSelect').value;
+  if (!name) { document.getElementById('addStockForm').style.display = 'none'; return; }
+  const p = products.find(x => x.name === name);
+  if (p) showProduct(p);
+}
+
+function showProduct(p) {
+  selectedProduct = p;
+  document.getElementById('foundName').textContent = p.name;
+  const details = [];
+  if (p.price_box) details.push('ขาย Box: ' + p.price_box.toLocaleString());
+  if (p.price_pack) details.push('ขาย Pack: ' + p.price_pack.toLocaleString());
+  if (p.cost_box) details.push('ทุน Box: ' + p.cost_box.toLocaleString());
+  if (p.cost_pack) details.push('ทุน Pack: ' + p.cost_pack.toLocaleString());
+  details.push('สต็อก: Box ' + (p.stock_box || 0) + ' / Pack ' + (p.stock_pack || 0));
+  if (p.barcode) details.push('Barcode: ' + p.barcode);
+  document.getElementById('foundDetail').textContent = details.join(' | ');
+  document.getElementById('addBox').value = 0;
+  document.getElementById('addPack').value = 0;
+  document.getElementById('addStockForm').style.display = 'block';
+  document.getElementById('productSelect').value = p.name;
+}
+
+// ── Submit: เพิ่มสต็อก ──
+async function submitAddStock() {
+  if (!selectedProduct) return;
+  const addBox = Number(document.getElementById('addBox').value) || 0;
+  const addPack = Number(document.getElementById('addPack').value) || 0;
+  if (addBox <= 0 && addPack <= 0) return alert('กรุณาใส่จำนวนที่ต้องการเพิ่ม');
+
+  const btn = document.getElementById('addStockBtn');
+  btn.disabled = true; btn.textContent = 'กำลังบันทึก...';
+
+  try {
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ _action: 'addStock', name: selectedProduct.name, category: selectedProduct.category, add_box: addBox, add_pack: addPack })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      let msg = selectedProduct.name + ': ';
+      if (addBox > 0) msg += '+' + addBox + ' Box ';
+      if (addPack > 0) msg += '+' + addPack + ' Pack';
+      toast(msg);
+      addLog(msg);
+      selectedProduct.stock_box = (selectedProduct.stock_box || 0) + addBox;
+      selectedProduct.stock_pack = (selectedProduct.stock_pack || 0) + addPack;
+      showProduct(selectedProduct);
+      document.getElementById('addBox').value = 0;
+      document.getElementById('addPack').value = 0;
+    } else {
+      alert(data.error || 'เกิดข้อผิดพลาด');
+    }
+  } catch (err) {
+    alert('บันทึกไม่ได้: ' + err.message);
+  }
+  btn.disabled = false; btn.textContent = '✅ เพิ่มสต็อก';
+}
+
+// ── Submit: เพิ่มสินค้าใหม่ ──
+async function submitAddProduct() {
+  const name = document.getElementById('newName').value.trim();
+  if (!name) return alert('กรุณาใส่ชื่อสินค้า');
+
+  const btn = document.getElementById('addProductBtn');
+  btn.disabled = true; btn.textContent = 'กำลังบันทึก...';
+
+  const body = {
+    _action: 'addProduct',
+    name: name,
+    category: document.getElementById('newCategory').value.trim(),
+    price_box: Number(document.getElementById('newPriceBox').value) || 0,
+    price_pack: Number(document.getElementById('newPricePack').value) || 0,
+    cost_box: Number(document.getElementById('newCostBox').value) || 0,
+    cost_pack: Number(document.getElementById('newCostPack').value) || 0,
+    barcode: document.getElementById('newBarcode').value.trim(),
+    initial_box: Number(document.getElementById('newInitBox').value) || 0,
+    initial_pack: Number(document.getElementById('newInitPack').value) || 0,
+  };
+
+  try {
+    const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(body) });
+    const data = await res.json();
+    if (data.ok) {
+      toast('เพิ่มสินค้าใหม่: ' + name);
+      addLog('🆕 ' + name + (body.barcode ? ' [' + body.barcode + ']' : ''));
+      // reset form
+      document.getElementById('newName').value = '';
+      document.getElementById('newCategory').value = '';
+      document.getElementById('newBarcode').value = '';
+      document.getElementById('newPriceBox').value = 0;
+      document.getElementById('newPricePack').value = 0;
+      document.getElementById('newCostBox').value = 0;
+      document.getElementById('newCostPack').value = 0;
+      document.getElementById('newInitBox').value = 0;
+      document.getElementById('newInitPack').value = 0;
+      loadProducts();
+    } else {
+      alert(data.error || 'เกิดข้อผิดพลาด');
+    }
+  } catch (err) {
+    alert('บันทึกไม่ได้: ' + err.message);
+  }
+  btn.disabled = false; btn.textContent = '➕ เพิ่มสินค้าใหม่';
+}
+
+// ── Log & Toast ──
+function addLog(msg) {
+  const now = new Date();
+  const time = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+  logs.unshift({ msg, time });
+  if (logs.length > 20) logs.length = 20;
+  sessionStorage.setItem('receive_logs', JSON.stringify(logs));
+  renderLog();
+}
+
+function renderLog() {
+  const el = document.getElementById('logList');
+  if (logs.length === 0) { el.innerHTML = '<div style="color:var(--label);text-align:center;padding:12px">ยังไม่มีรายการ</div>'; return; }
+  el.innerHTML = logs.map(l => '<div class="log-item"><span class="log-time">' + esc(l.time) + '</span> ' + esc(l.msg) + '</div>').join('');
+}
+
+function toast(msg, isError) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.background = isError ? 'var(--red)' : 'var(--green)';
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 3000);
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+</script>
+</body>
+</html>
