@@ -293,15 +293,22 @@
 
 <script>
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
-const CORRECT_PIN = localStorage.getItem('waka_pin') || 'waka99';
+const PIN_ADMIN = 'waka99';
+const BRANCH_CODES = { 'ts01': 'ต้นสักคอร์เนอร์', 'mt01': 'เมืองทองธานี', 'sn01': 'ศรีนครินทร์' };
 
 let branchSummary = {};
 let centralStock = [];
 
-// ── PIN ──
+if (sessionStorage.getItem('waka_portal_auth') === '1') {
+  document.getElementById('pinOverlay').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  loadAll();
+}
+
 function checkPin() {
-  const pin = document.getElementById('pinInput').value;
-  if (pin === CORRECT_PIN) {
+  const pin = document.getElementById('pinInput').value.trim();
+  if (pin === PIN_ADMIN || BRANCH_CODES[pin]) {
+    sessionStorage.setItem('waka_portal_auth', '1');
     document.getElementById('pinOverlay').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     loadAll();

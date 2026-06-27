@@ -422,23 +422,35 @@ function applyRole(role) {
 
 // ── PIN ──
 function checkPin() {
-  const val = gid('pinInput').value;
+  const val = gid('pinInput').value.trim();
   if (val === PIN_ADMIN) {
     sessionStorage.setItem('waka_app_auth','admin');
+    sessionStorage.setItem('waka_portal_auth','1');
+    sessionStorage.setItem('waka_staff_role','admin');
+    sessionStorage.setItem('waka_staff_branch','ทั้งหมด');
+    sessionStorage.setItem('waka_tstaff_auth','1');
+    sessionStorage.setItem('waka_tstaff_role','admin');
+    sessionStorage.setItem('waka_tstaff_branch','ทั้งหมด');
     gid('pinOverlay').style.display='none'; gid('app').style.display='block';
     applyRole('admin'); initApp();
   } else if (BRANCH_CODES[val]) {
     sessionStorage.setItem('waka_app_auth','staff');
+    sessionStorage.setItem('waka_portal_auth','1');
+    sessionStorage.setItem('waka_staff_role','staff');
+    sessionStorage.setItem('waka_staff_branch', BRANCH_CODES[val]);
+    sessionStorage.setItem('waka_tstaff_auth','1');
+    sessionStorage.setItem('waka_tstaff_role','staff');
+    sessionStorage.setItem('waka_tstaff_branch', BRANCH_CODES[val]);
     sessionStorage.setItem('waka_branch', BRANCH_CODES[val]);
     sessionStorage.setItem('waka_branch_code', val);
     gid('pinOverlay').style.display='none'; gid('app').style.display='block';
     applyRole('staff'); autoLoginBranch(BRANCH_CODES[val]); switchTab('branch'); initApp();
   } else { gid('pinError').style.display='block'; setTimeout(()=>gid('pinError').style.display='none',2000); }
 }
-const savedAuth = sessionStorage.getItem('waka_app_auth');
+const savedAuth = sessionStorage.getItem('waka_app_auth') || (sessionStorage.getItem('waka_portal_auth') === '1' ? sessionStorage.getItem('waka_staff_role') : null);
 if (savedAuth) {
   gid('pinOverlay').style.display='none'; gid('app').style.display='block'; applyRole(savedAuth);
-  const sb=sessionStorage.getItem('waka_branch');
+  const sb=sessionStorage.getItem('waka_branch') || sessionStorage.getItem('waka_staff_branch');
   if(savedAuth==='staff'&&sb){autoLoginBranch(sb);switchTab('branch');}
   initApp();
 }

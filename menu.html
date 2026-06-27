@@ -123,6 +123,16 @@
       grid-column: 1 / -1;
     }
 
+    .role-badge {
+      display: inline-block;
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .role-badge.admin { background: #111740; color: #fff; }
+    .role-badge.staff { background: #2d8f4e; color: #fff; }
+
     .branch-list {
       display: flex;
       flex-direction: column;
@@ -165,85 +175,91 @@
   <div class="header">
     <h1>WAKA SPACE</h1>
     <div class="sub">Staff Portal</div>
+    <div id="roleBadge" style="margin-top:8px"></div>
   </div>
 
   <!-- เมนูหลัก -->
   <div class="section-title">จัดการ</div>
   <div class="menu-grid">
-    <a class="menu-card" href="receive.html">
-      <div class="menu-icon">📦</div>
-      <div class="menu-title">รับสินค้าเข้าคลัง</div>
-      <div class="menu-desc">สแกน barcode / เพิ่มสต็อก</div>
-    </a>
-    <a class="menu-card" href="warehouse.html">
-      <div class="menu-icon">🏭</div>
-      <div class="menu-title">คลังกลาง</div>
-      <div class="menu-desc">สต็อก / สร้างล็อต / ส่งสาขา</div>
-    </a>
-    <a class="menu-card" href="staff.html">
+    <a class="menu-card" href="app.html">
       <div class="menu-icon">📋</div>
-      <div class="menu-title">จัดการออเดอร์</div>
-      <div class="menu-desc">ค้นหา / ส่งมอบลูกค้า</div>
+      <div class="menu-title">ออเดอร์ + คลัง</div>
+      <div class="menu-desc">ออเดอร์ / สต็อก / ส่งสาขา</div>
+    </a>
+    <a class="menu-card" href="wakagym-staff.html">
+      <div class="menu-icon">🏆</div>
+      <div class="menu-title">WAKA GYM</div>
+      <div class="menu-desc">สแกน QR / Event / ผลแข่ง</div>
     </a>
   </div>
 
-  <!-- สาขา -->
-  <div class="section-title">สาขา</div>
-  <div class="branch-list">
-    <a class="branch-link" href="branch.html?branch=ต้นสักคอร์เนอร์">
-      <span class="icon">🏬</span>
-      <div class="info"><div class="name">สาขาต้นสักคอร์เนอร์</div></div>
-      <span class="arrow">&rsaquo;</span>
-    </a>
-    <a class="branch-link" href="branch.html?branch=เมืองทองธานี">
-      <span class="icon">🏬</span>
-      <div class="info"><div class="name">สาขาเมืองทองธานี</div></div>
-      <span class="arrow">&rsaquo;</span>
-    </a>
-    <a class="branch-link" href="branch.html?branch=ศรีนครินทร์">
-      <span class="icon">🏬</span>
-      <div class="info"><div class="name">สาขาศรีนครินทร์</div></div>
-      <span class="arrow">&rsaquo;</span>
-    </a>
+  <!-- Admin only -->
+  <div id="adminSection" style="display:none">
+    <div class="section-title">รายงาน (Admin)</div>
+    <div class="menu-grid">
+      <a class="menu-card" href="report.html">
+        <div class="menu-icon">💰</div>
+        <div class="menu-title">ยอดขาย / กำไร</div>
+        <div class="menu-desc">รายสาขา / สินค้า / รายวัน</div>
+      </a>
+      <a class="menu-card" href="https://waka-tournament-e6wsqmhuhhexratyiub65f.streamlit.app" target="_blank">
+        <div class="menu-icon">📊</div>
+        <div class="menu-title">Admin Dashboard</div>
+        <div class="menu-desc">ออเดอร์ / WAKA GYM / ตรวจสลิป</div>
+      </a>
+    </div>
+
+    <div class="section-title">ลิงก์สั่งซื้อ</div>
+    <div class="menu-grid">
+      <a class="menu-card" href="https://liff.line.me/2010457385-UpJLXxJ0" target="_blank">
+        <div class="menu-icon">🛒</div>
+        <div class="menu-title">สั่งซื้อ (ทุกสินค้า)</div>
+        <div class="menu-desc">เปิดใน LINE</div>
+      </a>
+      <a class="menu-card" href="https://waka-liff.vercel.app/wakagym.html" target="_blank">
+        <div class="menu-icon">🎮</div>
+        <div class="menu-title">ลงทะเบียนแข่ง</div>
+        <div class="menu-desc">ลิงก์สำหรับลูกค้า</div>
+      </a>
+    </div>
+
+    <div class="section-title">ลิงก์สั่งซื้อแยกสินค้า</div>
+    <div class="branch-list" id="productLinks">
+      <div style="text-align:center;color:#a8a8a8;padding:16px">กำลังโหลด...</div>
+    </div>
   </div>
 
-  <!-- ลิงก์เพิ่ม -->
-  <div class="section-title">รายงาน</div>
-  <div class="menu-grid">
-    <a class="menu-card" href="report.html">
-      <div class="menu-icon">💰</div>
-      <div class="menu-title">ยอดขาย / กำไร</div>
-      <div class="menu-desc">รายสาขา / สินค้า / รายวัน</div>
-    </a>
-    <a class="menu-card" href="https://waka-tournament-e6wsqmhuhhexratyiub65f.streamlit.app" target="_blank">
-      <div class="menu-icon">📊</div>
-      <div class="menu-title">Admin Dashboard</div>
-      <div class="menu-desc">Streamlit รายงาน</div>
-    </a>
-    <a class="menu-card" href="https://liff.line.me/2010457385-UpJLXxJ0" target="_blank">
-      <div class="menu-icon">🛒</div>
-      <div class="menu-title">สั่งซื้อ (ทุกสินค้า)</div>
-      <div class="menu-desc">เปิดใน LINE</div>
-    </a>
-  </div>
-
-  <!-- ลิงก์สั่งซื้อแต่ละสินค้า -->
-  <div class="section-title">ลิงก์สั่งซื้อแยกสินค้า</div>
-  <div class="branch-list" id="productLinks">
-    <div style="text-align:center;color:#a8a8a8;padding:16px">กำลังโหลด...</div>
+  <!-- Logout -->
+  <div style="text-align:center;margin-top:24px;padding-bottom:20px">
+    <button onclick="logout()" style="padding:10px 24px;background:transparent;color:#d64545;border:1.5px solid #d64545;border-radius:10px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer">ออกจากระบบ</button>
   </div>
 </div>
 
 <script>
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
 const LIFF_BASE = 'https://liff.line.me/2010457385-UpJLXxJ0';
-const PIN = 'waka99';
+const PIN_ADMIN = 'waka99';
+const BRANCH_CODES = { 'ts01': 'ต้นสักคอร์เนอร์', 'mt01': 'เมืองทองธานี', 'sn01': 'ศรีนครินทร์' };
 
 function checkPin() {
-  if (document.getElementById('pinInput').value === PIN) {
+  var val = document.getElementById('pinInput').value.trim();
+  var role = '', branch = '';
+  if (val === PIN_ADMIN) {
+    role = 'admin'; branch = 'ทั้งหมด';
+  } else if (BRANCH_CODES[val]) {
+    role = 'staff'; branch = BRANCH_CODES[val];
+  }
+  if (role) {
     document.getElementById('pinOverlay').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     sessionStorage.setItem('waka_portal_auth', '1');
+    sessionStorage.setItem('waka_staff_role', role);
+    sessionStorage.setItem('waka_staff_branch', branch);
+    sessionStorage.setItem('waka_tstaff_auth', '1');
+    sessionStorage.setItem('waka_tstaff_role', role);
+    sessionStorage.setItem('waka_tstaff_branch', branch);
+    if (role === 'admin') document.getElementById('adminSection').style.display = 'block';
+    showRoleBadge(role, branch);
     loadProductLinks();
   } else {
     document.getElementById('pinError').style.display = 'block';
@@ -251,9 +267,19 @@ function checkPin() {
   }
 }
 
+function showRoleBadge(role, branch) {
+  var el = document.getElementById('roleBadge');
+  if (role === 'admin') el.innerHTML = '<span class="role-badge admin">Admin</span>';
+  else if (branch) el.innerHTML = '<span class="role-badge staff">' + branch + '</span>';
+}
+
 if (sessionStorage.getItem('waka_portal_auth') === '1') {
   document.getElementById('pinOverlay').style.display = 'none';
   document.getElementById('app').style.display = 'block';
+  var _r = sessionStorage.getItem('waka_staff_role') || '';
+  var _b = sessionStorage.getItem('waka_staff_branch') || '';
+  if (_r === 'admin') document.getElementById('adminSection').style.display = 'block';
+  showRoleBadge(_r, _b);
   loadProductLinks();
 }
 
@@ -265,6 +291,31 @@ async function loadProductLinks() {
     const el = document.getElementById('productLinks');
     if (catalog.length === 0) { el.innerHTML = '<div style="text-align:center;color:#a8a8a8;padding:16px">ไม่มีสินค้า</div>'; return; }
     let html = '';
+
+    // รวมหมวด
+    const cats = {};
+    for (const p of catalog) {
+      const c = p.category || '';
+      if (c) {
+        if (!cats[c]) cats[c] = 0;
+        cats[c]++;
+      }
+    }
+    const catKeys = Object.keys(cats);
+    if (catKeys.length > 0) {
+      html += '<div style="font-size:11px;font-weight:600;color:#a8a8a8;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;margin-top:4px">หมวดหมู่</div>';
+      for (const c of catKeys) {
+        const catLink = LIFF_BASE + '?category=' + encodeURIComponent(c);
+        html += '<div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:12px;border:1px solid #ddd9d2;padding:12px 16px;margin-bottom:6px">';
+        html += '<span style="font-size:20px">📁</span>';
+        html += '<div style="flex:1"><div style="font-weight:600;font-size:14px">' + esc(c) + '</div>';
+        html += '<div style="font-size:11px;color:#a8a8a8">' + cats[c] + ' สินค้า</div></div>';
+        html += '<button onclick="copyLink(\'' + catLink.replace(/'/g, "\\'") + '\')" style="padding:6px 12px;border:1px solid #ddd9d2;border-radius:8px;background:#f5f5f5;font-family:inherit;font-size:12px;cursor:pointer">คัดลอก</button>';
+        html += '</div>';
+      }
+      html += '<div style="font-size:11px;font-weight:600;color:#a8a8a8;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;margin-top:14px">รายสินค้า</div>';
+    }
+
     for (const p of catalog) {
       const link = p.slug ? LIFF_BASE + '/' + p.slug : LIFF_BASE + '?product=' + encodeURIComponent(p.name);
       const prices = [];
@@ -281,6 +332,11 @@ async function loadProductLinks() {
   } catch (err) {
     document.getElementById('productLinks').innerHTML = '<div style="text-align:center;color:#d64545;padding:16px">โหลดไม่ได้</div>';
   }
+}
+
+function logout() {
+  sessionStorage.clear();
+  location.reload();
 }
 
 function copyLink(url) {

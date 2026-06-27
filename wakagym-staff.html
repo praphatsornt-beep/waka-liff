@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WAKA SPACE — WAKA GYM Staff</title>
+  <link rel="preconnect" href="https://script.google.com">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
+  <style>
+    :root { --bg:#e7e5df;--card-bg:#fff;--card-shadow:0 24px 60px rgba(40,38,34,.18);--card-border:#ddd9d2;--accent:#111740;--label:#a8a8a8;--input-bg:#f5f5f5;--field-radius:14px;--red:#d64545;--white:#fff;--text-primary:#1a1a1a;--text-secondary:#666;--green:#2d8f4e;--orange:#d97706; }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Anuphan','Space Grotesk',sans-serif;background:var(--bg);color:var(--text-primary);font-size:14px;min-height:100vh}
+    .wrapper{max-width:420px;margin:0 auto;padding:0 16px 40px}
+    .header-bar{text-align:center;padding:20px 0 16px}
+    .header-bar h1{font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:700}
+    .header-bar .sub{font-size:12px;color:var(--text-secondary);margin-top:2px}
+    .card{background:var(--card-bg);border-radius:14px;box-shadow:var(--card-shadow);border:1px solid var(--card-border);padding:24px 20px;margin-bottom:16px}
+    .section-label{font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;color:var(--label);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px}
+    select,input[type="text"],input[type="password"]{width:100%;padding:14px 16px;border:1px solid var(--card-border);border-radius:var(--field-radius);background:var(--input-bg);font-size:14px;font-family:inherit;margin-bottom:14px}
+    select:focus,input:focus{outline:none;border-color:var(--accent)}
+    .field-label{display:block;font-size:12px;font-weight:500;color:var(--text-secondary);margin-bottom:6px}
+    #pinOverlay{position:fixed;inset:0;background:var(--bg);z-index:100;display:flex;align-items:center;justify-content:center}
+    .pin-card{background:var(--card-bg);border-radius:14px;box-shadow:var(--card-shadow);border:1px solid var(--card-border);padding:32px;width:320px;text-align:center}
+    .pin-card h2{margin-bottom:4px} .pin-card .sub{color:var(--text-secondary);margin-bottom:16px;font-size:13px}
+    .pin-card button{width:100%;margin-top:12px;padding:14px;background:var(--accent);color:var(--white);border:none;border-radius:var(--field-radius);font-size:16px;font-weight:600;cursor:pointer;font-family:inherit}
+    .pin-error{color:var(--red);margin-top:8px;display:none;font-size:13px}
+    .tab-bar{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+    .tab-btn{flex:1;padding:10px 6px;border:2px solid var(--card-border);border-radius:var(--field-radius);background:var(--white);text-align:center;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;min-width:70px}
+    .tab-btn.active{border-color:var(--accent);background:#f0f0fa}
+    #scannerBox{width:100%;border-radius:12px;overflow:hidden;margin-bottom:16px}
+    .scan-hint{text-align:center;font-size:13px;color:var(--text-secondary);margin-bottom:12px}
+    .manual-row{display:flex;gap:8px;margin-bottom:16px}
+    .manual-row input{flex:1;padding:12px 14px;border:1px solid var(--card-border);border-radius:var(--field-radius);background:var(--input-bg);font-size:14px;font-family:inherit;margin-bottom:0}
+    .manual-row button{padding:12px 20px;background:var(--accent);color:var(--white);border:none;border-radius:var(--field-radius);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
+    .player-card{background:var(--input-bg);border-radius:12px;padding:16px;margin-bottom:10px}
+    .player-card .pc-name{font-weight:700;font-size:16px}
+    .player-card .pc-real{font-size:12px;color:var(--text-secondary)}
+    .player-card .pc-detail{margin-top:8px;font-size:13px}
+    .pc-status{margin-top:6px;font-size:13px;font-weight:600}
+    .pc-status.given{color:var(--green)} .pc-status.pending{color:var(--orange)}
+    .give-btn{width:100%;padding:14px;background:var(--green);color:var(--white);border:none;border-radius:var(--field-radius);font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;margin-top:4px}
+    .give-btn:disabled{opacity:.5;cursor:not-allowed}
+    .give-btn.box{background:#f59e0b}
+    .all-given{text-align:center;padding:16px;background:#e8f5e9;border-radius:12px;margin-top:8px}
+    .scan-again-btn{width:100%;padding:14px;background:transparent;color:var(--accent);border:1.5px solid var(--accent);border-radius:var(--field-radius);font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;margin-top:12px}
+    .summary-card{background:var(--input-bg);border-radius:12px;padding:16px;margin-bottom:10px}
+    .summary-card .sc-title{font-size:12px;color:var(--text-secondary);margin-bottom:4px}
+    .summary-card .sc-value{font-family:'Space Grotesk',sans-serif;font-size:24px;font-weight:700;color:var(--accent)}
+    .summary-card .sc-sub{font-size:12px;color:var(--text-secondary);margin-top:2px}
+    .summary-row{display:flex;gap:8px;margin-bottom:8px}
+    .summary-row .summary-card{flex:1}
+    .bank-row{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid #eeedea}
+    .bank-row:last-child{border-bottom:none}
+    .bank-row .br-name{color:var(--text-secondary)} .bank-row .br-amount{font-family:'Space Grotesk',sans-serif;font-weight:600}
+    .result-card{background:var(--input-bg);border-radius:12px;padding:14px;margin-bottom:8px}
+    .result-card .rc-name{font-weight:600;font-size:14px;margin-bottom:8px}
+    .result-card select{margin-bottom:8px}
+    .action-btn{width:100%;padding:14px;background:var(--accent);color:var(--white);border:none;border-radius:var(--field-radius);font-size:16px;font-weight:600;font-family:inherit;cursor:pointer}
+    .action-btn:disabled{opacity:.5}
+    .tier-select{display:flex;gap:8px;margin-bottom:14px}
+    .tier-opt{flex:1;padding:12px 4px;border:2px solid var(--card-border);border-radius:var(--field-radius);background:var(--white);text-align:center;cursor:pointer;font-family:inherit;font-size:12px}
+    .tier-opt.selected{border-color:var(--accent);background:#f0f0fa}
+    .tier-opt .to-fee{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;margin-top:4px}
+    .back-link{display:block;text-align:center;margin-top:16px;font-size:13px;color:var(--text-secondary);text-decoration:none}
+  </style>
+</head>
+<body>
+<div id="pinOverlay">
+  <div class="pin-card">
+    <h2>🏆 STAFF</h2><div class="sub">WAKA GYM</div>
+    <input type="password" id="pinInput" maxlength="8" inputmode="text" placeholder="••••" onkeydown="if(event.key==='Enter')checkPin()">
+    <button onclick="checkPin()">เข้าสู่ระบบ</button>
+    <div class="pin-error" id="pinError">PIN ไม่ถูกต้อง</div>
+  </div>
+</div>
+
+<div id="app" style="display:none">
+  <div class="wrapper">
+    <div class="header-bar"><h1>🏆 WAKA GYM Staff</h1><div class="sub" id="staffSub">สแกน QR จากหน้าจอลูกค้า</div></div>
+
+    <div id="tabBar">
+      <div class="tab-bar">
+        <div class="tab-btn active" id="tabScan" onclick="switchTab('scan')">📷 สแกน</div>
+        <div class="tab-btn" id="tabEvent" onclick="switchTab('event')">📅 Event</div>
+        <div class="tab-btn" id="tabResults" onclick="switchTab('results')">🏅 ผลแข่ง</div>
+        <div class="tab-btn" id="tabSummary" onclick="switchTab('summary')" style="display:none">📊 สรุป</div>
+      </div>
+    </div>
+
+    <!-- Tab: Scan -->
+    <div id="scanView">
+      <div class="card">
+        <div id="scannerBox"></div>
+        <div class="scan-hint">เปิดกล้องสแกน QR ลูกค้า</div>
+        <div class="manual-row">
+          <input type="text" id="manualId" placeholder="หรือพิมพ์รหัส" />
+          <button onclick="lookupManual()">ค้นหา</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Scan Result -->
+    <div id="resultArea" style="display:none">
+      <div class="card">
+        <div id="resultGroupId" style="text-align:center;font-size:13px;color:var(--label);margin-bottom:12px"></div>
+        <div id="playerCards"></div>
+        <div id="allGivenMsg" style="display:none"><div class="all-given"><div style="font-size:32px">✅</div><div style="font-size:14px;font-weight:600;color:var(--green);margin-top:4px">แจกครบทุกคนแล้ว</div></div></div>
+        <button class="scan-again-btn" onclick="resetScan()">สแกนคนต่อไป</button>
+      </div>
+    </div>
+
+    <!-- Tab: Create Event -->
+    <div id="eventView" style="display:none">
+      <div class="card">
+        <div class="section-label">สร้าง Event วันนี้</div>
+        <div class="field-label">สาขา</div>
+        <select id="evBranch">
+          <option value="ต้นสักคอร์เนอร์">ต้นสักคอร์เนอร์</option>
+          <option value="เมืองทองธานี">เมืองทองธานี</option>
+          <option value="ศรีนครินทร์">ศรีนครินทร์</option>
+        </select>
+        <div class="field-label">Tier (จำนวนผู้เล่น)</div>
+        <div class="tier-select">
+          <div class="tier-opt" onclick="selectTier('S',this)"><div>S</div><div style="font-size:10px;color:var(--text-secondary)">2-4 คน</div><div class="to-fee">100฿</div></div>
+          <div class="tier-opt" onclick="selectTier('M',this)"><div>M</div><div style="font-size:10px;color:var(--text-secondary)">5-8 คน</div><div class="to-fee">150฿</div></div>
+          <div class="tier-opt selected" onclick="selectTier('L',this)"><div>L</div><div style="font-size:10px;color:var(--text-secondary)">9-15 คน</div><div class="to-fee">200฿</div></div>
+          <div class="tier-opt" onclick="selectTier('XL',this)"><div>XL</div><div style="font-size:10px;color:var(--text-secondary)">16+ คน</div><div class="to-fee">200฿</div></div>
+        </div>
+        <div id="rewardPreview" style="background:var(--input-bg);border-radius:12px;padding:14px;margin-bottom:14px;font-size:12px"></div>
+        <button class="action-btn" id="createEventBtn" onclick="createEvent()">สร้าง Event</button>
+        <div id="eventStatus" style="margin-top:12px;text-align:center;font-size:13px"></div>
+      </div>
+    </div>
+
+    <!-- Tab: Submit Results -->
+    <div id="resultsView" style="display:none">
+      <div class="card">
+        <div class="section-label">ใส่ผลแข่งขัน</div>
+        <div id="resultsPlayerList"><div style="text-align:center;color:var(--label);padding:16px">กด "โหลดรายชื่อ" ด้านล่าง</div></div>
+        <button class="action-btn" id="loadPlayersBtn" onclick="loadPlayersForResults()" style="margin-bottom:8px;background:var(--text-secondary)">โหลดรายชื่อวันนี้</button>
+        <button class="action-btn" id="submitResultsBtn" onclick="submitResults()" style="display:none">💾 บันทึกผลแข่งขัน</button>
+      </div>
+    </div>
+
+    <!-- Tab: Summary (admin) -->
+    <div id="summaryView" style="display:none">
+      <div class="card"><div id="summaryContent"><div style="text-align:center;color:var(--label);padding:20px">กำลังโหลด...</div></div></div>
+    </div>
+
+    <a class="back-link" href="menu.html">&larr; กลับเมนู</a>
+  </div>
+</div>
+
+<script>
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
+var scanner = null, currentRole = '', selectedTier = 'L', loadedPlayers = [];
+
+var TOKEN_TABLE = {
+  S: {"1st":4,"2nd":2,"3rd-4th":2,"5th+":0},
+  M: {"1st":8,"2nd":4,"3rd-4th":2,"5th+":2},
+  L: {"1st":15,"2nd":7,"3rd-4th":4,"5th+":2},
+  XL: {"1st":30,"2nd":10,"3rd-4th":5,"5th+":2},
+};
+
+var BRANCH_CODES = { 'ts01': 'ต้นสักคอร์เนอร์', 'mt01': 'เมืองทองธานี', 'sn01': 'ศรีนครินทร์' };
+var PIN_ADMIN = 'waka99';
+
+function checkPin() {
+  var pin = document.getElementById('pinInput').value.trim();
+  if (!pin) return;
+  var role = '', branch = '';
+  if (pin === PIN_ADMIN) { role = 'admin'; branch = 'ทั้งหมด'; }
+  else if (BRANCH_CODES[pin]) { role = 'staff'; branch = BRANCH_CODES[pin]; }
+  if (role) {
+    document.getElementById('pinOverlay').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    currentRole = role;
+    document.getElementById('staffSub').textContent = role === 'admin' ? 'Admin — ทุกสาขา' : 'สาขา' + branch;
+    if (role === 'admin') document.getElementById('tabSummary').style.display = 'block';
+    sessionStorage.setItem('waka_tstaff_auth', '1');
+    sessionStorage.setItem('waka_tstaff_role', role);
+    sessionStorage.setItem('waka_tstaff_branch', branch);
+    startScanner();
+    updateRewardPreview();
+  } else {
+    document.getElementById('pinError').style.display = 'block';
+    setTimeout(function() { document.getElementById('pinError').style.display = 'none'; }, 2000);
+  }
+}
+
+if (sessionStorage.getItem('waka_tstaff_auth') === '1') {
+  document.getElementById('pinOverlay').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  currentRole = sessionStorage.getItem('waka_tstaff_role') || '';
+  var br = sessionStorage.getItem('waka_tstaff_branch') || '';
+  document.getElementById('staffSub').textContent = currentRole === 'admin' ? 'Admin — ทุกสาขา' : 'สาขา' + br;
+  if (currentRole === 'admin') document.getElementById('tabSummary').style.display = 'block';
+  startScanner();
+  updateRewardPreview();
+}
+
+function switchTab(tab) {
+  ['scan','event','results','summary'].forEach(function(t) {
+    var el = document.getElementById(t + 'View');
+    if (el) el.style.display = t === tab ? 'block' : 'none';
+    var tb = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (tb) tb.classList.toggle('active', t === tab);
+  });
+  document.getElementById('resultArea').style.display = 'none';
+  if (tab === 'scan') { scanner = null; startScanner(); }
+  if (tab === 'summary') loadSummary();
+}
+
+function startScanner() {
+  if (scanner) return;
+  scanner = new Html5Qrcode("scannerBox");
+  scanner.start({facingMode:"environment"},{fps:10,qrbox:{width:220,height:220}},onScanSuccess,function(){}).catch(function() {
+    document.getElementById("scannerBox").innerHTML = '<div style="text-align:center;padding:20px;color:#a8a8a8">กล้องไม่พร้อมใช้<br>พิมพ์รหัสด้านล่าง</div>';
+  });
+}
+function stopScanner() { if (scanner) try { scanner.stop(); } catch(e) {} }
+function onScanSuccess(t) { stopScanner(); lookupGroup(t.trim()); }
+function lookupManual() { var id = document.getElementById('manualId').value.trim(); if (id) { stopScanner(); lookupGroup(id); } }
+
+async function lookupGroup(groupId) {
+  document.getElementById('scanView').style.display = 'none';
+  document.getElementById('resultArea').style.display = 'block';
+  document.getElementById('resultGroupId').textContent = '#' + groupId;
+  document.getElementById('playerCards').innerHTML = '<div style="text-align:center;color:#a8a8a8;padding:16px">กำลังโหลด...</div>';
+  document.getElementById('allGivenMsg').style.display = 'none';
+  try {
+    var res = await fetch(GAS_URL + '?action=api&do=wakagym_lookup&group_id=' + encodeURIComponent(groupId) + '&_t=' + Date.now());
+    var data = await res.json();
+    if (data.error) { document.getElementById('playerCards').innerHTML = '<div style="text-align:center;color:#d64545;padding:16px">ไม่พบรหัส ' + esc(groupId) + '</div>'; return; }
+    renderPlayers(data.players || []);
+  } catch(e) { document.getElementById('playerCards').innerHTML = '<div style="color:#d64545;text-align:center;padding:16px">' + esc(e.message) + '</div>'; }
+}
+
+function renderPlayers(players) {
+  var html = '', allDone = true;
+  for (var i = 0; i < players.length; i++) {
+    var p = players[i];
+    var isGiven = String(p.rewards_given).toLowerCase() === 'true';
+    var hasResults = p.placement && p.placement !== '';
+    html += '<div class="player-card"><div class="pc-name">🎮 ' + esc(p.player_name) + '</div>';
+    if (p.real_name && p.real_name !== p.player_name) html += '<div class="pc-real">' + esc(p.real_name) + '</div>';
+
+    var pm = p.payment_method || 'transfer', bk = p.bank || '';
+    if (pm === 'cash') html += '<div style="margin-top:8px;padding:8px;background:#fff8e1;border-radius:8px;font-size:12px">💵 เงินสด</div>';
+    else html += '<div style="margin-top:8px;padding:8px;background:#e3f2fd;border-radius:8px;font-size:12px">📱 ' + esc(bk || 'โอนเงิน') + '</div>';
+    if (p.slip_url) html += '<div style="margin-top:8px"><img src="' + esc(p.slip_url) + '" style="max-width:100%;border-radius:8px;max-height:150px" onclick="window.open(\'' + esc(p.slip_url) + '\')"></div>';
+
+    if (hasResults) {
+      html += '<div class="pc-detail">🏅 อันดับ: <b>' + esc(p.placement) + '</b> · 🪙 Token: <b>' + p.tokens_earned + '</b> · 📦 Promo: <b>' + p.promo_packs + '</b> ซอง</div>';
+      html += '<div class="pc-detail">🪙 สะสมรวม: ' + (p.total_tokens || 0) + '/30</div>';
+      if (p.boxes_earned > (p.boxes_given_count || 0)) {
+        var boxPend = p.boxes_earned - (p.boxes_given_count || 0);
+        html += '<div class="pc-status pending" style="font-size:16px">🎁 แลก Box ได้! (' + boxPend + ' กล่อง)</div>';
+        html += '<button class="give-btn box" onclick="giveBox(\'' + esc(p.player_name).replace(/'/g,"\\'") + '\',this)">🎁 ให้ Box แล้ว</button>';
+      }
+      if (isGiven) {
+        html += '<div class="pc-status given">✅ แจกรางวัลแล้ว' + (p.note ? ' (' + esc(p.note) + ')' : '') + '</div>';
+      } else {
+        allDone = false;
+        html += '<button class="give-btn" onclick="giveRewards(\'' + p.reg_id + '\',this)">🎁 แจก Token + Promo Pack</button>';
+      }
+    } else {
+      html += '<div class="pc-status pending">⏳ ยังไม่มีผลแข่ง</div>';
+      allDone = false;
+    }
+    html += '</div>';
+  }
+  document.getElementById('playerCards').innerHTML = html;
+  if (allDone && players.length > 0) document.getElementById('allGivenMsg').style.display = 'block';
+}
+
+async function giveRewards(regId, btn) {
+  btn.disabled = true; btn.textContent = 'กำลังบันทึก...';
+  try {
+    var res = await fetch(GAS_URL + '?action=api&do=wakagym_give_rewards&reg_id=' + encodeURIComponent(regId) + '&_t=' + Date.now());
+    var data = await res.json();
+    if (data.ok) btn.outerHTML = '<div class="pc-status given">✅ ' + (data.already ? 'แจกไปแล้ว' : 'แจกรางวัลแล้ว') + '</div>';
+    else btn.textContent = 'เกิดข้อผิดพลาด';
+  } catch(e) { btn.textContent = 'ลองอีกครั้ง'; btn.disabled = false; }
+}
+
+async function giveBox(playerName, btn) {
+  btn.disabled = true; btn.textContent = 'กำลังบันทึก...';
+  try {
+    var res = await fetch(GAS_URL + '?action=api&do=wakagym_give_box&player_name=' + encodeURIComponent(playerName) + '&_t=' + Date.now());
+    var data = await res.json();
+    if (data.ok) btn.outerHTML = '<div class="pc-status given">✅ ให้ Box แล้ว</div>';
+    else btn.textContent = 'เกิดข้อผิดพลาด';
+  } catch(e) { btn.textContent = 'ลองอีกครั้ง'; btn.disabled = false; }
+}
+
+function resetScan() {
+  document.getElementById('resultArea').style.display = 'none';
+  document.getElementById('scanView').style.display = 'block';
+  document.getElementById('manualId').value = '';
+  scanner = null; startScanner();
+}
+
+// ── Event Creation ──
+function selectTier(t, el) {
+  selectedTier = t;
+  document.querySelectorAll('.tier-opt').forEach(function(e) { e.classList.remove('selected'); });
+  el.classList.add('selected');
+  updateRewardPreview();
+}
+
+function updateRewardPreview() {
+  var t = TOKEN_TABLE[selectedTier] || {};
+  var html = '<div style="font-weight:600;margin-bottom:6px">🪙 Token Reward — Tier ' + selectedTier + '</div>';
+  html += '1st: ' + (t["1st"]||0) + ' · 2nd: ' + (t["2nd"]||0) + ' · 3rd-4th: ' + (t["3rd-4th"]||0) + ' · 5th+: ' + (t["5th+"]||0);
+  html += '<div style="margin-top:6px">📦 Promo Pack: ชนะ 0-1=1ซอง, 2=2ซอง, 3=3ซอง</div>';
+  document.getElementById('rewardPreview').innerHTML = html;
+}
+
+async function createEvent() {
+  var branch = document.getElementById('evBranch').value;
+  var btn = document.getElementById('createEventBtn');
+  btn.disabled = true; btn.textContent = 'กำลังสร้าง...';
+  try {
+    var res = await fetch(GAS_URL + '?action=api&do=wakagym_create_event&branch=' + encodeURIComponent(branch) + '&tier=' + selectedTier + '&created_by=' + encodeURIComponent(currentRole) + '&_t=' + Date.now());
+    var data = await res.json();
+    if (data.ok) {
+      document.getElementById('eventStatus').innerHTML = '✅ สร้าง Event สำเร็จ!<br>ID: ' + data.event_id + ' · Tier ' + data.tier + ' · ' + data.entry_fee + '฿';
+    } else {
+      document.getElementById('eventStatus').innerHTML = '❌ ' + (data.error || 'เกิดข้อผิดพลาด');
+    }
+  } catch(e) { document.getElementById('eventStatus').textContent = '❌ ' + e.message; }
+  btn.disabled = false; btn.textContent = 'สร้าง Event';
+}
+
+// ── Results ──
+async function loadPlayersForResults() {
+  var el = document.getElementById('resultsPlayerList');
+  el.innerHTML = '<div style="text-align:center;color:#a8a8a8;padding:16px">กำลังโหลด...</div>';
+  try {
+    var res = await fetch(GAS_URL + '?action=api&do=wakagym_players&_t=' + Date.now());
+    var data = await res.json();
+    loadedPlayers = data.players || [];
+    if (loadedPlayers.length === 0) { el.innerHTML = '<div style="text-align:center;color:#a8a8a8;padding:16px">ไม่มีผู้เล่นวันนี้</div>'; return; }
+    var html = '';
+    for (var i = 0; i < loadedPlayers.length; i++) {
+      var p = loadedPlayers[i];
+      html += '<div class="result-card"><div class="rc-name">' + (i+1) + '. ' + esc(p.player_name || p.real_name) + '</div>';
+      html += '<select id="place_' + i + '"><option value="">-- อันดับ --</option><option value="1st">🥇 1st</option><option value="2nd">🥈 2nd</option><option value="3rd-4th">🥉 3rd-4th</option><option value="5th+">5th+</option></select>';
+      html += '<select id="wins_' + i + '"><option value="0">ชนะ 0 แมตช์ (1 ซอง)</option><option value="1">ชนะ 1 แมตช์ (1 ซอง)</option><option value="2">ชนะ 2 แมตช์ (2 ซอง)</option><option value="3">ชนะ 3 แมตช์ (3 ซอง)</option></select>';
+      html += '</div>';
+    }
+    el.innerHTML = html;
+    document.getElementById('submitResultsBtn').style.display = 'block';
+  } catch(e) { el.innerHTML = '<div style="color:#d64545;text-align:center;padding:16px">' + esc(e.message) + '</div>'; }
+}
+
+async function submitResults() {
+  var results = [];
+  for (var i = 0; i < loadedPlayers.length; i++) {
+    var place = document.getElementById('place_' + i).value;
+    var wins = document.getElementById('wins_' + i).value;
+    if (!place) { alert('กรุณาเลือกอันดับของ ' + (loadedPlayers[i].player_name || loadedPlayers[i].real_name)); return; }
+    results.push({ reg_id: loadedPlayers[i].reg_id, placement: place, wins_3match: wins });
+  }
+  var btn = document.getElementById('submitResultsBtn');
+  btn.disabled = true; btn.textContent = 'กำลังบันทึก...';
+  try {
+    var res = await fetch(GAS_URL + '?action=api&do=wakagym_submit_results&results=' + encodeURIComponent(JSON.stringify(results)) + '&_t=' + Date.now());
+    var data = await res.json();
+    if (data.ok) {
+      var summary = '';
+      for (var p of (data.processed || [])) {
+        summary += p.player_name + ': ' + p.placement + ' → 🪙' + p.tokens + ' + 📦' + p.promo_packs + 'ซอง\n';
+      }
+      alert('บันทึกสำเร็จ!\n\n' + summary);
+      document.getElementById('submitResultsBtn').textContent = '✅ บันทึกแล้ว';
+    } else { alert('Error: ' + (data.error || 'ไม่สำเร็จ')); btn.disabled = false; btn.textContent = '💾 บันทึกผลแข่งขัน'; }
+  } catch(e) { alert('Error: ' + e.message); btn.disabled = false; btn.textContent = '💾 บันทึกผลแข่งขัน'; }
+}
+
+// ── Summary ──
+async function loadSummary() {
+  var el = document.getElementById('summaryContent');
+  el.innerHTML = '<div style="text-align:center;color:#a8a8a8;padding:20px">กำลังโหลด...</div>';
+  try {
+    var res = await fetch(GAS_URL + '?action=api&do=wakagym_summary&_t=' + Date.now());
+    var d = await res.json();
+    if (d.error) { el.innerHTML = '<div style="color:#d64545;text-align:center">' + esc(d.error) + '</div>'; return; }
+    var html = '<div style="text-align:center;font-size:12px;color:var(--text-secondary);margin-bottom:12px">📅 ' + esc(d.date) + '</div>';
+    html += '<div class="summary-row"><div class="summary-card"><div class="sc-title">ผู้เล่น</div><div class="sc-value">' + d.total_players + '</div></div>';
+    html += '<div class="summary-card"><div class="sc-title">ยอดเงิน</div><div class="sc-value">' + d.total_amount.toLocaleString() + '</div><div class="sc-sub">บาท</div></div></div>';
+    html += '<div class="summary-card"><div class="sc-title">💰 รายได้</div>';
+    html += '<div class="bank-row"><span class="br-name">💵 เงินสด</span><span class="br-amount">' + d.cash_amount.toLocaleString() + ' ฿</span></div>';
+    html += '<div class="bank-row"><span class="br-name">📱 โอนเงิน</span><span class="br-amount">' + d.transfer_amount.toLocaleString() + ' ฿</span></div>';
+    var banks = d.bank_breakdown || {};
+    for (var bk in banks) html += '<div class="bank-row"><span class="br-name" style="padding-left:16px">' + esc(bk) + '</span><span class="br-amount">' + banks[bk].toLocaleString() + ' ฿</span></div>';
+    html += '</div>';
+    el.innerHTML = html;
+  } catch(e) { el.innerHTML = '<div style="color:#d64545;text-align:center">' + esc(e.message) + '</div>'; }
+}
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+</script>
+</body>
+</html>

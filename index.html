@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>WAKA SPACE — สั่งซื้อการ์ด</title>
+  <link rel="preconnect" href="https://script.google.com">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://static.line-scdn.net/liff/edge/versions/2.22.3/sdk.js"></script>
   <style>
@@ -590,6 +593,9 @@
     <!-- Header bar -->
     <div class="header-bar">WAKA SPACE</div>
 
+    <!-- Notice -->
+    <div id="orderNotice" style="display:none;background:#fff3cd;color:#856404;padding:12px 16px;border-radius:10px;font-size:13px;margin-bottom:14px;line-height:1.5;text-align:center"></div>
+
     <!-- ═══════════ ORDER VIEW ═══════════ -->
     <div id="orderView">
       <div class="card-body">
@@ -616,7 +622,7 @@
               <span class="radio-circle"></span>
               <div class="branch-info">
                 <div class="branch-name">สาขาต้นสักคอร์เนอร์</div>
-                <div class="branch-hours">07:00 - 17:00</div>
+                <div class="branch-hours">07:00 - 17:00 น.</div>
               </div>
             </label>
             <label class="branch-opt" onclick="selectBranch(this)">
@@ -624,7 +630,7 @@
               <span class="radio-circle"></span>
               <div class="branch-info">
                 <div class="branch-name">สาขาเมืองทองธานี</div>
-                <div class="branch-hours">07:00 - 17:00</div>
+                <div class="branch-hours">07:00 - 17:00 น.</div>
               </div>
             </label>
             <label class="branch-opt" onclick="selectBranch(this)">
@@ -632,7 +638,7 @@
               <span class="radio-circle"></span>
               <div class="branch-info">
                 <div class="branch-name">สาขาศรีนครินทร์</div>
-                <div class="branch-hours">07:00 - 17:00</div>
+                <div class="branch-hours">07:00 - 17:00 น.</div>
               </div>
             </label>
           </div>
@@ -773,6 +779,16 @@
       lineProfile = { userId: "dev_user", displayName: "Dev" };
     }
 
+    // แสดงจาก cache ก่อน ถ้ามี
+    var cached = null;
+    try { cached = JSON.parse(localStorage.getItem("waka_catalog") || "null"); } catch(_) {}
+    if (cached && cached.catalog) {
+      catalog = cached.catalog; configData = cached.config || {};
+      applyFilters(); renderBankInfo(configData); renderCatalog(); renderNotice(configData);
+      document.getElementById("loadingState").style.display = "none";
+      document.getElementById("mainContent").style.display  = "flex";
+    }
+
     try {
       const res  = await fetch(GAS_URL);
       const data = await res.json();
@@ -780,7 +796,24 @@
       catalog    = data.catalog || [];
       configData = data.config || {};
 
-      // filter ตาม path slug, liff.state, ?product= หรือ ?category=
+      try { localStorage.setItem("waka_catalog", JSON.stringify(data)); } catch(_) {}
+
+      applyFilters();
+      renderBankInfo(configData); renderNotice(configData);
+      renderCatalog();
+      document.getElementById("loadingState").style.display = "none";
+      document.getElementById("mainContent").style.display  = "flex";
+    } catch (e) {
+      if (!cached) {
+        document.getElementById("loadingState").style.display = "none";
+        const el = document.getElementById("errorState");
+        el.style.display = "block";
+        el.textContent   = "โหลดสินค้าไม่ได้: " + e.message;
+      }
+    }
+  }
+
+  function applyFilters() {
       const urlParams = new URLSearchParams(window.location.search);
       const productFilter = urlParams.get("product");
       const categoryFilter = urlParams.get("category");
@@ -800,23 +833,21 @@
         catalog = catalog.filter(p => p.category === categoryFilter);
         document.title = categoryFilter + " — WAKA SPACE";
       }
-
-      renderBankInfo(configData);
-      renderCatalog();
-      document.getElementById("loadingState").style.display = "none";
-      document.getElementById("mainContent").style.display  = "flex";
-    } catch (e) {
-      document.getElementById("loadingState").style.display = "none";
-      const el = document.getElementById("errorState");
-      el.style.display = "block";
-      el.textContent   = "โหลดสินค้าไม่ได้: " + e.message;
-    }
   }
 
   let deliveryFee = 50;
   let bankAccountNumber = "";
 
   // ── Bank info ─────────────────────────────────────────────────────────────────
+  function renderNotice(config) {
+    var el = document.getElementById("orderNotice");
+    if (!el) return;
+    var notice = (config || {}).order_notice || "";
+    if (!notice) { el.style.display = "none"; return; }
+    el.textContent = notice;
+    el.style.display = "block";
+  }
+
   function renderBankInfo(config) {
     const el = document.getElementById("bankInfo");
     if (config.bank_name && config.bank_account) {
@@ -901,6 +932,7 @@
             <div class="product-meta">
               <div class="product-name">${p.name}</div>
               <div class="product-cat">${p.category || ""}</div>
+              ${p.notice ? '<div style="background:#fff3cd;color:#856404;padding:4px 8px;border-radius:6px;font-size:11px;margin-top:4px">' + p.notice + '</div>' : ''}
             </div>
           </div>
           <div class="type-rows">${boxRow}${packRow}</div>`;
@@ -1174,7 +1206,7 @@
   function previewSlip(input) {
     const file = input.files[0];
     if (!file) return;
-    resizeImage(file, 1200, 0.85, function(dataUrl) {
+    resizeImage(file, 800, 0.9, function(dataUrl) {
       const img = document.getElementById("slipPreview");
       img.src = dataUrl;
       img.style.display = "block";
@@ -1195,8 +1227,15 @@
         }
         var canvas = document.createElement("canvas");
         canvas.width = w; canvas.height = h;
-        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-        callback(canvas.toDataURL("image/jpeg", quality));
+        var ctx = canvas.getContext("2d");
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, 0, 0, w, h);
+        var result = canvas.toDataURL("image/jpeg", quality);
+        if (result.length > 500000) {
+          result = canvas.toDataURL("image/jpeg", 0.7);
+        }
+        callback(result);
       };
       img.src = e.target.result;
     };
@@ -1290,10 +1329,9 @@
       title = "รับออเดอร์แล้ว";
       msg = "สลิปนี้เคยใช้แล้ว\nกรุณาส่งสลิปใหม่";
       isWarn = true;
-    } else if (data.slipStatus === "บัญชีไม่ตรง") {
+    } else if (data.slipStatus === "บัญชีไม่ตรง" || data.slipStatus === "สงสัยปลอม") {
       title = "รับออเดอร์แล้ว";
-      msg = "บัญชีปลายทางไม่ตรง\nกรุณาตรวจสอบ";
-      isWarn = true;
+      msg = "รอทีมงานตรวจสอบ\nจะแจ้งผลทาง LINE";
     } else {
       title = "รับออเดอร์แล้ว";
       msg = "ทีมงานจะแจ้งให้ทราบ\nเมื่อยืนยันแล้ว";

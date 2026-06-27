@@ -261,7 +261,8 @@
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
 const params = new URLSearchParams(location.search);
 const branch = params.get('branch') || '';
-const PIN = 'waka2024';
+const PIN_ADMIN = 'waka99';
+const BRANCH_CODES = { 'ts01': 'ต้นสักคอร์เนอร์', 'mt01': 'เมืองทองธานี', 'sn01': 'ศรีนครินทร์' };
 
 let allOrders = [];
 let currentFilter = 'all';
@@ -272,8 +273,19 @@ if (!branch) {
   document.getElementById('pinBranchLabel').textContent = 'สาขา' + branch;
 }
 
+if (sessionStorage.getItem('waka_portal_auth') === '1' && branch) {
+  document.getElementById('pinOverlay').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('branchTitle').textContent = 'สาขา' + branch;
+  loadAll();
+}
+
 function checkPin() {
-  if (document.getElementById('pinInput').value === PIN) {
+  var pin = document.getElementById('pinInput').value.trim();
+  if (pin === PIN_ADMIN || BRANCH_CODES[pin]) {
+    sessionStorage.setItem('waka_portal_auth', '1');
+    sessionStorage.setItem('waka_staff_role', pin === PIN_ADMIN ? 'admin' : 'staff');
+    sessionStorage.setItem('waka_staff_branch', BRANCH_CODES[pin] || 'ทั้งหมด');
     document.getElementById('pinOverlay').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     document.getElementById('branchTitle').textContent = 'สาขา' + branch;

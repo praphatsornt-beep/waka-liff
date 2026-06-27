@@ -298,7 +298,8 @@
 
 <script>
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
-const PIN = 'waka99';
+const PIN_ADMIN = 'waka99';
+const BRANCH_CODES = { 'ts01': 'ต้นสักคอร์เนอร์', 'mt01': 'เมืองทองธานี', 'sn01': 'ศรีนครินทร์' };
 let products = [];
 let selectedProduct = null;
 let scanner = null;
@@ -306,10 +307,11 @@ let scannerNew = null;
 let logs = JSON.parse(sessionStorage.getItem('receive_logs') || '[]');
 
 function checkPin() {
-  if (document.getElementById('pinInput').value === PIN) {
+  var pin = document.getElementById('pinInput').value.trim();
+  if (pin === PIN_ADMIN || BRANCH_CODES[pin]) {
     document.getElementById('pinOverlay').style.display = 'none';
     document.getElementById('app').style.display = 'block';
-    sessionStorage.setItem('waka_receive_auth', '1');
+    sessionStorage.setItem('waka_portal_auth', '1');
     loadProducts();
     renderLog();
   } else {
@@ -318,7 +320,7 @@ function checkPin() {
   }
 }
 
-if (sessionStorage.getItem('waka_receive_auth') === '1') {
+if (sessionStorage.getItem('waka_portal_auth') === '1') {
   document.getElementById('pinOverlay').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   loadProducts();

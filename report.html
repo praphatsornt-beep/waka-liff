@@ -187,10 +187,19 @@
 
 <script>
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
-const PIN = 'waka99';
+const PIN_ADMIN = 'waka99';
+
+if (sessionStorage.getItem('waka_portal_auth') === '1' && sessionStorage.getItem('waka_staff_role') === 'admin') {
+  document.getElementById('pinOverlay').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  loadReport();
+}
 
 function checkPin() {
-  if (document.getElementById('pinInput').value === PIN) {
+  var pin = document.getElementById('pinInput').value.trim();
+  if (pin === PIN_ADMIN) {
+    sessionStorage.setItem('waka_portal_auth', '1');
+    sessionStorage.setItem('waka_staff_role', 'admin');
     document.getElementById('pinOverlay').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     loadReport();

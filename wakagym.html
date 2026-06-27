@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WAKA SPACE — ลงทะเบียนแข่ง</title>
+  <link rel="preconnect" href="https://script.google.com">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://static.line-scdn.net/liff/edge/versions/2.22.3/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js" defer></script>
+  <style>
+    :root {
+      --bg: #e7e5df; --card-bg: #ffffff;
+      --card-shadow: 0 24px 60px rgba(40,38,34,.18);
+      --card-border: #ddd9d2; --accent: #111740; --accent-hover: #222;
+      --label: #a8a8a8; --input-bg: #f5f5f5; --field-radius: 14px;
+      --red: #d64545; --white: #fff; --pill-border: #e3e3e3;
+      --dashed: #d2d2d2; --text-primary: #1a1a1a; --text-secondary: #666;
+      --green: #2d8f4e; --orange: #d97706;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Anuphan','Space Grotesk',sans-serif; background: var(--bg); color: var(--text-primary); font-size: 14px; min-height: 100vh; }
+    #loadingState { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
+    .spinner { border: 2px solid #ddd9d2; border-top-color: var(--accent); border-radius: 50%; width: 32px; height: 32px; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-txt { font-size: 12px; color: var(--label); margin-top: 12px; }
+    #errorState { display: none; text-align: center; padding: 40px 20px; min-height: 100vh; flex-direction: column; align-items: center; justify-content: center; }
+    .wrapper { max-width: 420px; margin: 0 auto; padding: 0 16px 40px; }
+    .header-bar { text-align: center; padding: 20px 0 16px; }
+    .header-bar h1 { font-family: 'Space Grotesk',sans-serif; font-size: 20px; font-weight: 700; }
+    .header-bar .sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+    .card { background: var(--card-bg); border-radius: 14px; box-shadow: var(--card-shadow); border: 1px solid var(--card-border); padding: 24px 20px; margin-bottom: 16px; }
+    .section-label { font-family: 'Space Grotesk',sans-serif; font-size: 11px; font-weight: 600; color: var(--label); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+    .separator { border: none; border-top: 1px solid var(--card-border); margin: 20px 0; }
+    .field-label { display: block; font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 6px; }
+    .field-label .req { color: var(--red); }
+    input[type="text"], input[type="tel"], select { width: 100%; padding: 14px 16px; border: 1px solid var(--card-border); border-radius: var(--field-radius); background: var(--input-bg); font-size: 14px; font-family: inherit; margin-bottom: 14px; }
+    input:focus, select:focus { outline: none; border-color: var(--accent); }
+    .profile-card { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .profile-card img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; border: 2px solid var(--card-border); }
+    .profile-card .name { font-weight: 600; font-size: 15px; }
+    .pay-group { display: flex; gap: 10px; margin-bottom: 14px; }
+    .pay-btn { flex: 1; padding: 12px 8px; border: 2px solid var(--card-border); border-radius: var(--field-radius); background: var(--white); text-align: center; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 600; }
+    .pay-btn.selected { border-color: var(--accent); background: #f0f0fa; }
+    .player-block { background: var(--input-bg); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+    .player-block .player-num { font-size: 12px; font-weight: 600; color: var(--accent); margin-bottom: 10px; }
+    .bank-card { background: var(--input-bg); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; }
+    .bank-detail { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+    .bank-account-num { font-family: 'Space Grotesk',sans-serif; font-size: 16px; font-weight: 700; letter-spacing: .06em; }
+    .copy-btn { font-family: 'Space Grotesk',sans-serif; font-size: 11px; font-weight: 600; color: var(--accent); background: var(--white); border: 1px solid var(--pill-border); border-radius: 20px; padding: 4px 12px; cursor: pointer; }
+    .slip-box { border: 1.5px dashed var(--dashed); border-radius: 14px; padding: 24px; text-align: center; cursor: pointer; color: var(--label); margin-bottom: 16px; }
+    .slip-box:hover { border-color: var(--accent); }
+    .slip-box input { display: none; }
+    #slipPreview { max-width: 100%; border-radius: 10px; margin-top: 12px; display: none; }
+    .fee-summary { background: var(--input-bg); border-radius: 12px; padding: 16px; margin-bottom: 16px; text-align: center; }
+    .fee-amount { font-family: 'Space Grotesk',sans-serif; font-size: 28px; font-weight: 700; color: var(--accent); }
+    .fee-label { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+    .tier-badge { display: inline-block; background: var(--accent); color: var(--white); padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; font-family: 'Space Grotesk',sans-serif; margin-top: 6px; }
+    .confirm-btn { width: 100%; padding: 16px; background: var(--accent); color: var(--white); border: none; border-radius: var(--field-radius); font-size: 16px; font-weight: 600; font-family: inherit; cursor: pointer; }
+    .confirm-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .success-check { width: 64px; height: 64px; border-radius: 50%; background: var(--green); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
+    .success-check svg { width: 32px; height: 32px; }
+    .success-title { font-size: 20px; font-weight: 700; text-align: center; margin-bottom: 4px; }
+    .success-sub { text-align: center; font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; }
+    .success-player { background: var(--input-bg); border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; }
+    .success-player .sp-name { font-weight: 600; font-size: 14px; }
+    .success-player .sp-detail { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+    .qr-wrap { text-align: center; margin: 16px 0 8px; }
+    .qr-wrap img { border-radius: 12px; }
+    .qr-hint { font-size: 11px; color: var(--text-secondary); margin-top: 6px; text-align: center; }
+    .back-btn { width: 100%; padding: 14px; background: transparent; color: var(--accent); border: 1.5px solid var(--accent); border-radius: var(--field-radius); font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer; }
+    .stat-card { background: var(--input-bg); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; }
+    .stat-card .stat-name { font-weight: 600; font-size: 13px; }
+    .stat-card .stat-info { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+    .stat-card .stat-progress { height: 6px; background: #eeedea; border-radius: 3px; margin-top: 6px; overflow: hidden; }
+    .stat-card .stat-fill { height: 100%; background: linear-gradient(90deg, var(--green), #06c755); border-radius: 3px; }
+    .stats-title { font-size: 11px; font-weight: 600; color: var(--label); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; margin-top: 12px; }
+    .already-card { text-align: center; padding: 20px 0; }
+    .already-icon { font-size: 48px; margin-bottom: 8px; }
+    .already-title { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+    .already-sub { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+    .no-event { text-align: center; padding: 40px 20px; }
+    .no-event .ne-icon { font-size: 48px; margin-bottom: 12px; }
+    .no-event .ne-title { font-size: 16px; font-weight: 600; }
+    .no-event .ne-sub { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+  </style>
+</head>
+<body>
+<div id="loadingState"><div class="spinner"></div><div class="loading-txt">กำลังโหลด...</div></div>
+<div id="errorState" style="display:none"><div style="font-size:40px;margin-bottom:12px">⚠️</div><div id="errorMsg" style="font-size:14px;color:var(--text-secondary)">เกิดข้อผิดพลาด</div></div>
+
+<div id="mainContent" style="display:none">
+  <div class="wrapper">
+    <div class="header-bar">
+      <h1>🏆 WAKA GYM</h1>
+      <div class="sub" id="eventDate"></div>
+      <div id="tierBadge"></div>
+    </div>
+
+    <!-- Profile + Stats -->
+    <div class="card">
+      <div class="profile-card">
+        <img id="profileImg" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Crect fill='%23ddd' width='48' height='48' rx='24'/%3E%3C/svg%3E" />
+        <div><div class="name" id="profileName">—</div></div>
+      </div>
+      <div id="linkedStats" style="display:none"></div>
+    </div>
+
+    <!-- No event -->
+    <div id="noEventView" style="display:none">
+      <div class="card"><div class="no-event">
+        <div class="ne-icon">📅</div>
+        <div class="ne-title">ยังไม่มี WAKA GYM วันนี้</div>
+        <div class="ne-sub">รอสตาฟเปิด Event ก่อนนะ</div>
+      </div></div>
+    </div>
+
+    <!-- Already registered -->
+    <div id="alreadyView" style="display:none">
+      <div class="card"><div class="already-card">
+        <div class="already-icon">✅</div>
+        <div class="already-title">ลงทะเบียนวันนี้แล้ว</div>
+        <div class="already-sub" id="alreadyDetail"></div>
+        <div class="qr-wrap" id="alreadyQR"></div>
+        <div class="qr-hint">ยื่นให้สตาฟสแกนเพื่อรับรางวัล</div>
+      </div></div>
+      <button class="back-btn" onclick="handleBack()">ปิดหน้าต่าง</button>
+    </div>
+
+    <!-- Registration form -->
+    <div id="regForm" style="display:none">
+      <div class="card">
+        <div class="section-label">จำนวนผู้เล่น</div>
+        <select id="playerCount" onchange="updatePlayerFields()">
+          <option value="1">1 คน</option>
+          <option value="2">2 คน</option>
+          <option value="3">3 คน</option>
+          <option value="4">4 คน</option>
+        </select>
+        <div class="separator"></div>
+        <div class="section-label">ข้อมูลผู้เล่น</div>
+        <div id="playerFields"></div>
+        <label class="field-label">เบอร์โทร (ผู้ลงทะเบียน)</label>
+        <input type="tel" id="phone" placeholder="0xx-xxx-xxxx" maxlength="10" />
+        <div class="separator"></div>
+        <div class="section-label">วิธีจ่ายเงิน</div>
+        <div class="pay-group">
+          <div class="pay-btn selected" id="payTransfer" onclick="selectPay('transfer')">📱 โอนเงิน</div>
+          <div class="pay-btn" id="payCash" onclick="selectPay('cash')">💵 เงินสด</div>
+        </div>
+        <div id="transferSection">
+          <label class="field-label">โอนผ่านธนาคาร <span class="req">*</span></label>
+          <select id="bankSelect">
+            <option value="">-- เลือกธนาคาร --</option>
+            <option value="แม่มณี">แม่มณี</option>
+            <option value="SCB">SCB</option>
+            <option value="KBANK">KBANK</option>
+          </select>
+          <div class="bank-card" id="bankInfo"><div class="bank-detail">กำลังโหลด...</div></div>
+          <div class="slip-box" onclick="document.getElementById('slipInput').click()">
+            <input type="file" id="slipInput" accept="image/*" onchange="previewSlip(this)" />
+            <div id="slipPlaceholder"><span style="font-size:28px;display:block;margin-bottom:6px">📸</span><span style="font-size:13px;color:var(--label)">กดเพื่อแนบสลิป</span></div>
+            <img id="slipPreview" />
+          </div>
+        </div>
+        <div class="fee-summary">
+          <div class="fee-amount" id="totalFee">200 .-</div>
+          <div class="fee-label" id="feeLabel">1 คน</div>
+        </div>
+        <button class="confirm-btn" id="submitBtn" onclick="submitRegistration()">ลงทะเบียน</button>
+      </div>
+    </div>
+
+    <!-- Success -->
+    <div id="successView" style="display:none">
+      <div class="card">
+        <div class="success-check"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+        <div class="success-title">ลงทะเบียนสำเร็จ!</div>
+        <div class="success-sub" id="successRegId"></div>
+        <div id="successPlayers"></div>
+        <div class="qr-wrap" id="successQR"></div>
+        <div class="qr-hint">ยื่นให้สตาฟสแกนเพื่อรับรางวัลหลังแข่ง</div>
+      </div>
+      <button class="back-btn" onclick="handleBack()">ปิดหน้าต่าง</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const LIFF_ID = "2010457385-UpJLXxJ0";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec";
+
+let lineProfile = {}, slipBase64 = null, paymentMethod = "transfer";
+let eventInfo = null, tokenThreshold = 30;
+
+async function init() {
+  try {
+    await liff.init({ liffId: LIFF_ID });
+    if (!liff.isLoggedIn()) { liff.login(); return; }
+    lineProfile = await liff.getProfile();
+  } catch (e) {
+    lineProfile = { userId: "dev_user", displayName: "Dev", pictureUrl: "" };
+  }
+  document.getElementById("profileName").textContent = lineProfile.displayName || "—";
+  if (lineProfile.pictureUrl) document.getElementById("profileImg").src = lineProfile.pictureUrl;
+
+  var cached = null;
+  try { cached = JSON.parse(localStorage.getItem("waka_t_config") || "null"); } catch(_) {}
+  if (cached && cached.config) renderBankInfo(cached.config);
+  showMain();
+
+  try {
+    var [statusRes, configRes] = await Promise.all([
+      fetch(GAS_URL + "?action=api&do=wakagym_status&line_user_id=" + encodeURIComponent(lineProfile.userId) + "&_t=" + Date.now()),
+      fetch(GAS_URL)
+    ]);
+    var statusData = await statusRes.json();
+    var configData = await configRes.json();
+    try { localStorage.setItem("waka_t_config", JSON.stringify(configData)); } catch(_) {}
+
+    document.getElementById("eventDate").textContent = statusData.event_date || "";
+    tokenThreshold = statusData.token_threshold || 30;
+
+    var cfg = configData.config || {};
+    renderBankInfo(cfg);
+    renderLinkedStats(statusData.linked_stats || []);
+
+    eventInfo = statusData.event || null;
+    if (!eventInfo) {
+      document.getElementById("noEventView").style.display = "block";
+      return;
+    }
+
+    document.getElementById("tierBadge").innerHTML = '<span class="tier-badge">Tier ' + esc(eventInfo.tier) + ' · ' + eventInfo.entry_fee + '฿</span>';
+
+    if (statusData.already_registered && statusData.today_regs && statusData.today_regs.length > 0) {
+      document.getElementById("alreadyView").style.display = "block";
+      var detail = "";
+      for (var r of statusData.today_regs) {
+        detail += "#" + r.reg_id + " · " + (r.player_name || "—") + "\n";
+      }
+      document.getElementById("alreadyDetail").textContent = detail;
+      makeQR("alreadyQR", statusData.today_regs[0].reg_id || "");
+    } else {
+      document.getElementById("regForm").style.display = "block";
+      updatePlayerFields();
+    }
+  } catch (e) {
+    if (!cached) {
+      document.getElementById("errorState").style.display = "flex";
+      document.getElementById("errorMsg").textContent = e.message || "โหลดไม่ได้";
+    }
+  }
+}
+
+function renderLinkedStats(stats) {
+  var el = document.getElementById("linkedStats");
+  if (!stats || stats.length === 0) { el.style.display = "none"; return; }
+  var html = '<div class="stats-title">🪙 Token สะสม</div>';
+  for (var s of stats) {
+    var tokens = s.total_tokens || 0;
+    var pct = Math.min(tokens / tokenThreshold * 100, 100);
+    var boxText = s.boxes_earned > 0 ? " · 🎁 Box " + s.boxes_earned : "";
+    html += '<div class="stat-card"><div class="stat-name">' + esc(s.player_name) + '</div>';
+    html += '<div class="stat-info">🪙 ' + tokens + '/' + tokenThreshold + ' token' + boxText + '</div>';
+    html += '<div class="stat-progress"><div class="stat-fill" style="width:' + pct + '%"></div></div></div>';
+  }
+  el.innerHTML = html; el.style.display = "block";
+}
+
+function renderBankInfo(cfg) {
+  var acct = cfg.bank_account || "", name = cfg.bank_account_name || "";
+  if (!acct) { document.getElementById("bankInfo").innerHTML = '<div class="bank-detail">PromptPay / โอนเงิน</div>'; return; }
+  document.getElementById("bankInfo").innerHTML =
+    '<div class="bank-detail">' + esc(name) + '</div>' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-top:4px">' +
+    '<span class="bank-account-num">' + esc(acct) + '</span>' +
+    '<button class="copy-btn" onclick="event.stopPropagation();navigator.clipboard.writeText(\'' + esc(acct) + '\')">COPY</button></div>';
+}
+
+function showMain() { document.getElementById("loadingState").style.display = "none"; document.getElementById("mainContent").style.display = "block"; }
+
+function updatePlayerFields() {
+  var count = parseInt(document.getElementById("playerCount").value) || 1;
+  var el = document.getElementById("playerFields");
+  var html = "";
+  for (var i = 0; i < count; i++) {
+    var label = count > 1 ? ("ผู้เล่นคนที่ " + (i + 1)) : "ผู้เล่น";
+    var def = i === 0 ? (lineProfile.displayName || "") : "";
+    html += '<div class="player-block"><div class="player-num">' + label + '</div>';
+    html += '<label class="field-label">ชื่อจริง <span class="req">*</span></label>';
+    html += '<input type="text" id="realName_' + i + '" placeholder="ชื่อ-นามสกุล" value="' + esc(def) + '" />';
+    html += '<label class="field-label">ชื่อแข่ง <span class="req">*</span></label>';
+    html += '<input type="text" id="playerName_' + i + '" placeholder="ชื่อที่ใช้ในเกม" /></div>';
+  }
+  el.innerHTML = html;
+  var fee = eventInfo ? eventInfo.entry_fee : 200;
+  document.getElementById("totalFee").textContent = (count * fee).toLocaleString() + " .-";
+  document.getElementById("feeLabel").textContent = count + " คน × " + fee + " บาท";
+}
+
+function selectPay(m) {
+  paymentMethod = m;
+  document.getElementById("payTransfer").classList.toggle("selected", m === "transfer");
+  document.getElementById("payCash").classList.toggle("selected", m === "cash");
+  document.getElementById("transferSection").style.display = m === "transfer" ? "block" : "none";
+}
+
+function previewSlip(input) {
+  var file = input.files[0]; if (!file) return;
+  resizeImage(file, 800, 0.9, function(d) {
+    document.getElementById("slipPreview").src = d;
+    document.getElementById("slipPreview").style.display = "block";
+    document.getElementById("slipPlaceholder").style.display = "none";
+    slipBase64 = d.split(",")[1];
+  });
+}
+function resizeImage(file, ms, q, cb) {
+  var r = new FileReader(); r.onload = function(e) {
+    var img = new Image(); img.onload = function() {
+      var w = img.width, h = img.height;
+      if (w > ms || h > ms) { if (w > h) { h = Math.round(h*ms/w); w = ms; } else { w = Math.round(w*ms/h); h = ms; } }
+      var c = document.createElement("canvas"); c.width = w; c.height = h;
+      var ctx = c.getContext("2d");
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(img, 0, 0, w, h);
+      var result = c.toDataURL("image/jpeg", q);
+      if (result.length > 500000) result = c.toDataURL("image/jpeg", 0.7);
+      cb(result);
+    }; img.src = e.target.result;
+  }; r.readAsDataURL(file);
+}
+
+async function submitRegistration() {
+  var count = parseInt(document.getElementById("playerCount").value) || 1;
+  var players = [];
+  for (var i = 0; i < count; i++) {
+    var rn = document.getElementById("realName_" + i).value.trim();
+    var pn = document.getElementById("playerName_" + i).value.trim();
+    if (!rn) { alert("กรุณากรอกชื่อจริงผู้เล่นคนที่ " + (i+1)); return; }
+    if (!pn) { alert("กรุณากรอกชื่อแข่งผู้เล่นคนที่ " + (i+1)); return; }
+    players.push({ realName: rn, playerName: pn });
+  }
+  if (paymentMethod === "transfer" && !document.getElementById("bankSelect").value) {
+    alert("กรุณาเลือกธนาคาร"); return;
+  }
+  var btn = document.getElementById("submitBtn");
+  btn.disabled = true; btn.textContent = "กำลังส่ง...";
+  try {
+    var res = await fetch(GAS_URL, { method: "POST", body: JSON.stringify({
+      _action: "wakagymRegister", lineUserId: lineProfile.userId, displayName: lineProfile.displayName,
+      phone: document.getElementById("phone").value.trim(), paymentMethod: paymentMethod,
+      bank: paymentMethod === "transfer" ? (document.getElementById("bankSelect").value || "") : "",
+      players: players, slipBase64: paymentMethod === "transfer" ? (slipBase64 || null) : null,
+    })});
+    var data = await res.json();
+    if (data.success) showSuccess(data);
+    else alert(data.error || "เกิดข้อผิดพลาด");
+  } catch (e) { alert("ส่งไม่ได้ ตรวจสอบ Internet"); }
+  btn.disabled = false; btn.textContent = "ลงทะเบียน";
+}
+
+function showSuccess(data) {
+  document.getElementById("regForm").style.display = "none";
+  document.getElementById("successView").style.display = "block";
+  document.getElementById("successRegId").textContent = "#" + data.groupId + (data.tier ? " · Tier " + data.tier : "");
+  var html = "";
+  for (var r of (data.results || [])) {
+    html += '<div class="success-player"><div class="sp-name">🎮 ' + esc(r.playerName) + '</div>';
+    html += '<div class="sp-detail">🪙 Token สะสม: ' + (r.totalTokens || 0) + '/' + tokenThreshold + '</div></div>';
+  }
+  document.getElementById("successPlayers").innerHTML = html;
+  makeQR("successQR", data.groupId);
+}
+
+function makeQR(id, text) {
+  var q = qrcode(0, 'M'); q.addData(text); q.make();
+  document.getElementById(id).innerHTML = q.createImgTag(6, 16);
+}
+function handleBack() { try { liff.closeWindow(); } catch(_) {} window.close(); }
+function esc(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+init();
+</script>
+</body>
+</html>

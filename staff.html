@@ -458,15 +458,17 @@
 <script>
   // -- Config ----------------------------------------------------------------
   const GAS_URL = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec";
-  const DEFAULT_PIN = "waka2024";
-  const PIN_KEY = "waka_staff_pin";
+  const PIN_ADMIN = "waka99";
+  const BRANCH_CODES = { 'ts01': 'ต้นสักคอร์เนอร์', 'mt01': 'เมืองทองธานี', 'sn01': 'ศรีนครินทร์' };
 
   // -- PIN auth --------------------------------------------------------------
   function checkPin() {
     const input = document.getElementById("pinInput");
     const pin = input.value.trim();
-    if (pin === DEFAULT_PIN) {
-      localStorage.setItem(PIN_KEY, pin);
+    if (pin === PIN_ADMIN || BRANCH_CODES[pin]) {
+      sessionStorage.setItem('waka_portal_auth', '1');
+      sessionStorage.setItem('waka_staff_role', pin === PIN_ADMIN ? 'admin' : 'staff');
+      sessionStorage.setItem('waka_staff_branch', BRANCH_CODES[pin] || 'ทั้งหมด');
       showApp();
     } else {
       input.classList.add("error");
@@ -502,10 +504,9 @@
       '<div class="results-status">พิมพ์คำค้นหาแล้วกด "ค้นหา"</div>';
   }
 
-  // Check saved PIN on load
+  // Check session on load
   (function initAuth() {
-    const saved = localStorage.getItem(PIN_KEY);
-    if (saved === DEFAULT_PIN) {
+    if (sessionStorage.getItem('waka_portal_auth') === '1') {
       showApp();
     }
   })();
