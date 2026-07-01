@@ -100,6 +100,45 @@
     .quick-btn:active { box-shadow:0 2px 8px rgba(0,0,0,.1); }
     .quick-btn span { font-size:11px;font-weight:600;color:var(--accent); }
 
+    /* ─── Home Dashboard (coffee theme) ─── */
+    #t_home { background:var(--bg); }
+    .hm-header { display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px; }
+    .hm-greeting { font-size:20px;font-weight:700;color:#2C1810; }
+    .hm-date { font-size:12px;color:#9A8878;margin-top:3px; }
+    .hm-badge { background:#4A3728;color:#fff;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:600; }
+    .hm-main-card { background:linear-gradient(135deg,#4A3728 0%,#6B4E37 100%);border-radius:20px;padding:24px;margin-bottom:12px;color:#fff;position:relative;overflow:hidden; }
+    .hm-main-card::after { content:'';position:absolute;top:-30px;right:-30px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.06); }
+    .hm-main-label { font-size:12px;opacity:.7;font-weight:600;letter-spacing:.5px;text-transform:uppercase; }
+    .hm-main-value { font-family:'Space Grotesk',sans-serif;font-size:36px;font-weight:700;margin:6px 0 4px;letter-spacing:-1px; }
+    .hm-main-sub { font-size:13px;opacity:.7; }
+    .hm-kpi2 { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px; }
+    .hm-kpi-card { background:#fff;border-radius:16px;padding:16px;border:1px solid #EDE8E0; }
+    .hm-kpi-card .lbl { font-size:11px;font-weight:600;color:#9A8878;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px; }
+    .hm-kpi-card .val { font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;color:#2C1810; }
+    .hm-kpi-card .val.orange { color:#d97706; }
+    .hm-kpi-card .val.green { color:#2d8f4e; }
+    .hm-section-title { font-size:13px;font-weight:700;color:#4A3728;margin:16px 0 10px; }
+    .hm-card { background:#fff;border-radius:16px;padding:16px;border:1px solid #EDE8E0;margin-bottom:12px; }
+    .hm-chart-wrap { display:flex;align-items:flex-end;gap:5px;height:72px;margin-top:10px; }
+    .hm-bar-col { flex:1;display:flex;flex-direction:column;align-items:center;gap:4px; }
+    .hm-bar { width:100%;border-radius:5px 5px 0 0;background:#D4A96A;min-height:3px; }
+    .hm-bar.today { background:#4A3728; }
+    .hm-bar.zero { background:#EDE8E0; }
+    .hm-bar-lbl { font-size:9px;color:#9A8878;font-weight:600; }
+    .hm-actions { display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:4px; }
+    .hm-act { display:flex;flex-direction:column;align-items:center;gap:6px;background:#fff;border:1px solid #EDE8E0;border-radius:14px;padding:18px 8px;font-family:inherit;cursor:pointer;transition:transform .15s;width:100%; }
+    .hm-act:active { transform:scale(.95); }
+    .hm-act-icon { font-size:26px; }
+    .hm-act-label { font-size:11px;font-weight:600;color:#4A3728; }
+    .hm-pending-row { display:flex;justify-content:space-between;align-items:center;margin-bottom:12px; }
+    .hm-pending-badge { font-size:12px;padding:2px 10px;border-radius:20px;background:#d97706;color:#fff;font-weight:700; }
+    .hm-order-row { display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #F0EBE3; }
+    .hm-order-row:last-child { border-bottom:none; }
+    .hm-order-name { font-size:13px;font-weight:600;color:#2C1810; }
+    .hm-order-meta { font-size:11px;color:#9A8878;margin-top:2px; }
+    .hm-order-amount { font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:700;color:#4A3728;text-align:right; }
+    .hm-order-status { font-size:10px;font-weight:600;margin-top:2px;text-align:right; }
+
     .toast { position:fixed;bottom:calc(var(--nav-h) + 12px);left:50%;transform:translateX(-50%);background:var(--green);color:#fff;padding:12px 24px;border-radius:10px;font-weight:600;z-index:200;display:none; }
 
     .branch-sel { width:100%;padding:12px;border:1px solid var(--card-border);border-radius:var(--radius);font-family:inherit;font-size:14px;background:var(--input-bg);margin-bottom:12px; }
@@ -173,33 +212,58 @@
 
     <!-- ══════ TAB 1: HOME ══════ -->
     <div class="tab-content active" id="t_home">
-      <div style="text-align:center;margin-bottom:16px">
-        <div style="font-size:24px;font-weight:700">WAKA SPACE</div>
-        <div style="color:var(--text2);font-size:13px">Staff Dashboard</div>
+      <!-- Header -->
+      <div class="hm-header">
+        <div>
+          <div class="hm-greeting">สวัสดี 👋</div>
+          <div class="hm-date" id="hmDate"></div>
+        </div>
+        <div class="hm-badge" id="hmRoleBadge">Admin</div>
       </div>
-      <div class="kpi-grid">
-        <div class="kpi"><div class="kpi-num" id="kOrders">-</div><div class="kpi-label">ออเดอร์วันนี้</div></div>
-        <div class="kpi"><div class="kpi-num" id="kRevenue">-</div><div class="kpi-label">รายได้วันนี้</div></div>
-        <div class="kpi"><div class="kpi-num" id="kPending" style="color:var(--orange)">-</div><div class="kpi-label">รอตรวจสลิป</div></div>
+      <!-- Main KPI -->
+      <div class="hm-main-card">
+        <div class="hm-main-label">ยอดขายวันนี้</div>
+        <div class="hm-main-value" id="kRevenue">฿—</div>
+        <div class="hm-main-sub" id="kOrders">— ออเดอร์</div>
+      </div>
+      <!-- KPI 2 cols -->
+      <div class="hm-kpi2">
+        <div class="hm-kpi-card">
+          <div class="lbl">กำไรวันนี้</div>
+          <div class="val green" id="kProfit">—</div>
+        </div>
+        <div class="hm-kpi-card">
+          <div class="lbl">รอตรวจสลิป</div>
+          <div class="val orange" id="kPending">—</div>
+        </div>
+      </div>
+      <!-- 7-day chart -->
+      <div class="hm-card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="hm-section-title" style="margin:0">ยอดขาย 7 วัน</div>
+          <div style="font-size:11px;color:#9A8878" id="hmChartTotal"></div>
+        </div>
+        <div class="hm-chart-wrap" id="hmChart"><div class="loading" style="padding:12px;font-size:12px">กำลังโหลด...</div></div>
       </div>
       <!-- Quick Actions -->
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
-        <button class="quick-btn" onclick="switchTab('warehouse')">🏭<span>คลังกลาง</span></button>
-        <button class="quick-btn" onclick="switchTab('branch')">🏬<span>สาขา</span></button>
-        <button class="quick-btn" onclick="switchTab('receive')">📦<span>รับเข้า</span></button>
+      <div class="hm-section-title">จัดการ</div>
+      <div class="hm-actions">
+        <button class="hm-act" onclick="switchTab('warehouse')"><span class="hm-act-icon">🏭</span><span class="hm-act-label">คลังกลาง</span></button>
+        <button class="hm-act" onclick="switchTab('branch')"><span class="hm-act-icon">🏬</span><span class="hm-act-label">สาขา</span></button>
+        <button class="hm-act" onclick="switchTab('receive')"><span class="hm-act-icon">📦</span><span class="hm-act-label">รับเข้า</span></button>
       </div>
       <!-- Pending Slips -->
-      <div class="card" style="margin-bottom:12px">
-        <h3 style="display:flex;justify-content:space-between;align-items:center">
-          <span>⏳ รอตรวจสลิป</span>
-          <span id="pendingBadge" style="font-size:12px;padding:2px 10px;border-radius:20px;background:var(--orange);color:#fff;font-weight:700">-</span>
-        </h3>
-        <div id="pendingSlipsList" style="margin-top:10px"><div class="loading">กำลังโหลด...</div></div>
+      <div class="hm-card" style="margin-top:16px">
+        <div class="hm-pending-row">
+          <div class="hm-section-title" style="margin:0">⏳ รอตรวจสลิป</div>
+          <span class="hm-pending-badge" id="pendingBadge">—</span>
+        </div>
+        <div id="pendingSlipsList"><div class="loading" style="padding:8px;font-size:12px">กำลังโหลด...</div></div>
       </div>
       <!-- Recent Orders -->
-      <div class="card">
-        <h3>ออเดอร์ล่าสุด</h3>
-        <div id="recentOrders"><div class="loading">กำลังโหลด...</div></div>
+      <div class="hm-card">
+        <div class="hm-section-title" style="margin-bottom:4px">ออเดอร์ล่าสุด</div>
+        <div id="recentOrders"><div class="loading" style="padding:8px;font-size:12px">กำลังโหลด...</div></div>
       </div>
     </div>
 
@@ -601,11 +665,41 @@ function switchTab(t) {
 // ══════════════════════════════════════════════════════════
 // TAB 1: HOME
 // ══════════════════════════════════════════════════════════
+function hmSetDate() {
+  const t = new Date();
+  const days = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
+  const months = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  gid('hmDate').textContent = `วัน${days[t.getDay()]}ที่ ${t.getDate()} ${months[t.getMonth()]} ${t.getFullYear()+543}`;
+  gid('hmRoleBadge').textContent = userRole === 'admin' ? 'Admin' : 'Staff';
+}
+
+function hmRenderChart(byDate) {
+  const today = new Date().toISOString().slice(0,10);
+  const days7 = Array.from({length:7}, (_,i) => {
+    const d = new Date(); d.setDate(d.getDate() - (6-i));
+    return d.toISOString().slice(0,10);
+  });
+  const dayShort = ['อา','จ','อ','พ','พฤ','ศ','ส'];
+  const entries = days7.map(dt => ({ dt, rev: byDate[dt]?.revenue || 0 }));
+  const max = Math.max(...entries.map(e => e.rev), 1);
+  const total7 = entries.reduce((s,e) => s+e.rev, 0);
+  gid('hmChartTotal').textContent = '7 วัน ฿' + total7.toLocaleString();
+  gid('hmChart').innerHTML = entries.map(e => {
+    const d = new Date(e.dt); const isToday = e.dt === today;
+    const h = Math.max(Math.round((e.rev/max)*64), e.rev>0?4:0);
+    return `<div class="hm-bar-col">
+      <div class="hm-bar${isToday?' today':e.rev===0?' zero':''}" style="height:${h}px"></div>
+      <div class="hm-bar-lbl">${dayShort[d.getDay()]}</div>
+    </div>`;
+  }).join('');
+}
+
 async function loadDashboard() {
+  hmSetDate();
   try {
     const r = await fetch(G+'?action=api&do=dashboard'); const d = await r.json();
-    gid('kOrders').textContent = d.orders_today || 0;
     gid('kRevenue').textContent = '฿'+(d.revenue_today||0).toLocaleString();
+    gid('kOrders').textContent = (d.orders_today||0)+' ออเดอร์';
     gid('kPending').textContent = d.pending_count || 0;
 
     // Pending slips
@@ -613,44 +707,53 @@ async function loadDashboard() {
     const badge = gid('pendingBadge');
     const ps = gid('pendingSlipsList');
     badge.textContent = pending.length;
-    if (pending.length === 0) {
-      badge.style.background = 'var(--green)';
-      ps.innerHTML = '<div style="text-align:center;color:var(--green);padding:8px;font-size:13px;font-weight:600">✅ ไม่มีรอตรวจ</div>';
-    } else {
-      badge.style.background = 'var(--orange)';
-      ps.innerHTML = pending.map(o => `<div class="order-card">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div class="oid">#${esc(o.order_id)}</div>
-          <span class="status s-wait">${esc(o.slip_status)}</span>
-        </div>
-        <div class="meta">${esc(o.real_name||o.display_name||'-')} · ${esc(o.branch)} · ฿${Number(o.total).toLocaleString()}</div>
-        <button class="btn btn-green" style="margin-top:8px" onclick="confirmSlip('${esc(o.order_id)}')">✅ ยืนยันสลิป + แจ้งลูกค้า</button>
-      </div>`).join('');
-    }
+    badge.style.background = pending.length ? '#d97706' : '#2d8f4e';
+    ps.innerHTML = pending.length === 0
+      ? '<div style="text-align:center;color:#2d8f4e;padding:8px;font-size:13px;font-weight:600">✅ ไม่มีรอตรวจ</div>'
+      : pending.map(o => `<div style="padding:10px 0;border-bottom:1px solid #F0EBE3">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div style="font-size:13px;font-weight:600;color:#2C1810">#${esc(o.order_id)}</div>
+            <span class="status s-wait">${esc(o.slip_status)}</span>
+          </div>
+          <div style="font-size:12px;color:#9A8878;margin:3px 0">${esc(o.real_name||o.display_name||'-')} · ${esc(o.branch)} · ฿${Number(o.total).toLocaleString()}</div>
+          <button class="btn btn-green" style="margin-top:6px;padding:10px" onclick="confirmSlip('${esc(o.order_id)}')">✅ ยืนยันสลิป + แจ้งลูกค้า</button>
+        </div>`).join('');
 
+    // Recent orders (compact)
     const el = gid('recentOrders');
-    if (!d.recent_orders || d.recent_orders.length===0) { el.innerHTML='<div class="empty">ไม่มีออเดอร์</div>'; return; }
-    el.innerHTML = d.recent_orders.map(o => {
-      const sc = o.slip_status==='ยืนยัน'?'s-ok':['รอตรวจ','รอตรวจเพิ่ม'].includes(o.slip_status)?'s-wait':'s-done';
-      let items=[];try{items=JSON.parse(o.items_json||'[]');}catch(_){}
-      const itemsHtml=items.map(i=>'<div style="font-size:13px">• '+esc(i.name)+' ('+(i.type==='box'?'กล่อง':'ซอง')+') x'+i.qty+' = ฿'+(i.price*i.qty).toLocaleString()+'</div>').join('');
-      return `<div class="order-card" style="cursor:pointer" onclick="this.querySelector('.order-detail').style.display=this.querySelector('.order-detail').style.display==='none'?'block':'none'">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div class="oid">#${esc(o.order_id)}</div>
-          <span class="status ${sc}">${esc(o.slip_status)}</span>
-        </div>
-        <div class="meta">${esc(o.real_name||o.display_name||'-')} · ${esc(o.branch)} · ฿${Number(o.total).toLocaleString()}</div>
-        ${o.fulfillment?`<span class="status s-done">${esc(o.fulfillment)}</span>`:''}
-        <div class="order-detail" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #f0ede8">
-          <div style="font-size:13px;color:var(--text2);margin-bottom:6px">👤 ${esc(o.real_name||'')} ${o.phone?'· 📞 '+esc(o.phone):''}</div>
-          <div style="font-weight:600;margin-bottom:4px">รายการ</div>
-          ${itemsHtml||'<div style="font-size:13px;color:var(--label)">ไม่มีรายการ</div>'}
-          <div style="margin-top:6px;font-size:12px;color:var(--text2)">สั่งเมื่อ: ${esc(o.timestamp||'')}</div>
-          ${o.slip_status!=='ยืนยัน'&&o.slip_status!=='ไม่มีสลิป'?'<button class="btn btn-green" style="margin-top:10px" onclick="event.stopPropagation();confirmSlip(\''+o.order_id+'\')">✅ ยืนยันสลิป + แจ้งลูกค้า</button>':''}
-        </div>
-      </div>`;
-    }).join('');
+    if (!d.recent_orders || d.recent_orders.length===0) { el.innerHTML='<div class="empty">ไม่มีออเดอร์</div>'; }
+    else {
+      el.innerHTML = d.recent_orders.slice(0,8).map(o => {
+        const sc = o.slip_status==='ยืนยัน'?'s-ok':['รอตรวจ','รอตรวจเพิ่ม'].includes(o.slip_status)?'s-wait':'s-done';
+        let items=[];try{items=JSON.parse(o.items_json||'[]');}catch(_){}
+        const itemsHtml=items.map(i=>'<div style="font-size:12px;color:#7A6A5A">• '+esc(i.name)+' x'+i.qty+'</div>').join('');
+        return `<div class="hm-order-row" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:4px" onclick="this.querySelector('.hm-detail').style.display=this.querySelector('.hm-detail').style.display==='none'?'block':'none'">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div class="hm-order-name">${esc(o.real_name||o.display_name||'-')}</div>
+              <div class="hm-order-meta">#${esc(o.order_id)} · ${esc(o.branch)}</div>
+            </div>
+            <div style="text-align:right">
+              <div class="hm-order-amount">฿${Number(o.total).toLocaleString()}</div>
+              <span class="status ${sc}" style="margin-top:4px;display:inline-block">${esc(o.slip_status)}</span>
+            </div>
+          </div>
+          <div class="hm-detail" style="display:none;padding-top:8px;border-top:1px solid #F0EBE3">
+            ${itemsHtml}
+            <div style="font-size:11px;color:#9A8878;margin-top:4px">${esc(o.timestamp||'')}</div>
+            ${o.slip_status!=='ยืนยัน'&&o.slip_status!=='ไม่มีสลิป'?`<button class="btn btn-green" style="margin-top:8px;padding:10px" onclick="event.stopPropagation();confirmSlip('${o.order_id}')">✅ ยืนยันสลิป</button>`:''}
+          </div>
+        </div>`;
+      }).join('');
+    }
   } catch(e) { gid('recentOrders').innerHTML='<div class="empty">โหลดไม่ได้</div>'; }
+
+  // Chart (secondary fetch)
+  try {
+    const r2 = await fetch(G+'?action=api&do=report'); const d2 = await r2.json();
+    if (d2.by_date) hmRenderChart(d2.by_date);
+    if (d2.total) gid('kProfit').textContent = '฿'+(d2.total.profit||0).toLocaleString();
+  } catch(_) { gid('hmChart').innerHTML='<div style="font-size:12px;color:#9A8878;padding:12px">ไม่มีข้อมูล</div>'; }
 }
 
 // ══════════════════════════════════════════════════════════
