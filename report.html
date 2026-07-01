@@ -106,28 +106,13 @@
 
     .empty { text-align: center; color: var(--label); padding: 24px; }
 
-    .bottom-bar {
-      position: fixed; bottom: 0; left: 0; right: 0;
-      height: 54px; background: var(--card-bg);
-      border-top: 1px solid var(--card-border);
-      display: flex; z-index: 100;
-      box-shadow: 0 -2px 12px rgba(0,0,0,.06);
-    }
-    .bottom-bar a {
-      flex: 1; display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      text-decoration: none; color: var(--text-secondary);
-      font-size: 11px; font-weight: 600; gap: 2px;
-    }
-    .bottom-bar a .ico { font-size: 20px; }
-    .bottom-bar a.active { color: var(--accent); }
-    .container { padding-bottom: 70px; }
+    .container { padding-bottom: 76px; }
     .loading { text-align: center; color: var(--text-secondary); padding: 40px; }
 
-    .back-link {
-      display: inline-block; margin-bottom: 12px; color: var(--accent);
-      text-decoration: none; font-size: 13px; font-weight: 600;
-    }
+    .bottom-nav { position:fixed;bottom:0;left:0;right:0;height:60px;background:var(--card-bg);border-top:1px solid var(--card-border);display:flex;z-index:100;box-shadow:0 -2px 12px rgba(0,0,0,.06); }
+    .nav-item { flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-decoration:none;color:#999;font-size:10px;font-weight:600;gap:2px; }
+    .nav-item.active { color:var(--accent); }
+    .nav-icon { font-size:22px; }
   </style>
 </head>
 <body>
@@ -144,7 +129,6 @@
 </div>
 
 <div class="container" id="app" style="display:none">
-  <a class="back-link" href="menu.html">&larr; กลับเมนู</a>
   <div class="header">
     <h1>📊 รายงานยอดขาย</h1>
     <div class="sub">เฉพาะออเดอร์ที่ยืนยันแล้ว</div>
@@ -308,11 +292,12 @@ function renderDate(data) {
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 </script>
 
-<nav class="bottom-bar">
-  <a onclick="history.back()"><span class="ico">←</span>ย้อนกลับ</a>
-  <a href="app.html"><span class="ico">🏠</span>หน้าหลัก</a>
-  <a href="warehouse.html"><span class="ico">🏭</span>คลัง</a>
-  <a href="report.html" class="active"><span class="ico">📊</span>รายงาน</a>
+<nav class="bottom-nav">
+  <a class="nav-item" href="app.html"><span class="nav-icon">🏠</span><span>Home</span></a>
+  <a class="nav-item" href="app.html#receive"><span class="nav-icon">📦</span><span>รับเข้า</span></a>
+  <a class="nav-item" href="app.html#warehouse"><span class="nav-icon">🏭</span><span>คลัง</span></a>
+  <a class="nav-item" href="app.html#branch"><span class="nav-icon">🏬</span><span>สาขา</span></a>
+  <a class="nav-item" href="menu.html"><span class="nav-icon">☰</span><span>เมนู</span></a>
 </nav>
 </body>
 </html>
