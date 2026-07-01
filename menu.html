@@ -183,48 +183,28 @@
     <div id="roleBadge" style="margin-top:8px"></div>
   </div>
 
-  <!-- เมนูหลัก -->
-  <div class="section-title">จัดการ</div>
-  <div class="menu-grid">
-    <a class="menu-card" href="app.html">
-      <div class="menu-icon">📋</div>
-      <div class="menu-title">ออเดอร์</div>
-      <div class="menu-desc">ดูออเดอร์ / ตรวจสลิป</div>
-    </a>
-    <a class="menu-card" href="app.html#warehouse">
-      <div class="menu-icon">🏭</div>
-      <div class="menu-title">คลังกลาง</div>
-      <div class="menu-desc">สต็อก / ส่งสาขา</div>
-    </a>
-    <a class="menu-card" href="wakagym-staff.html">
-      <div class="menu-icon">🏆</div>
-      <div class="menu-title">WAKA GYM</div>
-      <div class="menu-desc">สแกน QR / Event / ผลแข่ง</div>
-    </a>
-    <a class="menu-card" href="products.html" id="cardProducts" style="display:none">
-      <div class="menu-icon">🎴</div>
-      <div class="menu-title">จัดการสินค้า</div>
-      <div class="menu-desc">ราคา / ต้นทุน / เปิด-ปิด</div>
-    </a>
-  </div>
-
   <!-- Admin only -->
   <div id="adminSection" style="display:none">
-    <div class="section-title">รายงาน (Admin)</div>
+    <div class="section-title">จัดการ (Admin)</div>
     <div class="menu-grid">
+      <a class="menu-card" href="products.html">
+        <div class="menu-icon">🎴</div>
+        <div class="menu-title">จัดการสินค้า</div>
+        <div class="menu-desc">ราคา / ต้นทุน / เปิด-ปิด</div>
+      </a>
       <a class="menu-card" href="report.html">
-        <div class="menu-icon">💰</div>
-        <div class="menu-title">ยอดขาย / กำไร</div>
+        <div class="menu-icon">📊</div>
+        <div class="menu-title">รายงานยอดขาย</div>
         <div class="menu-desc">รายสาขา / สินค้า / รายวัน</div>
       </a>
-      <a class="menu-card" href="https://waka-tournament-e6wsqmhuhhexratyiub65f.streamlit.app" target="_blank">
-        <div class="menu-icon">📊</div>
+      <a class="menu-card full-width" href="https://waka-tournament-e6wsqmhuhhexratyiub65f.streamlit.app" target="_blank">
+        <div class="menu-icon">📈</div>
         <div class="menu-title">Admin Dashboard (Streamlit)</div>
         <div class="menu-desc">ออเดอร์ / WAKA GYM / ตรวจสลิป</div>
       </a>
     </div>
 
-    <div class="section-title">สั่งซื้อ WAKA ORDER และ ลงทะเบียน WAKA GYM<br>(ลิงก์สำหรับส่งให้ลูกค้า)</div>
+    <div class="section-title">ลิงก์ส่งให้ลูกค้า</div>
     <div class="menu-grid">
       <a class="menu-card" href="order-links.html">
         <div class="menu-icon">🛒</div>
@@ -237,7 +217,6 @@
         <div class="menu-desc">ลิงก์สำหรับลูกค้า</div>
       </a>
     </div>
-
   </div>
 
   <!-- Logout -->
@@ -248,7 +227,7 @@
 
 <nav class="bottom-nav">
   <a class="nav-item" href="app.html"><span class="nav-icon">📋</span><span>ออเดอร์</span></a>
-  <a class="nav-item" href="app.html#receive"><span class="nav-icon">📦</span><span>สินค้า</span></a>
+  <a class="nav-item" href="wakagym-staff.html"><span class="nav-icon">🏆</span><span>GYM</span></a>
   <a class="nav-item" href="app.html#warehouse"><span class="nav-icon">🏭</span><span>คลัง</span></a>
   <a class="nav-item" href="app.html#branch"><span class="nav-icon">🏬</span><span>สาขา</span></a>
   <a class="nav-item active" href="menu.html"><span class="nav-icon">☰</span><span>เมนู</span></a>
@@ -277,7 +256,7 @@ function checkPin() {
     sessionStorage.setItem('waka_tstaff_auth', '1');
     sessionStorage.setItem('waka_tstaff_role', role);
     sessionStorage.setItem('waka_tstaff_branch', branch);
-    if (role === 'admin') { document.getElementById('adminSection').style.display = 'block'; document.getElementById('cardProducts').style.display = 'block'; }
+    if (role === 'admin') { document.getElementById('adminSection').style.display = 'block'; }
     showRoleBadge(role, branch);
     loadProductLinks();
   } else {

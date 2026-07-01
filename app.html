@@ -302,7 +302,10 @@
 
     <!-- ══════ TAB 3: คลัง ══════ -->
     <div class="tab-content" id="t_warehouse">
-      <div style="text-align:center;margin-bottom:12px"><div style="font-size:18px;font-weight:700">🏭 คลังกลาง</div></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="font-size:18px;font-weight:700">🏭 คลังกลาง</div>
+        <button onclick="switchTab('receive')" style="padding:7px 14px;background:var(--input-bg);border:1px solid var(--card-border);border-radius:10px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;color:var(--text1)">📦 รับสต็อก</button>
+      </div>
       <div class="sub-tabs">
         <button class="sub-tab active" onclick="switchWhSub('summary')">สรุปสาขา</button>
         <button class="sub-tab" onclick="switchWhSub('create')">สร้างล็อต</button>
@@ -529,14 +532,14 @@
     <div class="nav-item active" onclick="switchTab('home')" id="nav_home">
       <span class="nav-icon">📋</span><span>ออเดอร์</span>
     </div>
-    <div class="nav-item" onclick="switchTab('receive')" id="nav_receive">
-      <span class="nav-icon">📦</span><span>สินค้า</span>
-    </div>
     <div class="nav-item" onclick="switchTab('warehouse')" id="nav_warehouse">
       <span class="nav-icon">🏭</span><span>คลัง</span>
     </div>
     <div class="nav-item" onclick="switchTab('branch')" id="nav_branch">
       <span class="nav-icon">🏬</span><span>สาขา</span>
+    </div>
+    <div class="nav-item" onclick="window.location.href='wakagym-staff.html'" id="nav_gym">
+      <span class="nav-icon">🏆</span><span>GYM</span>
     </div>
     <div class="nav-item" onclick="window.location.href='menu.html'" id="nav_menu">
       <span class="nav-icon">☰</span><span>เมนู</span>
@@ -559,7 +562,7 @@ function esc(s) { const d=document.createElement('div');d.textContent=s;return d
 
 function applyRole(role) {
   userRole = role;
-  const adminOnly = ['nav_receive','nav_warehouse','nav_menu','nav_home'];
+  const adminOnly = ['nav_home','nav_warehouse'];
   adminOnly.forEach(id => gid(id).style.display = role === 'admin' ? 'flex' : 'none');
   if (role === 'admin') {
     gid('branchLogin').style.display='none';
@@ -612,7 +615,8 @@ function switchTab(t) {
   if (t === 'menu') { window.location.href = 'menu.html'; return; }
   document.querySelectorAll('.tab-content').forEach(el=>el.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('active'));
-  gid('t_'+t).classList.add('active'); gid('nav_'+t).classList.add('active');
+  gid('t_'+t).classList.add('active');
+  const _navEl = gid('nav_'+t); if (_navEl) _navEl.classList.add('active');
   if (t==='home') loadDashboard();
   if (t==='warehouse') loadWarehouse();
   if (t==='branch') onBranchChange();
