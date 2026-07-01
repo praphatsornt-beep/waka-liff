@@ -285,6 +285,10 @@
   <!-- Tab: สต็อก -->
   <div id="tab-stock" style="display:none">
     <div class="card">
+      <h3>📊 สรุปสินค้าทั้งหมด</h3>
+      <div id="allProductsContent"><div class="empty">กำลังโหลด...</div></div>
+    </div>
+    <div class="card">
       <h3>🏪 สต็อกกลาง</h3>
       <div id="centralStockContent"><div class="empty">กำลังโหลด...</div></div>
     </div>
@@ -577,8 +581,10 @@ async function receiveShipment(shipmentId) {
 
 // ── Stock view ──
 async function loadStock() {
+  const aEl = document.getElementById('allProductsContent');
   const cEl = document.getElementById('centralStockContent');
   const bEl = document.getElementById('branchStockContent');
+  aEl.innerHTML = '<div class="empty">กำลังโหลด...</div>';
   cEl.innerHTML = '<div class="empty">กำลังโหลด...</div>';
   bEl.innerHTML = '<div class="empty">กำลังโหลด...</div>';
 
@@ -590,8 +596,37 @@ async function loadStock() {
     const cData = await cRes.json();
     const bData = await bRes.json();
 
-    // Central
+    // All products summary (central stock + pending orders)
     const cStock = cData.stock || [];
+    const pendingOrders = {};
+    for (const branch of Object.keys(branchSummary)) {
+      for (const it of branchSummary[branch]) {
+        if (!pendingOrders[it.name]) pendingOrders[it.name] = { qty_box: 0, qty_pack: 0 };
+        pendingOrders[it.name].qty_box  += it.qty_box  || 0;
+        pendingOrders[it.name].qty_pack += it.qty_pack || 0;
+      }
+    }
+    const allNames = [...new Set([...cStock.map(s => s.name), ...Object.keys(pendingOrders)])];
+    if (allNames.length === 0) {
+      aEl.innerHTML = '<div class="empty">ไม่มีสินค้า</div>';
+    } else {
+      let html = '<table><tr><th>สินค้า</th><th>สต็อก📦</th><th>ออเดอร์🛒</th><th>คงเหลือ</th></tr>';
+      for (const name of allNames) {
+        const s   = cStock.find(x => x.name === name) || { qty_box: 0, qty_pack: 0 };
+        const ord = pendingOrders[name] || { qty_box: 0, qty_pack: 0 };
+        const remBox  = (s.qty_box  || 0) - (ord.qty_box  || 0);
+        const remPack = (s.qty_pack || 0) - (ord.qty_pack || 0);
+        const remStyle = (remBox < 0 || remPack < 0) ? 'color:#d64545;font-weight:700' : 'color:#2a7a2a;font-weight:700';
+        const stockTxt = [s.qty_box > 0 ? s.qty_box + 'กล่อง' : '', s.qty_pack > 0 ? s.qty_pack + 'ซอง' : ''].filter(Boolean).join(' / ') || '-';
+        const ordTxt   = [ord.qty_box > 0 ? ord.qty_box + 'กล่อง' : '', ord.qty_pack > 0 ? ord.qty_pack + 'ซอง' : ''].filter(Boolean).join(' / ') || '-';
+        const remTxt   = [s.qty_box > 0 || ord.qty_box > 0 ? remBox + 'กล่อง' : '', s.qty_pack > 0 || ord.qty_pack > 0 ? remPack + 'ซอง' : ''].filter(Boolean).join(' / ') || '-';
+        html += '<tr><td>' + esc(name) + '</td><td>' + stockTxt + '</td><td>' + ordTxt + '</td><td style="' + remStyle + '">' + remTxt + '</td></tr>';
+      }
+      html += '</table>';
+      aEl.innerHTML = html;
+    }
+
+    // Central
     if (cStock.length === 0) {
       cEl.innerHTML = '<div class="empty">ไม่มีสต็อก</div>';
     } else {
