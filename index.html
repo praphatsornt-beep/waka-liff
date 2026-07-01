@@ -1343,7 +1343,7 @@
       } else {
         alert(data.error || "เกิดข้อผิดพลาด กรุณาลองใหม่");
         if (data.error && (data.error.includes("เหลือเพียง") || data.error.includes("หมดแล้ว"))) {
-          try { const r = await fetch(GAS_URL); const d = await r.json(); catalog = d.catalog || []; renderCatalog(); } catch(_) {}
+          try { const r = await fetch(GAS_URL); const d = await r.json(); catalog = d.catalog || []; applyFilters(); renderCatalog(); } catch(_) {}
         }
       }
     } catch (e) {
