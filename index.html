@@ -593,6 +593,12 @@
     <!-- Header bar -->
     <div class="header-bar">WAKA SPACE</div>
 
+    <!-- Category header (เฉพาะลิงก์ที่กรองตามหมวดหมู่) -->
+    <div id="categoryHeader" style="display:none;text-align:center;margin-bottom:14px">
+      <div id="categoryTitle" style="font-size:20px;font-weight:700;margin-bottom:8px"></div>
+      <div id="categoryDesc" style="display:none;font-size:13px;color:#555;line-height:1.8;text-align:left;background:#f7f6f3;border:1px solid #ddd9d2;border-radius:12px;padding:14px 16px;white-space:pre-line"></div>
+    </div>
+
     <!-- Notice -->
     <div id="orderNotice" style="display:none;background:#fff3cd;color:#856404;padding:12px 16px;border-radius:10px;font-size:13px;margin-bottom:14px;line-height:1.5;text-align:center"></div>
 
@@ -765,8 +771,40 @@
   let configData  = {};
   let lineProfile = {};
   let slipBase64  = null;
+  let activeCategory = "";
   // quantities: { "name__box": n, "name__pack": n }
   const quantities = {};
+
+  // Capture filter params ONCE at page load — handles liff.state, direct URL, and post-login redirect
+  const _captured = (function() {
+    var p    = new URLSearchParams(window.location.search);
+    var prod = p.get("product");
+    var cat  = p.get("category");
+    var liffState = p.get("liff.state") || "";
+    var slug = null;
+
+    // Extract product/category from liff.state (handles "?X=Y" and "/?X=Y")
+    var qi = liffState.indexOf("?");
+    if (qi >= 0) {
+      var sp = new URLSearchParams(liffState.slice(qi + 1));
+      prod = prod || sp.get("product");
+      cat  = cat  || sp.get("category");
+    } else if (liffState) {
+      slug = liffState.replace(/^\//, "");
+    }
+
+    // Fallback: sessionStorage survives liff.login() redirect when URL params are lost
+    prod = prod || sessionStorage.getItem("waka_filter_product") || null;
+    cat  = cat  || sessionStorage.getItem("waka_filter_category") || null;
+
+    // Refresh sessionStorage for the next redirect (if any)
+    sessionStorage.removeItem("waka_filter_product");
+    sessionStorage.removeItem("waka_filter_category");
+    if (prod) sessionStorage.setItem("waka_filter_product", prod);
+    if (cat)  sessionStorage.setItem("waka_filter_category", cat);
+
+    return { product: prod || null, category: cat || null, slug: slug || null };
+  })();
 
   // ── Init ──────────────────────────────────────────────────────────────────────
   async function init() {
@@ -784,7 +822,7 @@
     try { cached = JSON.parse(localStorage.getItem("waka_catalog") || "null"); } catch(_) {}
     if (cached && cached.catalog) {
       catalog = cached.catalog; configData = cached.config || {};
-      applyFilters(); renderBankInfo(configData); renderCatalog(); renderNotice(configData);
+      applyFilters(); renderBankInfo(configData); renderCatalog(); renderNotice(configData); renderCategoryHeader(configData);
       document.getElementById("loadingState").style.display = "none";
       document.getElementById("mainContent").style.display  = "flex";
     }
@@ -799,7 +837,7 @@
       try { localStorage.setItem("waka_catalog", JSON.stringify(data)); } catch(_) {}
 
       applyFilters();
-      renderBankInfo(configData); renderNotice(configData);
+      renderBankInfo(configData); renderNotice(configData); renderCategoryHeader(configData);
       renderCatalog();
       document.getElementById("loadingState").style.display = "none";
       document.getElementById("mainContent").style.display  = "flex";
@@ -814,25 +852,36 @@
   }
 
   function applyFilters() {
-      const urlParams = new URLSearchParams(window.location.search);
-      const productFilter = urlParams.get("product");
-      const categoryFilter = urlParams.get("category");
-      const liffState = (urlParams.get("liff.state") || "").replace(/^\//, "");
-      const pathSlug = liffState || window.location.pathname.replace(/^\//, "").replace(/\.html$/, "");
+    const productFilter  = _captured.product;
+    const categoryFilter = _captured.category;
+    const pathSlug = _captured.slug || window.location.pathname.replace(/^\//, "").replace(/\.html$/, "");
 
-      if (pathSlug && pathSlug !== "index" && pathSlug !== "") {
-        const matched = catalog.filter(p => p.slug === pathSlug);
-        if (matched.length > 0) {
-          catalog = matched;
-          document.title = matched[0].name + " — WAKA SPACE";
-        }
-      } else if (productFilter) {
-        catalog = catalog.filter(p => p.name === productFilter);
-        document.title = productFilter + " — WAKA SPACE";
-      } else if (categoryFilter) {
-        catalog = catalog.filter(p => p.category === categoryFilter);
-        document.title = categoryFilter + " — WAKA SPACE";
+    if (pathSlug && pathSlug !== "index" && pathSlug !== "") {
+      const matched = catalog.filter(p => p.slug === pathSlug);
+      if (matched.length > 0) {
+        catalog = matched;
+        document.title = matched[0].name + " — WAKA SPACE";
       }
+    } else if (productFilter) {
+      catalog = catalog.filter(p => p.name === productFilter);
+      document.title = productFilter + " — WAKA SPACE";
+    } else if (categoryFilter) {
+      catalog = catalog.filter(p => p.category.trim() === categoryFilter.trim());
+      document.title = categoryFilter + " — WAKA SPACE";
+      activeCategory = categoryFilter;
+    }
+  }
+
+  function renderCategoryHeader(config) {
+    var el = document.getElementById("categoryHeader");
+    if (!el) return;
+    if (!activeCategory) { el.style.display = "none"; return; }
+    var desc = (config || {})["category_desc_" + activeCategory] || "";
+    document.getElementById("categoryTitle").textContent = activeCategory;
+    var descEl = document.getElementById("categoryDesc");
+    if (desc) { descEl.textContent = desc; descEl.style.display = "block"; }
+    else { descEl.style.display = "none"; }
+    el.style.display = "block";
   }
 
   let deliveryFee = 50;
