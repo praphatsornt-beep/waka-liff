@@ -928,7 +928,11 @@ async function confirmReceive(id) {
 }
 
 function onBranchChange() {
-  if (userRole === 'admin' && gid('branchSelect').value) {
+  if (userRole !== 'admin') return;
+  const sb = sessionStorage.getItem('waka_branch');
+  if (sb && ['ต้นสักคอร์เนอร์','เมืองทองธานี','ศรีนครินทร์'].includes(sb)) {
+    gid('branchSelect').value = sb;
+    gid('branchTitle').textContent = 'สาขา' + sb;
     gid('branchAdminPicker').style.display = 'none';
     gid('branchApp').style.display = 'block';
   }
