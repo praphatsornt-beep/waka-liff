@@ -558,6 +558,7 @@ if (savedAuth) {
   gid('pinOverlay').style.display='none'; gid('app').style.display='block'; applyRole(savedAuth);
   const sb=sessionStorage.getItem('waka_branch') || sessionStorage.getItem('waka_staff_branch');
   if(savedAuth==='staff'&&sb){autoLoginBranch(sb);switchTab('branch');}
+  else if(savedAuth==='admin'&&sb){gid('branchSelect').value=sb;gid('branchTitle').textContent='สาขา'+sb;}
   initApp();
 }
 
@@ -846,6 +847,7 @@ function adminPickBranch(name) {
   gid('branchAdminPicker').style.display='none';
   gid('branchApp').style.display='block';
   gid('branchTitle').textContent='สาขา'+name;
+  sessionStorage.setItem('waka_branch', name);
 }
 function adminBackToPicker() {
   gid('branchApp').style.display='none';
@@ -925,7 +927,12 @@ async function confirmReceive(id) {
   }catch(e){alert('ผิดพลาด');}
 }
 
-function onBranchChange() {}
+function onBranchChange() {
+  if (userRole === 'admin' && gid('branchSelect').value) {
+    gid('branchAdminPicker').style.display = 'none';
+    gid('branchApp').style.display = 'block';
+  }
+}
 
 async function loadBrOrders() {
   const b=gid('branchSelect').value;if(!b){gid('brOrders').innerHTML='<div class="empty">เลือกสาขาก่อน</div>';return;}
