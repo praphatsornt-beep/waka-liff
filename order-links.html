@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>สั่งซื้อสินค้า WAKA Order</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #e7e5df; --card-bg: #ffffff; --card-shadow: 0 24px 60px rgba(40,38,34,.18);
+      --card-border: #ddd9d2; --accent: #111740; --label: #a8a8a8;
+      --input-bg: #f5f5f5; --field-radius: 14px; --red: #d64545;
+      --text-primary: #1a1a1a; --text-secondary: #666;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Anuphan','Space Grotesk',sans-serif; background: var(--bg); color: var(--text-primary); min-height: 100vh; padding: 20px; padding-bottom: 80px; display: flex; justify-content: center; }
+    .container { max-width: 420px; width: 100%; }
+    .header-bar { text-align: center; padding: 20px 0 16px; }
+    .header-bar h1 { font-family: 'Space Grotesk',sans-serif; font-size: 20px; font-weight: 700; }
+    .header-bar .sub { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+    .section-label { font-size: 11px; font-weight: 600; color: var(--label); text-transform: uppercase; letter-spacing: 1px; margin: 20px 0 8px; }
+    .link-row { display: flex; align-items: center; gap: 10px; background: #fff; border-radius: 12px; border: 1px solid var(--card-border); padding: 12px 16px; margin-bottom: 6px; }
+    .link-row .ico { font-size: 20px; flex-shrink: 0; }
+    .link-row .info { flex: 1; min-width: 0; }
+    .link-row .info .name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .link-row .info .sub { font-size: 11px; color: var(--label); margin-top: 2px; }
+    .copy-btn { padding: 6px 12px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--input-bg); font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; flex-shrink: 0; white-space: nowrap; }
+    .copy-btn.copied { background: #e8f5e9; border-color: #2d8f4e; color: #2d8f4e; }
+    .loading { text-align: center; color: var(--label); padding: 24px 0; font-size: 13px; }
+    .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 60px; background: #fff; border-top: 1px solid var(--card-border); display: flex; z-index: 100; box-shadow: 0 -2px 12px rgba(0,0,0,.06); }
+    .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-decoration: none; color: #999; font-size: 10px; font-weight: 600; gap: 2px; cursor: pointer; }
+    .nav-item.active { color: var(--accent); }
+    .nav-icon { font-size: 22px; }
+
+    #pinOverlay { position: fixed; inset: 0; background: var(--bg); z-index: 200; display: flex; align-items: center; justify-content: center; }
+    .pin-card { background: #fff; border-radius: 14px; box-shadow: var(--card-shadow); border: 1px solid var(--card-border); padding: 32px; width: 320px; text-align: center; }
+    .pin-card h2 { margin-bottom: 4px; }
+    .pin-card .sub { color: var(--text-secondary); margin-bottom: 16px; font-size: 13px; }
+    .pin-card input { width: 100%; padding: 14px; border: 1px solid var(--card-border); border-radius: var(--field-radius); background: var(--input-bg); font-size: 20px; text-align: center; letter-spacing: 4px; font-family: inherit; margin-bottom: 12px; }
+    .pin-card button { width: 100%; padding: 14px; background: var(--accent); color: #fff; border: none; border-radius: var(--field-radius); font-size: 16px; font-weight: 600; cursor: pointer; font-family: inherit; }
+    .pin-error { color: var(--red); margin-top: 8px; font-size: 13px; display: none; }
+  </style>
+</head>
+<body>
+
+<div id="pinOverlay">
+  <div class="pin-card">
+    <h2>🔐 เข้าสู่ระบบ</h2>
+    <p class="sub">กรอก PIN เพื่อดูลิงก์สั่งซื้อ</p>
+    <input type="password" id="pinInput" placeholder="PIN" onkeydown="if(event.key==='Enter')checkPin()">
+    <button onclick="checkPin()">เข้าสู่ระบบ</button>
+    <div class="pin-error" id="pinError">PIN ไม่ถูกต้อง</div>
+  </div>
+</div>
+
+<div class="container" id="app" style="display:none">
+  <div class="header-bar">
+    <h1>🛒 สั่งซื้อสินค้า</h1>
+    <div class="sub">WAKA Order — ลิงก์สำหรับส่งให้ลูกค้า</div>
+  </div>
+
+  <div class="section-label">ทั้งหมด</div>
+  <div class="link-row">
+    <span class="ico">🛒</span>
+    <div class="info">
+      <div class="name">สั่งซื้อทุกสินค้า</div>
+      <div class="sub">เปิดร้านค้าใน LINE</div>
+    </div>
+    <button class="copy-btn" onclick="copyLink('https://liff.line.me/2010457385-UpJLXxJ0', this)">คัดลอก</button>
+  </div>
+
+  <div class="section-label">ตามหมวดหมู่</div>
+  <div id="catLinks"><div class="loading">กำลังโหลด...</div></div>
+
+  <div class="section-label">รายสินค้า</div>
+  <div id="productLinks"><div class="loading">กำลังโหลด...</div></div>
+</div>
+
+<nav class="bottom-nav">
+  <a class="nav-item" href="app.html"><span class="nav-icon">🏠</span><span>Home</span></a>
+  <a class="nav-item" href="app.html#receive"><span class="nav-icon">📦</span><span>รับเข้า</span></a>
+  <a class="nav-item" href="app.html#warehouse"><span class="nav-icon">🏭</span><span>คลัง</span></a>
+  <a class="nav-item" href="app.html#branch"><span class="nav-icon">🏬</span><span>สาขา</span></a>
+  <a class="nav-item" href="menu.html"><span class="nav-icon">☰</span><span>เมนู</span></a>
+</nav>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
+const LIFF_BASE = 'https://liff.line.me/2010457385-UpJLXxJ0';
+const PIN_ADMIN = 'waka99';
+const BRANCH_CODES = { 'ts01': 'ต้นสักคอร์เนอร์', 'mt01': 'เมืองทองธานี', 'sn01': 'ศรีนครินทร์' };
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function checkPin() {
+  const val = document.getElementById('pinInput').value.trim();
+  if (val === PIN_ADMIN || BRANCH_CODES[val]) {
+    sessionStorage.setItem('waka_portal_auth', '1');
+    document.getElementById('pinOverlay').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    loadLinks();
+  } else {
+    const err = document.getElementById('pinError');
+    err.style.display = 'block';
+    setTimeout(() => err.style.display = 'none', 2000);
+  }
+}
+document.getElementById('pinInput').addEventListener('keydown', e => { if (e.key === 'Enter') checkPin(); });
+
+if (sessionStorage.getItem('waka_portal_auth') === '1') {
+  document.getElementById('pinOverlay').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  loadLinks();
+}
+
+function copyLink(url, btn) {
+  navigator.clipboard.writeText(url).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '✓ คัดลอกแล้ว';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 2000);
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = url; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    btn.textContent = '✓ คัดลอกแล้ว'; btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'คัดลอก'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+
+async function loadLinks() {
+  try {
+    const res = await fetch(GAS_URL);
+    const data = await res.json();
+    const catalog = (data.catalog || []).filter(p => p.active !== false && p.active !== 'FALSE');
+
+    // หมวดหมู่
+    const cats = {};
+    for (const p of catalog) { if (p.category) { cats[p.category] = (cats[p.category] || 0) + 1; } }
+    const catEl = document.getElementById('catLinks');
+    const catKeys = Object.keys(cats);
+    if (catKeys.length === 0) {
+      catEl.innerHTML = '<div class="loading">ไม่มีหมวดหมู่</div>';
+    } else {
+      catEl.innerHTML = catKeys.map(c => {
+        const link = LIFF_BASE + '?liff.state=' + encodeURIComponent('?category=' + c);
+        return `<div class="link-row">
+          <span class="ico">📁</span>
+          <div class="info"><div class="name">${esc(c)}</div><div class="sub">${cats[c]} สินค้า</div></div>
+          <button class="copy-btn" onclick="copyLink('${link.replace(/'/g,"\\'")}', this)">คัดลอก</button>
+        </div>`;
+      }).join('');
+    }
+
+    // รายสินค้า
+    const prodEl = document.getElementById('productLinks');
+    if (catalog.length === 0) {
+      prodEl.innerHTML = '<div class="loading">ไม่มีสินค้า</div>';
+    } else {
+      prodEl.innerHTML = catalog.map(p => {
+        const link = p.slug
+          ? LIFF_BASE + '?liff.state=' + encodeURIComponent('/' + p.slug)
+          : LIFF_BASE + '?liff.state=' + encodeURIComponent('?product=' + p.name);
+        const prices = [];
+        if (p.price_box)  prices.push('Box ' + Number(p.price_box).toLocaleString() + '.-');
+        if (p.price_pack) prices.push('Pack ' + Number(p.price_pack).toLocaleString() + '.-');
+        return `<div class="link-row">
+          <span class="ico">🎴</span>
+          <div class="info"><div class="name">${esc(p.name)}</div><div class="sub">${prices.join(' · ')}</div></div>
+          <button class="copy-btn" onclick="copyLink('${link.replace(/'/g,"\\'")}', this)">คัดลอก</button>
+        </div>`;
+      }).join('');
+    }
+  } catch (err) {
+    document.getElementById('catLinks').innerHTML = '<div class="loading">โหลดไม่ได้</div>';
+    document.getElementById('productLinks').innerHTML = '<div class="loading">โหลดไม่ได้</div>';
+  }
+}
+</script>
+</body>
+</html>
