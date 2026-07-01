@@ -785,6 +785,12 @@
     const val = document.getElementById("adminPinInput").value.trim();
     if (val === PIN_ADMIN) {
       sessionStorage.setItem("waka_portal_auth", "1");
+      sessionStorage.setItem("waka_app_auth", "admin");
+      sessionStorage.setItem("waka_staff_role", "admin");
+      sessionStorage.setItem("waka_staff_branch", "ทั้งหมด");
+      sessionStorage.setItem("waka_tstaff_auth", "1");
+      sessionStorage.setItem("waka_tstaff_role", "admin");
+      sessionStorage.setItem("waka_tstaff_branch", "ทั้งหมด");
       window.location.href = "menu.html";
     } else {
       const err = document.getElementById("adminPinError");
