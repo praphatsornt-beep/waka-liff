@@ -360,10 +360,13 @@
       </div>
     </div>
 
-    <!-- ══════ TAB 5: เมนู ══════ -->
+    <!-- ══════ TAB 5: เมนู (redirect only) ══════ -->
     <div class="tab-content" id="t_menu">
-      <div style="text-align:center;margin-bottom:16px"><div style="font-size:18px;font-weight:700">☰ เมนู</div></div>
-      <div class="card">
+      <div style="text-align:center;padding:40px 0">
+        <div style="font-size:32px">↗️</div>
+        <div style="margin-top:8px">กำลังไปหน้าเมนู...</div>
+      </div>
+      <div class="card" style="display:none">
         <h3>ลิงก์</h3>
         <a class="link-item" href="report.html" style="text-decoration:none;color:inherit"><div class="info"><div class="lname">💰 รายงานยอดขาย / กำไร</div></div><span>&rsaquo;</span></a>
         <a class="link-item" href="https://waka-tournament-e6wsqmhuhhexratyiub65f.streamlit.app" target="_blank" style="text-decoration:none;color:inherit"><div class="info"><div class="lname">📊 Admin Dashboard</div></div><span>&rsaquo;</span></a>
@@ -459,6 +462,7 @@ function initApp() { loadDashboard(); loadProducts(); loadCatalogLinks(); }
 
 // ── Tab Navigation ──
 function switchTab(t) {
+  if (t === 'menu') { window.location.href = 'menu.html'; return; }
   document.querySelectorAll('.tab-content').forEach(el=>el.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('active'));
   gid('t_'+t).classList.add('active'); gid('nav_'+t).classList.add('active');
