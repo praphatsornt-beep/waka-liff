@@ -235,7 +235,6 @@
 
 <script>
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
-const LIFF_BASE = 'https://liff.line.me/2010457385-UpJLXxJ0';
 const PIN_ADMIN = 'waka99';
 const BRANCH_CODES = { 'ts01': 'ต้นสักคอร์เนอร์', 'mt01': 'เมืองทองธานี', 'sn01': 'ศรีนครินทร์' };
 
@@ -258,7 +257,6 @@ function checkPin() {
     sessionStorage.setItem('waka_tstaff_branch', branch);
     if (role === 'admin') { document.getElementById('adminSection').style.display = 'block'; }
     showRoleBadge(role, branch);
-    loadProductLinks();
   } else {
     document.getElementById('pinError').style.display = 'block';
     setTimeout(() => document.getElementById('pinError').style.display = 'none', 2000);
@@ -276,76 +274,14 @@ if (sessionStorage.getItem('waka_portal_auth') === '1') {
   document.getElementById('app').style.display = 'block';
   var _r = sessionStorage.getItem('waka_staff_role') || '';
   var _b = sessionStorage.getItem('waka_staff_branch') || '';
-  if (_r === 'admin') { document.getElementById('adminSection').style.display = 'block'; document.getElementById('cardProducts').style.display = 'block'; }
+  if (_r === 'admin') { document.getElementById('adminSection').style.display = 'block'; }
   showRoleBadge(_r, _b);
-  loadProductLinks();
-}
-
-async function loadProductLinks() {
-  try {
-    const res = await fetch(GAS_URL);
-    const data = await res.json();
-    const catalog = data.catalog || [];
-    const el = document.getElementById('productLinks');
-    if (catalog.length === 0) { el.innerHTML = '<div style="text-align:center;color:#a8a8a8;padding:16px">ไม่มีสินค้า</div>'; return; }
-    let html = '';
-
-    // รวมหมวด
-    const cats = {};
-    for (const p of catalog) {
-      const c = p.category || '';
-      if (c) {
-        if (!cats[c]) cats[c] = 0;
-        cats[c]++;
-      }
-    }
-    const catKeys = Object.keys(cats);
-    if (catKeys.length > 0) {
-      html += '<div style="font-size:11px;font-weight:600;color:#a8a8a8;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;margin-top:4px">หมวดหมู่</div>';
-      for (const c of catKeys) {
-        const catLink = LIFF_BASE + '?liff.state=' + encodeURIComponent('?category=' + c);
-        html += '<div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:12px;border:1px solid #ddd9d2;padding:12px 16px;margin-bottom:6px">';
-        html += '<span style="font-size:20px">📁</span>';
-        html += '<div style="flex:1"><div style="font-weight:600;font-size:14px">' + esc(c) + '</div>';
-        html += '<div style="font-size:11px;color:#a8a8a8">' + cats[c] + ' สินค้า</div></div>';
-        html += '<button onclick="copyLink(\'' + catLink.replace(/'/g, "\\'") + '\')" style="padding:6px 12px;border:1px solid #ddd9d2;border-radius:8px;background:#f5f5f5;font-family:inherit;font-size:12px;cursor:pointer">คัดลอก</button>';
-        html += '</div>';
-      }
-      html += '<div style="font-size:11px;font-weight:600;color:#a8a8a8;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;margin-top:14px">รายสินค้า</div>';
-    }
-
-    for (const p of catalog) {
-      const link = p.slug ? LIFF_BASE + '?liff.state=' + encodeURIComponent('/' + p.slug) : LIFF_BASE + '?liff.state=' + encodeURIComponent('?product=' + p.name);
-      const prices = [];
-      if (p.price_box) prices.push('Box ' + p.price_box.toLocaleString() + '.-');
-      if (p.price_pack) prices.push('Pack ' + p.price_pack.toLocaleString() + '.-');
-      html += '<div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:12px;border:1px solid #ddd9d2;padding:12px 16px;margin-bottom:6px">';
-      html += '<span style="font-size:20px">🎴</span>';
-      html += '<div style="flex:1"><div style="font-weight:600;font-size:14px">' + esc(p.name) + '</div>';
-      html += '<div style="font-size:11px;color:#a8a8a8">' + prices.join(' · ') + '</div></div>';
-      html += '<button onclick="copyLink(\'' + link.replace(/'/g, "\\'") + '\')" style="padding:6px 12px;border:1px solid #ddd9d2;border-radius:8px;background:#f5f5f5;font-family:inherit;font-size:12px;cursor:pointer">คัดลอก</button>';
-      html += '</div>';
-    }
-    el.innerHTML = html;
-  } catch (err) {
-    document.getElementById('productLinks').innerHTML = '<div style="text-align:center;color:#d64545;padding:16px">โหลดไม่ได้</div>';
-  }
 }
 
 function logout() {
   sessionStorage.clear();
   location.reload();
 }
-
-function copyLink(url) {
-  navigator.clipboard.writeText(url).then(() => {
-    alert('คัดลอกลิงก์แล้ว!');
-  }).catch(() => {
-    prompt('คัดลอกลิงก์:', url);
-  });
-}
-
-function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 </script>
 </body>
 </html>
