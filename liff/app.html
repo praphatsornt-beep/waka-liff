@@ -116,6 +116,39 @@
     .link-item .lname { font-weight:600;font-size:14px; }
     .link-item .ldesc { font-size:11px;color:var(--label); }
     .copy-btn { padding:6px 12px;border:1px solid var(--card-border);border-radius:8px;background:var(--input-bg);font-family:inherit;font-size:12px;cursor:pointer; }
+    /* GYM section */
+    .gym-tab-bar{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+    .gym-tab-btn{flex:1;padding:10px 6px;border:2px solid var(--card-border);border-radius:var(--radius);background:var(--white);text-align:center;cursor:pointer;font-family:inherit;font-size:12px;font-weight:600;min-width:70px}
+    .gym-tab-btn.active{border-color:var(--accent);background:#f0f0fa}
+    .gym-scan-hint{text-align:center;font-size:13px;color:var(--text2);margin-bottom:12px}
+    .gym-manual-row{display:flex;gap:8px;margin-bottom:0}
+    .gym-manual-row input{flex:1;padding:12px 14px;border:1px solid var(--card-border);border-radius:var(--radius);background:var(--input-bg);font-size:14px;font-family:inherit}
+    .gym-manual-row button{padding:12px 20px;background:var(--accent);color:var(--white);border:none;border-radius:var(--radius);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
+    .gym-player-card{background:var(--input-bg);border-radius:12px;padding:16px;margin-bottom:10px}
+    .gym-player-card .pc-name{font-weight:700;font-size:16px}
+    .gym-player-card .pc-real{font-size:12px;color:var(--text2)}
+    .gym-player-card .pc-detail{margin-top:8px;font-size:13px}
+    .gym-pc-status{margin-top:6px;font-size:13px;font-weight:600}
+    .gym-pc-status.given{color:var(--green)} .gym-pc-status.pending{color:var(--orange)}
+    .gym-give-btn{width:100%;padding:14px;background:var(--green);color:var(--white);border:none;border-radius:var(--radius);font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;margin-top:4px}
+    .gym-give-btn:disabled{opacity:.5;cursor:not-allowed}
+    .gym-give-btn.box{background:#f59e0b}
+    .gym-scan-again-btn{width:100%;padding:14px;background:transparent;color:var(--accent);border:1.5px solid var(--accent);border-radius:var(--radius);font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;margin-top:12px}
+    .gym-tier-select{display:flex;gap:8px;margin-bottom:14px}
+    .gym-tier-opt{flex:1;padding:12px 4px;border:2px solid var(--card-border);border-radius:var(--radius);background:var(--white);text-align:center;cursor:pointer;font-family:inherit;font-size:12px}
+    .gym-tier-opt.selected{border-color:var(--accent);background:#f0f0fa}
+    .gym-tier-fee{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;margin-top:4px}
+    .gym-result-card{background:var(--input-bg);border-radius:12px;padding:14px;margin-bottom:8px}
+    .gym-result-card .rc-name{font-weight:600;font-size:14px;margin-bottom:8px}
+    .gym-result-card select{width:100%;padding:10px 12px;border:1px solid var(--card-border);border-radius:var(--radius);background:var(--white);font-size:14px;font-family:inherit;margin-bottom:8px}
+    .gym-summary-row{display:flex;gap:8px;margin-bottom:8px}
+    .gym-summary-card{flex:1;background:var(--input-bg);border-radius:12px;padding:16px}
+    .gym-summary-card .sc-title{font-size:12px;color:var(--text2);margin-bottom:4px}
+    .gym-summary-card .sc-value{font-family:'Space Grotesk',sans-serif;font-size:24px;font-weight:700;color:var(--accent)}
+    .gym-summary-card .sc-sub{font-size:12px;color:var(--text2);margin-top:2px}
+    .gym-bank-row{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid #eeedea}
+    .gym-bank-row:last-child{border-bottom:none}
+    #gymScannerBox{width:100%;border-radius:12px;overflow:hidden;margin-bottom:16px}
   </style>
 </head>
 <body>
@@ -307,6 +340,11 @@
               <div class="br-menu-title">เบิกสินค้า</div>
               <div class="br-menu-desc">เบิกสำหรับกิจกรรม</div>
             </div>
+            <div class="br-menu-card" onclick="openBrView('gym')" style="grid-column:1/-1">
+              <div style="font-size:40px">🏆</div>
+              <div class="br-menu-title">WAKA GYM</div>
+              <div class="br-menu-desc">สแกน QR / Event / ผลแข่ง</div>
+            </div>
           </div>
         </div>
 
@@ -356,6 +394,71 @@
             <div id="wdHistory"><div class="empty">ยังไม่มีรายการ</div></div>
           </div>
         </div>
+
+        <!-- WAKA GYM sub-view -->
+        <div id="brGym" style="display:none">
+          <div class="card" style="margin-bottom:16px">
+            <div class="gym-tab-bar">
+              <div class="gym-tab-btn active" id="gymTabScan" onclick="gymSwitchTab('scan')">📷 สแกน</div>
+              <div class="gym-tab-btn" id="gymTabEvent" onclick="gymSwitchTab('event')">📅 Event</div>
+              <div class="gym-tab-btn" id="gymTabResults" onclick="gymSwitchTab('results')">🏅 ผลแข่ง</div>
+              <div class="gym-tab-btn" id="gymTabSummary" onclick="gymSwitchTab('summary')" style="display:none">📊 สรุป</div>
+            </div>
+          </div>
+          <!-- Scan -->
+          <div id="gymScanView">
+            <div class="card">
+              <div id="gymScannerBox"></div>
+              <div class="gym-scan-hint">เปิดกล้องสแกน QR ลูกค้า</div>
+              <div class="gym-manual-row">
+                <input type="text" id="gymManualId" placeholder="หรือพิมพ์รหัส">
+                <button onclick="gymLookupManual()">ค้นหา</button>
+              </div>
+            </div>
+          </div>
+          <!-- Result -->
+          <div id="gymResultArea" style="display:none">
+            <div class="card">
+              <div id="gymResultGroupId" style="text-align:center;font-size:13px;color:var(--label);margin-bottom:12px"></div>
+              <div id="gymPlayerCards"></div>
+              <div id="gymAllGivenMsg" style="display:none">
+                <div style="text-align:center;padding:16px;background:#e8f5e9;border-radius:12px"><div style="font-size:32px">✅</div><div style="font-size:14px;font-weight:600;color:var(--green);margin-top:4px">แจกครบทุกคนแล้ว</div></div>
+              </div>
+              <button class="gym-scan-again-btn" onclick="gymResetScan()">สแกนคนต่อไป</button>
+            </div>
+          </div>
+          <!-- Event -->
+          <div id="gymEventView" style="display:none">
+            <div class="card">
+              <div class="section-label" style="font-size:11px;font-weight:600;color:var(--label);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">สร้าง Event วันนี้</div>
+              <div id="gymBranchDisplay" style="font-weight:600;margin-bottom:14px;font-size:14px"></div>
+              <div style="font-size:12px;font-weight:500;color:var(--text2);margin-bottom:6px">Tier (จำนวนผู้เล่น)</div>
+              <div class="gym-tier-select">
+                <div class="gym-tier-opt" onclick="gymSelectTier('S',this)"><div>S</div><div style="font-size:10px;color:var(--text2)">2-4 คน</div><div class="gym-tier-fee">100฿</div></div>
+                <div class="gym-tier-opt" onclick="gymSelectTier('M',this)"><div>M</div><div style="font-size:10px;color:var(--text2)">5-8 คน</div><div class="gym-tier-fee">150฿</div></div>
+                <div class="gym-tier-opt selected" onclick="gymSelectTier('L',this)"><div>L</div><div style="font-size:10px;color:var(--text2)">9-15 คน</div><div class="gym-tier-fee">200฿</div></div>
+                <div class="gym-tier-opt" onclick="gymSelectTier('XL',this)"><div>XL</div><div style="font-size:10px;color:var(--text2)">16+ คน</div><div class="gym-tier-fee">200฿</div></div>
+              </div>
+              <div id="gymRewardPreview" style="background:var(--input-bg);border-radius:12px;padding:14px;margin-bottom:14px;font-size:12px"></div>
+              <button class="btn" id="gymCreateEventBtn" onclick="gymCreateEvent()">สร้าง Event</button>
+              <div id="gymEventStatus" style="margin-top:12px;text-align:center;font-size:13px"></div>
+            </div>
+          </div>
+          <!-- Results -->
+          <div id="gymResultsView" style="display:none">
+            <div class="card">
+              <div style="font-size:11px;font-weight:600;color:var(--label);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">ใส่ผลแข่งขัน</div>
+              <div id="gymResultsPlayerList"><div class="empty">กด "โหลดรายชื่อ" ด้านล่าง</div></div>
+              <button class="btn btn-orange" id="gymLoadPlayersBtn" onclick="gymLoadPlayersForResults()" style="margin-bottom:8px">โหลดรายชื่อวันนี้</button>
+              <button class="btn btn-green" id="gymSubmitResultsBtn" onclick="gymSubmitResults()" style="display:none">💾 บันทึกผลแข่งขัน</button>
+            </div>
+          </div>
+          <!-- Summary (admin) -->
+          <div id="gymSummaryView" style="display:none">
+            <div class="card"><div id="gymSummaryContent"><div class="empty">กำลังโหลด...</div></div></div>
+          </div>
+        </div>
+
       </div>
       </div>
     </div>
@@ -781,14 +884,16 @@ function openBrView(s) {
   if(!gid('branchSelect').value){alert('เลือกสาขาก่อน');return;}
   gid('brMenu').style.display='none';
   gid('brSubView').style.display='block';
-  ['brIncoming','brOrders','brHandover','brStock','brWithdraw'].forEach(id=>gid(id).style.display='none');
+  ['brIncoming','brOrders','brHandover','brStock','brWithdraw','brGym'].forEach(id=>gid(id).style.display='none');
   if(s==='incoming'){gid('brIncoming').style.display='block';loadIncoming();}
   if(s==='orders'){gid('brOrders').style.display='block';loadBrOrders();}
   if(s==='handover')gid('brHandover').style.display='block';
   if(s==='bstock'){gid('brStock').style.display='block';loadBrStock();}
   if(s==='withdraw'){gid('brWithdraw').style.display='block';loadWithdrawals();}
+  if(s==='gym'){gid('brGym').style.display='block';gymOpen();}
 }
 function closeBrView() {
+  gymStopScanner();
   gid('brSubView').style.display='none';
   gid('brMenu').style.display='block';
 }
@@ -928,6 +1033,149 @@ function copyLink(url){navigator.clipboard.writeText(url).then(()=>toast('คั
 
 // ── Toast ──
 function toast(msg,err){const el=gid('toast');el.textContent=msg;el.style.background=err?'var(--red)':'var(--green)';el.style.display='block';setTimeout(()=>el.style.display='none',3000);}
+
+// ══════════════════════════════════════════════════════════
+// WAKA GYM
+// ══════════════════════════════════════════════════════════
+var gymScanner=null,gymSelectedTier='L',gymLoadedPlayers=[];
+const GYM_TOKEN_TABLE={S:{"1st":4,"2nd":2,"3rd-4th":2,"5th+":0},M:{"1st":8,"2nd":4,"3rd-4th":2,"5th+":2},L:{"1st":15,"2nd":7,"3rd-4th":4,"5th+":2},XL:{"1st":30,"2nd":10,"3rd-4th":5,"5th+":2}};
+
+function gymOpen() {
+  if(userRole==='admin') gid('gymTabSummary').style.display='block';
+  gid('gymBranchDisplay').textContent='🏬 '+gid('branchSelect').value;
+  gymSwitchTab('scan');
+  gymUpdateRewardPreview();
+}
+function gymSwitchTab(tab) {
+  ['scan','event','results','summary'].forEach(function(t){
+    var v=gid('gym'+t.charAt(0).toUpperCase()+t.slice(1)+'View');if(v)v.style.display=t===tab?'block':'none';
+    var b=gid('gymTab'+t.charAt(0).toUpperCase()+t.slice(1));if(b)b.classList.toggle('active',t===tab);
+  });
+  gid('gymResultArea').style.display='none';
+  if(tab==='scan'){gymScanner=null;gymStartScanner();}
+  if(tab==='summary')gymLoadSummary();
+}
+function gymStartScanner() {
+  if(gymScanner)return;
+  gymScanner=new Html5Qrcode("gymScannerBox");
+  gymScanner.start({facingMode:"environment"},{fps:10,qrbox:{width:220,height:220}},function(t){gymStopScanner();gymLookupGroup(t.trim());},function(){}).catch(function(){
+    gid("gymScannerBox").innerHTML='<div style="text-align:center;padding:20px;color:#a8a8a8">กล้องไม่พร้อมใช้<br>พิมพ์รหัสด้านล่าง</div>';
+  });
+}
+function gymStopScanner(){if(gymScanner){try{gymScanner.stop();}catch(e){}gymScanner=null;}}
+function gymLookupManual(){var id=gid('gymManualId').value.trim();if(id){gymStopScanner();gymLookupGroup(id);}}
+async function gymLookupGroup(groupId) {
+  gid('gymScanView').style.display='none';gid('gymResultArea').style.display='block';
+  gid('gymResultGroupId').textContent='#'+groupId;
+  gid('gymPlayerCards').innerHTML='<div style="text-align:center;color:#a8a8a8;padding:16px">กำลังโหลด...</div>';
+  gid('gymAllGivenMsg').style.display='none';
+  try{
+    var res=await fetch(G+'?action=api&do=wakagym_lookup&group_id='+encodeURIComponent(groupId)+'&_t='+Date.now());
+    var data=await res.json();
+    if(data.error){gid('gymPlayerCards').innerHTML='<div style="text-align:center;color:var(--red);padding:16px">ไม่พบรหัส '+esc(groupId)+'</div>';return;}
+    gymRenderPlayers(data.players||[]);
+  }catch(e){gid('gymPlayerCards').innerHTML='<div style="color:var(--red);text-align:center;padding:16px">'+esc(e.message)+'</div>';}
+}
+function gymRenderPlayers(players) {
+  var html='',allDone=true;
+  for(var i=0;i<players.length;i++){
+    var p=players[i],isGiven=String(p.rewards_given).toLowerCase()==='true',hasResults=p.placement&&p.placement!=='';
+    html+='<div class="gym-player-card"><div class="pc-name">🎮 '+esc(p.player_name)+'</div>';
+    if(p.real_name&&p.real_name!==p.player_name)html+='<div class="pc-real">'+esc(p.real_name)+'</div>';
+    var pm=p.payment_method||'transfer',bk=p.bank||'';
+    if(pm==='cash')html+='<div style="margin-top:8px;padding:8px;background:#fff8e1;border-radius:8px;font-size:12px">💵 เงินสด</div>';
+    else html+='<div style="margin-top:8px;padding:8px;background:#e3f2fd;border-radius:8px;font-size:12px">📱 '+esc(bk||'โอนเงิน')+'</div>';
+    if(p.slip_url)html+='<div style="margin-top:8px"><img src="'+esc(p.slip_url)+'" style="max-width:100%;border-radius:8px;max-height:150px" onclick="window.open(\''+esc(p.slip_url)+'\')"></div>';
+    if(hasResults){
+      html+='<div class="pc-detail">🏅 อันดับ: <b>'+esc(p.placement)+'</b> · 🪙 Token: <b>'+p.tokens_earned+'</b> · 📦 Promo: <b>'+p.promo_packs+'</b> ซอง</div>';
+      html+='<div class="pc-detail">🪙 สะสมรวม: '+(p.total_tokens||0)+'/30</div>';
+      if(p.boxes_earned>(p.boxes_given_count||0)){
+        var bp=p.boxes_earned-(p.boxes_given_count||0);
+        html+='<div class="gym-pc-status pending" style="font-size:16px">🎁 แลก Box ได้! ('+bp+' กล่อง)</div>';
+        html+='<button class="gym-give-btn box" onclick="gymGiveBox(\''+esc(p.player_name).replace(/\'/g,"\\'") +'\',this)">🎁 ให้ Box แล้ว</button>';
+      }
+      if(isGiven){html+='<div class="gym-pc-status given">✅ แจกรางวัลแล้ว'+(p.note?' ('+esc(p.note)+')':'')+' </div>';}
+      else{allDone=false;html+='<button class="gym-give-btn" onclick="gymGiveRewards(\''+p.reg_id+'\',this)">🎁 แจก Token + Promo Pack</button>';}
+    }else{html+='<div class="gym-pc-status pending">⏳ ยังไม่มีผลแข่ง</div>';allDone=false;}
+    html+='</div>';
+  }
+  gid('gymPlayerCards').innerHTML=html;
+  if(allDone&&players.length>0)gid('gymAllGivenMsg').style.display='block';
+}
+async function gymGiveRewards(regId,btn){
+  btn.disabled=true;btn.textContent='กำลังบันทึก...';
+  try{var res=await fetch(G+'?action=api&do=wakagym_give_rewards&reg_id='+encodeURIComponent(regId)+'&_t='+Date.now());var data=await res.json();
+    if(data.ok)btn.outerHTML='<div class="gym-pc-status given">✅ '+(data.already?'แจกไปแล้ว':'แจกรางวัลแล้ว')+'</div>';
+    else btn.textContent='เกิดข้อผิดพลาด';
+  }catch(e){btn.textContent='ลองอีกครั้ง';btn.disabled=false;}
+}
+async function gymGiveBox(playerName,btn){
+  btn.disabled=true;btn.textContent='กำลังบันทึก...';
+  try{var res=await fetch(G+'?action=api&do=wakagym_give_box&player_name='+encodeURIComponent(playerName)+'&_t='+Date.now());var data=await res.json();
+    if(data.ok)btn.outerHTML='<div class="gym-pc-status given">✅ ให้ Box แล้ว</div>';
+    else btn.textContent='เกิดข้อผิดพลาด';
+  }catch(e){btn.textContent='ลองอีกครั้ง';btn.disabled=false;}
+}
+function gymResetScan(){gid('gymResultArea').style.display='none';gid('gymScanView').style.display='block';gid('gymManualId').value='';gymScanner=null;gymStartScanner();}
+function gymSelectTier(t,el){gymSelectedTier=t;document.querySelectorAll('.gym-tier-opt').forEach(function(e){e.classList.remove('selected');});el.classList.add('selected');gymUpdateRewardPreview();}
+function gymUpdateRewardPreview(){
+  var t=GYM_TOKEN_TABLE[gymSelectedTier]||{};
+  var html='<div style="font-weight:600;margin-bottom:6px">🪙 Token Reward — Tier '+gymSelectedTier+'</div>';
+  html+='1st: '+(t["1st"]||0)+' · 2nd: '+(t["2nd"]||0)+' · 3rd-4th: '+(t["3rd-4th"]||0)+' · 5th+: '+(t["5th+"]||0);
+  html+='<div style="margin-top:6px">📦 Promo Pack: ชนะ 0-1=1ซอง, 2=2ซอง, 3=3ซอง</div>';
+  gid('gymRewardPreview').innerHTML=html;
+}
+async function gymCreateEvent(){
+  var branch=gid('branchSelect').value,btn=gid('gymCreateEventBtn');
+  btn.disabled=true;btn.textContent='กำลังสร้าง...';
+  try{var res=await fetch(G+'?action=api&do=wakagym_create_event&branch='+encodeURIComponent(branch)+'&tier='+gymSelectedTier+'&created_by='+encodeURIComponent(userRole)+'&_t='+Date.now());
+    var data=await res.json();
+    gid('gymEventStatus').innerHTML=data.ok?'✅ สร้าง Event สำเร็จ!<br>ID: '+data.event_id+' · Tier '+data.tier+' · '+data.entry_fee+'฿':'❌ '+(data.error||'เกิดข้อผิดพลาด');
+  }catch(e){gid('gymEventStatus').textContent='❌ '+e.message;}
+  btn.disabled=false;btn.textContent='สร้าง Event';
+}
+async function gymLoadPlayersForResults(){
+  var el=gid('gymResultsPlayerList');el.innerHTML='<div style="text-align:center;color:#a8a8a8;padding:16px">กำลังโหลด...</div>';
+  try{var res=await fetch(G+'?action=api&do=wakagym_players&_t='+Date.now());var data=await res.json();
+    gymLoadedPlayers=data.players||[];
+    if(!gymLoadedPlayers.length){el.innerHTML='<div class="empty">ไม่มีผู้เล่นวันนี้</div>';return;}
+    var html='';
+    for(var i=0;i<gymLoadedPlayers.length;i++){var p=gymLoadedPlayers[i];
+      html+='<div class="gym-result-card"><div class="rc-name">'+(i+1)+'. '+esc(p.player_name||p.real_name)+'</div>';
+      html+='<select id="gymPlace_'+i+'"><option value="">-- อันดับ --</option><option value="1st">🥇 1st</option><option value="2nd">🥈 2nd</option><option value="3rd-4th">🥉 3rd-4th</option><option value="5th+">5th+</option></select>';
+      html+='<select id="gymWins_'+i+'"><option value="0">ชนะ 0 แมตช์ (1 ซอง)</option><option value="1">ชนะ 1 แมตช์ (1 ซอง)</option><option value="2">ชนะ 2 แมตช์ (2 ซอง)</option><option value="3">ชนะ 3 แมตช์ (3 ซอง)</option></select></div>';
+    }
+    el.innerHTML=html;gid('gymSubmitResultsBtn').style.display='block';
+  }catch(e){el.innerHTML='<div style="color:var(--red);text-align:center;padding:16px">'+esc(e.message)+'</div>';}
+}
+async function gymSubmitResults(){
+  var results=[];
+  for(var i=0;i<gymLoadedPlayers.length;i++){
+    var place=gid('gymPlace_'+i).value,wins=gid('gymWins_'+i).value;
+    if(!place){alert('กรุณาเลือกอันดับของ '+(gymLoadedPlayers[i].player_name||gymLoadedPlayers[i].real_name));return;}
+    results.push({reg_id:gymLoadedPlayers[i].reg_id,placement:place,wins_3match:wins});
+  }
+  var btn=gid('gymSubmitResultsBtn');btn.disabled=true;btn.textContent='กำลังบันทึก...';
+  try{var res=await fetch(G+'?action=api&do=wakagym_submit_results&results='+encodeURIComponent(JSON.stringify(results))+'&_t='+Date.now());
+    var data=await res.json();
+    if(data.ok){var s='';for(var p of(data.processed||[]))s+=p.player_name+': '+p.placement+' → 🪙'+p.tokens+' + 📦'+p.promo_packs+'ซอง\n';alert('บันทึกสำเร็จ!\n\n'+s);btn.textContent='✅ บันทึกแล้ว';}
+    else{alert('Error: '+(data.error||'ไม่สำเร็จ'));btn.disabled=false;btn.textContent='💾 บันทึกผลแข่งขัน';}
+  }catch(e){alert('Error: '+e.message);btn.disabled=false;btn.textContent='💾 บันทึกผลแข่งขัน';}
+}
+async function gymLoadSummary(){
+  var el=gid('gymSummaryContent');el.innerHTML='<div class="empty">กำลังโหลด...</div>';
+  try{var res=await fetch(G+'?action=api&do=wakagym_summary&_t='+Date.now());var d=await res.json();
+    if(d.error){el.innerHTML='<div style="color:var(--red);text-align:center">'+esc(d.error)+'</div>';return;}
+    var html='<div style="text-align:center;font-size:12px;color:var(--text2);margin-bottom:12px">📅 '+esc(d.date)+'</div>';
+    html+='<div class="gym-summary-row"><div class="gym-summary-card"><div class="sc-title">ผู้เล่น</div><div class="sc-value">'+d.total_players+'</div></div>';
+    html+='<div class="gym-summary-card"><div class="sc-title">ยอดเงิน</div><div class="sc-value">'+d.total_amount.toLocaleString()+'</div><div class="sc-sub">บาท</div></div></div>';
+    html+='<div class="gym-summary-card" style="margin-bottom:8px"><div class="sc-title">💰 รายได้</div>';
+    html+='<div class="gym-bank-row"><span style="color:var(--text2)">💵 เงินสด</span><span style="font-family:\'Space Grotesk\',sans-serif;font-weight:600">'+d.cash_amount.toLocaleString()+' ฿</span></div>';
+    html+='<div class="gym-bank-row"><span style="color:var(--text2)">📱 โอนเงิน</span><span style="font-family:\'Space Grotesk\',sans-serif;font-weight:600">'+d.transfer_amount.toLocaleString()+' ฿</span></div>';
+    var banks=d.bank_breakdown||{};for(var bk in banks)html+='<div class="gym-bank-row"><span style="color:var(--text2);padding-left:16px">'+esc(bk)+'</span><span style="font-family:\'Space Grotesk\',sans-serif;font-weight:600">'+banks[bk].toLocaleString()+' ฿</span></div>';
+    html+='</div>';el.innerHTML=html;
+  }catch(e){el.innerHTML='<div style="color:var(--red);text-align:center">'+esc(e.message)+'</div>';}
+}
 
 </script>
 </body>
