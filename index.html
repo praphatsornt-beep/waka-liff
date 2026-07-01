@@ -784,16 +784,23 @@
     var liffState = p.get("liff.state") || "";
     var slug = null;
 
-    // Extract product/category/all from liff.state (handles "?X=Y" and "/?X=Y")
-    var qi = liffState.indexOf("?");
-    if (qi >= 0) {
-      var sp = new URLSearchParams(liffState.slice(qi + 1));
-      prod = prod || sp.get("product");
-      cat  = cat  || sp.get("category");
-      if (!all) all = sp.get("all") === "1";
-    } else if (liffState) {
-      slug = liffState.replace(/^\//, "");
-    }
+    // Extract product/category/all from liff.state (handles "?X=Y", "/?X=Y", and LINE double-wrap)
+    var _parseLs = function(ls) {
+      if (!ls) return;
+      var qi = ls.indexOf("?");
+      if (qi >= 0) {
+        var sp = new URLSearchParams(ls.slice(qi + 1));
+        prod = prod || sp.get("product");
+        cat  = cat  || sp.get("category");
+        if (!all) all = sp.get("all") === "1";
+        // LINE sometimes wraps liff.state inside liff.state — recurse once
+        var inner = (!prod && !cat && !all) ? (sp.get("liff.state") || "") : "";
+        if (inner) _parseLs(inner);
+      } else if (!slug && ls) {
+        slug = ls.replace(/^\//, "");
+      }
+    };
+    _parseLs(liffState);
 
     // Fallback: sessionStorage survives liff.login() redirect when URL params are lost
     prod = prod || sessionStorage.getItem("waka_filter_product") || null;
