@@ -210,54 +210,20 @@
 <div id="app" style="display:none">
   <div class="app-content">
 
-    <!-- ══════ TAB 1: HOME ══════ -->
+    <!-- ══════ TAB 1: ออเดอร์ ══════ -->
     <div class="tab-content active" id="t_home">
-      <!-- Header -->
-      <div class="hm-header">
-        <div>
-          <div class="hm-greeting">สวัสดี 👋</div>
-          <div class="hm-date" id="hmDate"></div>
-        </div>
-        <div class="hm-badge" id="hmRoleBadge">Admin</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div style="font-size:18px;font-weight:700;color:#2C1810">📋 ออเดอร์</div>
+        <button onclick="loadDashboard()" style="background:none;border:1px solid #EDE8E0;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;color:#4A3728;cursor:pointer;font-family:inherit">↺ รีโหลด</button>
       </div>
-      <!-- Main KPI -->
-      <div class="hm-main-card">
-        <div class="hm-main-label">ยอดขายวันนี้</div>
-        <div class="hm-main-value" id="kRevenue">฿—</div>
-        <div class="hm-main-sub" id="kOrders">— ออเดอร์</div>
+      <!-- Filter pills -->
+      <div class="sub-tabs" id="orderFilterTabs">
+        <button class="sub-tab active" onclick="orderFilter('all',this)">ทั้งหมด</button>
+        <button class="sub-tab" onclick="orderFilter('wait',this)">⏳ รอตรวจ</button>
+        <button class="sub-tab" onclick="orderFilter('ok',this)">✅ ยืนยัน</button>
+        <button class="sub-tab" onclick="orderFilter('other',this)">อื่นๆ</button>
       </div>
-      <!-- KPI 2 cols -->
-      <div class="hm-kpi2">
-        <div class="hm-kpi-card">
-          <div class="lbl">กำไรวันนี้</div>
-          <div class="val green" id="kProfit">—</div>
-        </div>
-        <div class="hm-kpi-card">
-          <div class="lbl">รอตรวจสลิป</div>
-          <div class="val orange" id="kPending">—</div>
-        </div>
-      </div>
-      <!-- 7-day chart -->
-      <div class="hm-card">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div class="hm-section-title" style="margin:0">ยอดขาย 7 วัน</div>
-          <div style="font-size:11px;color:#9A8878" id="hmChartTotal"></div>
-        </div>
-        <div class="hm-chart-wrap" id="hmChart"><div class="loading" style="padding:12px;font-size:12px">กำลังโหลด...</div></div>
-      </div>
-      <!-- Pending Slips -->
-      <div class="hm-card" style="margin-top:16px">
-        <div class="hm-pending-row">
-          <div class="hm-section-title" style="margin:0">⏳ รอตรวจสลิป</div>
-          <span class="hm-pending-badge" id="pendingBadge">—</span>
-        </div>
-        <div id="pendingSlipsList"><div class="loading" style="padding:8px;font-size:12px">กำลังโหลด...</div></div>
-      </div>
-      <!-- Recent Orders -->
-      <div class="hm-card">
-        <div class="hm-section-title" style="margin-bottom:4px">ออเดอร์ล่าสุด</div>
-        <div id="recentOrders"><div class="loading" style="padding:8px;font-size:12px">กำลังโหลด...</div></div>
-      </div>
+      <div id="recentOrders"><div class="loading">กำลังโหลด...</div></div>
     </div>
 
     <!-- ══════ TAB 2: รับเข้า ══════ -->
@@ -561,7 +527,7 @@
   <!-- Bottom Nav -->
   <nav class="bottom-nav">
     <div class="nav-item active" onclick="switchTab('home')" id="nav_home">
-      <span class="nav-icon">🏠</span><span>Home</span>
+      <span class="nav-icon">📋</span><span>ออเดอร์</span>
     </div>
     <div class="nav-item" onclick="switchTab('receive')" id="nav_receive">
       <span class="nav-icon">📦</span><span>สินค้า</span>
@@ -656,97 +622,58 @@ function switchTab(t) {
 }
 
 // ══════════════════════════════════════════════════════════
-// TAB 1: HOME
+// TAB 1: ออเดอร์
 // ══════════════════════════════════════════════════════════
-function hmSetDate() {
-  const t = new Date();
-  const days = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
-  const months = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
-  gid('hmDate').textContent = `วัน${days[t.getDay()]}ที่ ${t.getDate()} ${months[t.getMonth()]} ${t.getFullYear()+543}`;
-  gid('hmRoleBadge').textContent = userRole === 'admin' ? 'Admin' : 'Staff';
+let _allOrders = [];
+let _orderFilter = 'all';
+
+function orderFilter(f, btn) {
+  _orderFilter = f;
+  gid('orderFilterTabs').querySelectorAll('.sub-tab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderOrders();
 }
 
-function hmRenderChart(byDate) {
-  const today = new Date().toISOString().slice(0,10);
-  const days7 = Array.from({length:7}, (_,i) => {
-    const d = new Date(); d.setDate(d.getDate() - (6-i));
-    return d.toISOString().slice(0,10);
-  });
-  const dayShort = ['อา','จ','อ','พ','พฤ','ศ','ส'];
-  const entries = days7.map(dt => ({ dt, rev: byDate[dt]?.revenue || 0 }));
-  const max = Math.max(...entries.map(e => e.rev), 1);
-  const total7 = entries.reduce((s,e) => s+e.rev, 0);
-  gid('hmChartTotal').textContent = '7 วัน ฿' + total7.toLocaleString();
-  gid('hmChart').innerHTML = entries.map(e => {
-    const d = new Date(e.dt); const isToday = e.dt === today;
-    const h = Math.max(Math.round((e.rev/max)*64), e.rev>0?4:0);
-    return `<div class="hm-bar-col">
-      <div class="hm-bar${isToday?' today':e.rev===0?' zero':''}" style="height:${h}px"></div>
-      <div class="hm-bar-lbl">${dayShort[d.getDay()]}</div>
+function renderOrders() {
+  const el = gid('recentOrders');
+  let list = _allOrders;
+  if (_orderFilter === 'wait') list = list.filter(o => ['รอตรวจ','รอตรวจเพิ่ม'].includes(o.slip_status));
+  else if (_orderFilter === 'ok') list = list.filter(o => o.slip_status === 'ยืนยัน');
+  else if (_orderFilter === 'other') list = list.filter(o => !['รอตรวจ','รอตรวจเพิ่ม','ยืนยัน'].includes(o.slip_status));
+  if (list.length === 0) { el.innerHTML = '<div class="empty">ไม่มีออเดอร์</div>'; return; }
+  el.innerHTML = list.map(o => {
+    const sc = o.slip_status==='ยืนยัน'?'s-ok':['รอตรวจ','รอตรวจเพิ่ม'].includes(o.slip_status)?'s-wait':'s-done';
+    let items=[]; try{items=JSON.parse(o.items_json||'[]');}catch(_){}
+    const itemsHtml = items.map(i=>`<div style="font-size:12px;color:#7A6A5A;margin-bottom:2px">• ${esc(i.name)} (${i.type==='box'?'กล่อง':'ซอง'}) x${i.qty} = ฿${(i.price*i.qty).toLocaleString()}</div>`).join('');
+    const canVerify = o.slip_status!=='ยืนยัน' && o.slip_status!=='ไม่มีสลิป';
+    return `<div class="order-card" style="cursor:pointer;margin-bottom:8px" onclick="this.querySelector('.od').style.display=this.querySelector('.od').style.display==='none'?'block':'none'">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div style="font-weight:700;font-size:13px;color:#2C1810">${esc(o.real_name||o.display_name||'-')}</div>
+          <div style="font-size:11px;color:#9A8878;margin-top:2px">#${esc(o.order_id)} · ${esc(o.branch)}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;margin-left:8px">
+          <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;color:#4A3728">฿${Number(o.total).toLocaleString()}</div>
+          <span class="status ${sc}" style="margin-top:4px;display:inline-block">${esc(o.slip_status)}</span>
+        </div>
+      </div>
+      <div class="od" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #F0EBE3">
+        ${o.phone?`<div style="font-size:12px;color:#9A8878;margin-bottom:6px">📞 ${esc(o.phone)}</div>`:''}
+        ${itemsHtml||'<div style="font-size:12px;color:#ccc">ไม่มีรายการ</div>'}
+        <div style="font-size:11px;color:#9A8878;margin-top:6px">${esc(o.timestamp||'')}</div>
+        ${canVerify?`<button class="btn btn-green" style="margin-top:8px;padding:10px" onclick="event.stopPropagation();confirmSlip('${esc(o.order_id)}')">✅ ยืนยันสลิป + แจ้งลูกค้า</button>`:''}
+      </div>
     </div>`;
   }).join('');
 }
 
 async function loadDashboard() {
-  hmSetDate();
+  gid('recentOrders').innerHTML = '<div class="loading">กำลังโหลด...</div>';
   try {
     const r = await fetch(G+'?action=api&do=dashboard'); const d = await r.json();
-    gid('kRevenue').textContent = '฿'+(d.revenue_today||0).toLocaleString();
-    gid('kOrders').textContent = (d.orders_today||0)+' ออเดอร์';
-    gid('kPending').textContent = d.pending_count || 0;
-
-    // Pending slips
-    const pending = (d.recent_orders||[]).filter(o => ['รอตรวจ','รอตรวจเพิ่ม'].includes(o.slip_status));
-    const badge = gid('pendingBadge');
-    const ps = gid('pendingSlipsList');
-    badge.textContent = pending.length;
-    badge.style.background = pending.length ? '#d97706' : '#2d8f4e';
-    ps.innerHTML = pending.length === 0
-      ? '<div style="text-align:center;color:#2d8f4e;padding:8px;font-size:13px;font-weight:600">✅ ไม่มีรอตรวจ</div>'
-      : pending.map(o => `<div style="padding:10px 0;border-bottom:1px solid #F0EBE3">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <div style="font-size:13px;font-weight:600;color:#2C1810">#${esc(o.order_id)}</div>
-            <span class="status s-wait">${esc(o.slip_status)}</span>
-          </div>
-          <div style="font-size:12px;color:#9A8878;margin:3px 0">${esc(o.real_name||o.display_name||'-')} · ${esc(o.branch)} · ฿${Number(o.total).toLocaleString()}</div>
-          <button class="btn btn-green" style="margin-top:6px;padding:10px" onclick="confirmSlip('${esc(o.order_id)}')">✅ ยืนยันสลิป + แจ้งลูกค้า</button>
-        </div>`).join('');
-
-    // Recent orders (compact)
-    const el = gid('recentOrders');
-    if (!d.recent_orders || d.recent_orders.length===0) { el.innerHTML='<div class="empty">ไม่มีออเดอร์</div>'; }
-    else {
-      el.innerHTML = d.recent_orders.slice(0,8).map(o => {
-        const sc = o.slip_status==='ยืนยัน'?'s-ok':['รอตรวจ','รอตรวจเพิ่ม'].includes(o.slip_status)?'s-wait':'s-done';
-        let items=[];try{items=JSON.parse(o.items_json||'[]');}catch(_){}
-        const itemsHtml=items.map(i=>'<div style="font-size:12px;color:#7A6A5A">• '+esc(i.name)+' x'+i.qty+'</div>').join('');
-        return `<div class="hm-order-row" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:4px" onclick="this.querySelector('.hm-detail').style.display=this.querySelector('.hm-detail').style.display==='none'?'block':'none'">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <div>
-              <div class="hm-order-name">${esc(o.real_name||o.display_name||'-')}</div>
-              <div class="hm-order-meta">#${esc(o.order_id)} · ${esc(o.branch)}</div>
-            </div>
-            <div style="text-align:right">
-              <div class="hm-order-amount">฿${Number(o.total).toLocaleString()}</div>
-              <span class="status ${sc}" style="margin-top:4px;display:inline-block">${esc(o.slip_status)}</span>
-            </div>
-          </div>
-          <div class="hm-detail" style="display:none;padding-top:8px;border-top:1px solid #F0EBE3">
-            ${itemsHtml}
-            <div style="font-size:11px;color:#9A8878;margin-top:4px">${esc(o.timestamp||'')}</div>
-            ${o.slip_status!=='ยืนยัน'&&o.slip_status!=='ไม่มีสลิป'?`<button class="btn btn-green" style="margin-top:8px;padding:10px" onclick="event.stopPropagation();confirmSlip('${o.order_id}')">✅ ยืนยันสลิป</button>`:''}
-          </div>
-        </div>`;
-      }).join('');
-    }
+    _allOrders = d.recent_orders || [];
+    renderOrders();
   } catch(e) { gid('recentOrders').innerHTML='<div class="empty">โหลดไม่ได้</div>'; }
-
-  // Chart (secondary fetch)
-  try {
-    const r2 = await fetch(G+'?action=api&do=report'); const d2 = await r2.json();
-    if (d2.by_date) hmRenderChart(d2.by_date);
-    if (d2.total) gid('kProfit').textContent = '฿'+(d2.total.profit||0).toLocaleString();
-  } catch(_) { gid('hmChart').innerHTML='<div style="font-size:12px;color:#9A8878;padding:12px">ไม่มีข้อมูล</div>'; }
 }
 
 // ══════════════════════════════════════════════════════════
