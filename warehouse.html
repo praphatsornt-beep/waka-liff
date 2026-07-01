@@ -251,7 +251,11 @@
   <!-- Tab: สรุปออเดอร์ตามสาขา -->
   <div id="tab-summary">
     <div class="card">
-      <h3>📊 สรุปออเดอร์ที่ยังไม่ส่ง (รายสินค้า)</h3>
+      <h3>📦 สรุปรวมทุกสาขา</h3>
+      <div id="totalSummaryContent"><div class="empty">กำลังโหลด...</div></div>
+    </div>
+    <div class="card">
+      <h3>📊 แยกตามสาขา</h3>
       <div id="summaryContent"><div class="empty">กำลังโหลด...</div></div>
     </div>
   </div>
@@ -351,6 +355,8 @@ async function loadSummary() {
 }
 
 function renderSummary() {
+  renderTotalSummary();
+
   const el = document.getElementById('summaryContent');
   const branches = Object.keys(branchSummary);
   if (branches.length === 0) {
@@ -375,6 +381,31 @@ function renderSummary() {
     }
     html += '</table>';
   }
+  el.innerHTML = html;
+}
+
+function renderTotalSummary() {
+  const el = document.getElementById('totalSummaryContent');
+  const totals = {};
+  for (const branch of Object.keys(branchSummary)) {
+    for (const it of branchSummary[branch]) {
+      if (!totals[it.name]) totals[it.name] = { name: it.name, qty_box: 0, qty_pack: 0, order_count: 0 };
+      totals[it.name].qty_box += it.qty_box || 0;
+      totals[it.name].qty_pack += it.qty_pack || 0;
+      totals[it.name].order_count += it.order_count || 0;
+    }
+  }
+  const items = Object.values(totals);
+  if (items.length === 0) {
+    el.innerHTML = '<div class="empty">ไม่มีออเดอร์ที่ยังไม่ส่ง</div>';
+    return;
+  }
+  items.sort((a, b) => (b.qty_box + b.qty_pack) - (a.qty_box + a.qty_pack));
+  let html = '<table><tr><th>สินค้า</th><th>กล่อง</th><th>ซอง</th><th>ออเดอร์</th></tr>';
+  for (const it of items) {
+    html += '<tr><td>' + esc(it.name) + '</td><td>' + (it.qty_box || '-') + '</td><td>' + (it.qty_pack || '-') + '</td><td>' + it.order_count + '</td></tr>';
+  }
+  html += '</table>';
   el.innerHTML = html;
 }
 
