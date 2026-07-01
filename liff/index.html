@@ -780,6 +780,7 @@
   const LIFF_ID   = "2010457385-UpJLXxJ0";
   const GAS_URL   = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec";
   const PIN_ADMIN = "waka99";
+  const BRANCH_CODES = { 'ts01': 'ต้นสักคอร์เนอร์', 'mt01': 'เมืองทองธานี', 'sn01': 'ศรีนครินทร์' };
 
   function checkAdminPin() {
     const val = document.getElementById("adminPinInput").value.trim();
@@ -792,6 +793,18 @@
       sessionStorage.setItem("waka_tstaff_role", "admin");
       sessionStorage.setItem("waka_tstaff_branch", "ทั้งหมด");
       window.location.href = "menu.html";
+    } else if (BRANCH_CODES[val]) {
+      const branch = BRANCH_CODES[val];
+      sessionStorage.setItem("waka_portal_auth", "1");
+      sessionStorage.setItem("waka_app_auth", "staff");
+      sessionStorage.setItem("waka_staff_role", "staff");
+      sessionStorage.setItem("waka_staff_branch", branch);
+      sessionStorage.setItem("waka_branch", branch);
+      sessionStorage.setItem("waka_branch_code", val);
+      sessionStorage.setItem("waka_tstaff_auth", "1");
+      sessionStorage.setItem("waka_tstaff_role", "staff");
+      sessionStorage.setItem("waka_tstaff_branch", branch);
+      window.location.href = "app.html#branch";
     } else {
       const err = document.getElementById("adminPinError");
       err.style.display = "block";
