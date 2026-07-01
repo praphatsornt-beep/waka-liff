@@ -88,7 +88,7 @@
     .product-info .detail { color:var(--text2);font-size:12px;margin-top:4px; }
 
     /* Scan */
-    #reader,#reader2 { margin-top:8px;border-radius:12px;overflow:hidden; }
+    #reader { margin-top:8px;border-radius:12px;overflow:hidden; }
     .scan-btn { width:100%;padding:14px;background:var(--accent);color:var(--white);border:none;border-radius:var(--radius);font-size:15px;font-weight:600;cursor:pointer;font-family:inherit; }
     .manual-row { display:flex;gap:8px;margin-top:10px; }
     .manual-row input { flex:1;padding:12px;border:1px solid var(--card-border);border-radius:var(--radius);font-family:inherit;background:var(--input-bg); }
@@ -229,10 +229,6 @@
     <!-- ══════ TAB 2: รับเข้า ══════ -->
     <div class="tab-content" id="t_receive">
       <div style="text-align:center;margin-bottom:12px"><div style="font-size:18px;font-weight:700">📦 รับสินค้าเข้าคลัง</div></div>
-      <div class="sub-tabs">
-        <button class="sub-tab active" onclick="switchReceiveSub('stock')">เติมสต็อก</button>
-        <button class="sub-tab" onclick="switchReceiveSub('new')">เพิ่มสินค้าใหม่</button>
-      </div>
       <!-- เติมสต็อก -->
       <div id="recvStock">
         <div class="card">
@@ -263,39 +259,6 @@
             </div>
             <button class="btn btn-green" id="addStockBtn" onclick="submitAddStock()">✅ เพิ่มสต็อก</button>
           </div>
-        </div>
-      </div>
-      <!-- เพิ่มสินค้าใหม่ -->
-      <div id="recvNew" style="display:none">
-        <div class="card">
-          <h3>🆕 สินค้าใหม่</h3>
-          <button class="scan-btn" id="scanBtn2" onclick="toggleScanNew()" style="font-size:14px">📷 สแกน Barcode</button>
-          <div id="reader2"></div>
-          <div class="form-group" style="margin-top:10px"><label>Barcode</label><input type="text" id="newBarcode" inputmode="numeric"></div>
-          <div class="form-group"><label>ชื่อสินค้า *</label><input type="text" id="newName"></div>
-          <div class="form-group"><label>หมวดหมู่</label>
-            <select id="newCategory" class="branch-sel" style="margin:0" onchange="if(this.value==='__new')gid('newCategoryCustom').style.display='block'; else gid('newCategoryCustom').style.display='none';">
-              <option value="">-- เลือก --</option>
-            </select>
-            <input type="text" id="newCategoryCustom" placeholder="พิมพ์หมวดหมู่ใหม่" style="display:none;margin-top:6px;width:100%;padding:12px;border:1px solid var(--card-border);border-radius:var(--radius);font-family:inherit;background:var(--input-bg)">
-          </div>
-          <div class="form-row">
-            <div class="form-group"><label>ราคาขาย Box</label><input type="number" id="newPriceBox" min="0" value="0" inputmode="numeric"></div>
-            <div class="form-group"><label>ราคาขาย Pack</label><input type="number" id="newPricePack" min="0" value="0" inputmode="numeric"></div>
-          </div>
-          <div class="form-row">
-            <div class="form-group"><label>ต้นทุน Box</label><input type="number" id="newCostBox" min="0" value="0" inputmode="numeric"></div>
-            <div class="form-group"><label>ต้นทุน Pack</label><input type="number" id="newCostPack" min="0" value="0" inputmode="numeric"></div>
-          </div>
-          <div class="form-row">
-            <div class="form-group"><label>จำนวน Box</label><input type="number" id="newInitBox" min="0" value="0" inputmode="numeric"></div>
-            <div class="form-group"><label>จำนวน Pack</label><input type="number" id="newInitPack" min="0" value="0" inputmode="numeric"></div>
-          </div>
-          <div class="form-row">
-            <div class="form-group"><label>จำกัดขาย Box</label><input type="number" id="newLimitBox" min="0" placeholder="ว่าง=ไม่จำกัด" inputmode="numeric"></div>
-            <div class="form-group"><label>จำกัดขาย Pack</label><input type="number" id="newLimitPack" min="0" placeholder="ว่าง=ไม่จำกัด" inputmode="numeric"></div>
-          </div>
-          <button class="btn btn-blue" onclick="submitAddProduct()">➕ เพิ่มสินค้าใหม่</button>
         </div>
       </div>
     </div>
@@ -683,28 +646,16 @@ async function loadDashboard() {
 // ══════════════════════════════════════════════════════════
 // TAB 2: รับเข้า
 // ══════════════════════════════════════════════════════════
-function switchReceiveSub(s) {
-  document.querySelectorAll('#t_receive .sub-tab').forEach((b,i)=>b.classList.toggle('active',s==='stock'?i===0:i===1));
-  gid('recvStock').style.display = s==='stock'?'block':'none';
-  gid('recvNew').style.display = s==='new'?'block':'none';
-  stopScan(); stopScanNew();
-}
-
 async function loadProducts() {
   try {
     const r=await fetch(G+'?action=api&do=product_list'); const d=await r.json();
     products=d.products||[];
     const sel=gid('productSelect'); sel.innerHTML='<option value="">-- เลือกจากรายการ --</option>';
     const wd=gid('wdProduct'); wd.innerHTML='<option value="">-- เลือก --</option>';
-    const cats=new Set();
     for (const p of products) {
       const o=document.createElement('option'); o.value=p.name; o.textContent=p.name+(p.barcode?' ['+p.barcode+']':''); sel.appendChild(o);
       const o2=o.cloneNode(true); wd.appendChild(o2);
-      if(p.category)cats.add(p.category);
     }
-    const catSel=gid('newCategory'); catSel.innerHTML='<option value="">-- เลือก --</option>';
-    for(const c of [...cats].sort()){const o=document.createElement('option');o.value=c;o.textContent=c;catSel.appendChild(o);}
-    const oNew=document.createElement('option');oNew.value='__new';oNew.textContent='+ เพิ่มหมวดใหม่...';catSel.appendChild(oNew);
   } catch(_){}
 }
 
@@ -715,13 +666,7 @@ function toggleScan() {
   scanner.start({facingMode:"environment"},{fps:10,qrbox:{width:280,height:120},formatsToSupport:[0,1,2,3,4,5]},(c)=>{stopScan();gid('barcodeInput').value=c;lookupBarcode(c);},()=>{}).catch(()=>{stopScan();toast('เปิดกล้องไม่ได้',1);});
 }
 function stopScan(){if(scanner){try{scanner.stop();}catch(_){}scanner=null;}gid('scanBtn').textContent='เปิดกล้องสแกน';}
-function toggleScanNew(){
-  if(scannerNew){stopScanNew();return;}
-  gid('scanBtn2').textContent='ปิดกล้อง';
-  scannerNew=new Html5Qrcode("reader2");
-  scannerNew.start({facingMode:"environment"},{fps:10,qrbox:{width:280,height:120},formatsToSupport:[0,1,2,3,4,5]},(c)=>{stopScanNew();gid('newBarcode').value=c;},()=>{}).catch(()=>{stopScanNew();toast('เปิดกล้องไม่ได้',1);});
-}
-function stopScanNew(){if(scannerNew){try{scannerNew.stop();}catch(_){}scannerNew=null;}gid('scanBtn2').textContent='📷 สแกน Barcode';}
+function stopScanNew(){if(scannerNew){try{scannerNew.stop();}catch(_){}scannerNew=null;}}
 
 async function lookupBarcode(code) {
   code=String(code).trim(); if(!code)return;
@@ -729,7 +674,7 @@ async function lookupBarcode(code) {
   if(local){showProduct(local);return;}
   try{const r=await fetch(G+'?action=api&do=lookup_barcode&barcode='+encodeURIComponent(code));const d=await r.json();
     if(d.found){showProduct(d.product);}
-    else if(confirm('ไม่พบ barcode "'+code+'" ต้องการเพิ่มสินค้าใหม่?')){switchReceiveSub('new');gid('newBarcode').value=code;}
+    else toast('ไม่พบ barcode "'+code+'" — ไปที่ จัดการสินค้า เพื่อเพิ่ม',2);
   }catch(e){toast('ค้นหาไม่ได้',1);}
 }
 function selectProduct(){const n=gid('productSelect').value;if(!n){gid('addStockForm').style.display='none';return;}const p=products.find(x=>x.name===n);if(p)showProduct(p);}
@@ -757,16 +702,6 @@ async function submitAddStock() {
   }catch(e){alert('บันทึกไม่ได้');}b.disabled=0;b.textContent='✅ เพิ่มสต็อก';
 }
 
-async function submitAddProduct() {
-  const name=gid('newName').value.trim();if(!name)return alert('ใส่ชื่อสินค้า');
-  const limBox=gid('newLimitBox').value,limPack=gid('newLimitPack').value;
-  const catVal=gid('newCategory').value;
-  const category=catVal==='__new'?gid('newCategoryCustom').value.trim():(catVal||'');
-  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'addProduct',name,category,price_box:+gid('newPriceBox').value||0,price_pack:+gid('newPricePack').value||0,cost_box:+gid('newCostBox').value||0,cost_pack:+gid('newCostPack').value||0,barcode:gid('newBarcode').value.trim(),initial_box:+gid('newInitBox').value||0,initial_pack:+gid('newInitPack').value||0,limit_box:limBox===''?'':+limBox,limit_pack:limPack===''?'':+limPack})});const d=await r.json();
-    if(d.ok){toast('เพิ่ม: '+name);['newName','newBarcode'].forEach(id=>gid(id).value='');gid('newCategory').value='';gid('newCategoryCustom').value='';gid('newCategoryCustom').style.display='none';['newPriceBox','newPricePack','newCostBox','newCostPack','newInitBox','newInitPack'].forEach(id=>gid(id).value=0);gid('newLimitBox').value='';gid('newLimitPack').value='';loadProducts();}
-    else alert(d.error||'ผิดพลาด');
-  }catch(e){alert('บันทึกไม่ได้');}
-}
 
 // ══════════════════════════════════════════════════════════
 // TAB 3: คลัง

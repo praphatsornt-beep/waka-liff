@@ -2322,6 +2322,7 @@ function handleUpdateProduct(data) {
     if (data.limit_pack !== undefined) catWs.getRange(targetRow, 11).setValue(data.limit_pack === "" ? "" : Number(data.limit_pack));
     if (data.active !== undefined) catWs.getRange(targetRow, 12).setValue(data.active ? "TRUE" : "FALSE");
     if (data.image_url !== undefined) catWs.getRange(targetRow, 13).setValue(data.image_url || "");
+    if (data.barcode !== undefined) catWs.getRange(targetRow, 14).setValue(data.barcode || "");
     if (data.notice !== undefined) catWs.getRange(targetRow, 15).setValue(data.notice || "");
     CacheService.getScriptCache().remove("catalog_config");
     lock.releaseLock();
