@@ -901,7 +901,7 @@ async function loadWithdrawals() {
 async function loadCatalogLinks() {
   try{const r=await fetch(G);const d=await r.json();const catalog=d.catalog||[];
     const el=gid('menuProductLinks');if(!catalog.length){el.innerHTML='<div class="empty">ไม่มีสินค้า</div>';return;}
-    el.innerHTML=catalog.map(p=>{const link=p.slug?LIFF_BASE+'/'+p.slug:LIFF_BASE+'?product='+encodeURIComponent(p.name);
+    el.innerHTML=catalog.map(p=>{const link=p.slug?LIFF_BASE+'?liff.state='+encodeURIComponent('/'+p.slug):LIFF_BASE+'?liff.state='+encodeURIComponent('?product='+p.name);
       return `<div class="link-item"><div class="info"><div class="lname">🎴 ${esc(p.name)}</div><div class="ldesc">${p.price_box?'Box '+p.price_box.toLocaleString()+'.-':''} ${p.price_pack?'Pack '+p.price_pack.toLocaleString()+'.-':''}</div></div><button class="copy-btn" onclick="copyLink('${link.replace(/'/g,"\\'")}')">คัดลอก</button></div>`;
     }).join('');
   }catch(e){gid('menuProductLinks').innerHTML='<div class="empty">โหลดไม่ได้</div>';}
