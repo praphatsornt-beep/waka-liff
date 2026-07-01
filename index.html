@@ -803,17 +803,20 @@
     _parseLs(liffState);
 
     // Fallback: sessionStorage survives liff.login() redirect when URL params are lost
-    prod = prod || sessionStorage.getItem("waka_filter_product") || null;
-    cat  = cat  || sessionStorage.getItem("waka_filter_category") || null;
-    if (!all) all = sessionStorage.getItem("waka_filter_all") === "1";
+    // Skip sessionStorage if all=1 is explicit — avoids stale category from previous visit
+    if (!all) {
+      prod = prod || sessionStorage.getItem("waka_filter_product") || null;
+      cat  = cat  || sessionStorage.getItem("waka_filter_category") || null;
+      all  = sessionStorage.getItem("waka_filter_all") === "1";
+    }
 
     // Refresh sessionStorage for the next redirect (if any)
     sessionStorage.removeItem("waka_filter_product");
     sessionStorage.removeItem("waka_filter_category");
     sessionStorage.removeItem("waka_filter_all");
-    if (prod) sessionStorage.setItem("waka_filter_product", prod);
-    if (cat)  sessionStorage.setItem("waka_filter_category", cat);
-    if (all)  sessionStorage.setItem("waka_filter_all", "1");
+    if (!all && prod) sessionStorage.setItem("waka_filter_product", prod);
+    if (!all && cat)  sessionStorage.setItem("waka_filter_category", cat);
+    if (all)          sessionStorage.setItem("waka_filter_all", "1");
 
     return { product: prod || null, category: cat || null, slug: slug || null, all: all };
   })();
