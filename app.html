@@ -557,8 +557,10 @@ const savedAuth = sessionStorage.getItem('waka_app_auth') || (sessionStorage.get
 if (savedAuth) {
   gid('pinOverlay').style.display='none'; gid('app').style.display='block'; applyRole(savedAuth);
   const sb=sessionStorage.getItem('waka_branch') || sessionStorage.getItem('waka_staff_branch');
+  const tabHash = window.location.hash.replace('#','');
   if(savedAuth==='staff'&&sb){autoLoginBranch(sb);switchTab('branch');}
   else if(savedAuth==='admin'&&sb){gid('branchSelect').value=sb;gid('branchTitle').textContent='สาขา'+sb;}
+  if(tabHash && ['receive','warehouse','branch'].includes(tabHash)){switchTab(tabHash);}
   initApp();
 }
 
