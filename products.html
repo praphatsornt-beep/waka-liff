@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WAKA - จัดการสินค้า</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #e7e5df; --card-bg: #fff; --card-border: #ddd9d2;
+      --accent: #111740; --red: #d64545; --green: #2d8f4e;
+      --text-primary: #1a1a1a; --text-secondary: #666; --label: #a8a8a8;
+      --input-bg: #f5f5f5; --field-radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Anuphan','Space Grotesk',sans-serif; background: var(--bg); color: var(--text-primary); min-height: 100vh; }
+    .page { max-width: 480px; margin: 0 auto; padding: 16px; padding-bottom: 80px; }
+
+    /* PIN */
+    #pinOverlay { position: fixed; inset: 0; background: var(--bg); z-index: 200; display: flex; align-items: center; justify-content: center; }
+    .pin-card { background: var(--card-bg); border-radius: 14px; box-shadow: 0 24px 60px rgba(40,38,34,.18); border: 1px solid var(--card-border); padding: 32px; width: 320px; text-align: center; }
+    .pin-card h2 { margin-bottom: 4px; }
+    .pin-card .sub { color: var(--text-secondary); margin-bottom: 16px; font-size: 13px; }
+    .pin-card input { width: 100%; padding: 14px; border: 1px solid var(--card-border); border-radius: var(--field-radius); font-size: 20px; text-align: center; letter-spacing: 4px; background: var(--input-bg); font-family: inherit; margin-bottom: 12px; }
+    .pin-card button { width: 100%; padding: 14px; background: var(--accent); color: #fff; border: none; border-radius: var(--field-radius); font-size: 16px; font-weight: 600; cursor: pointer; font-family: inherit; }
+    .pin-error { color: var(--red); margin-top: 8px; font-size: 13px; display: none; }
+
+    /* Header */
+    .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .top-bar h1 { font-size: 18px; font-weight: 700; }
+    .btn-add { background: var(--accent); color: #fff; border: none; border-radius: 10px; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+
+    /* Filter */
+    .filter-row { display: flex; gap: 6px; margin-bottom: 14px; }
+    .filter-btn { flex: 1; padding: 8px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card-bg); font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; color: var(--text-secondary); }
+    .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    /* Product card */
+    .product-card { background: var(--card-bg); border-radius: 14px; border: 1px solid var(--card-border); padding: 14px 16px; margin-bottom: 8px; }
+    .product-card.inactive { opacity: .6; }
+    .pc-top { display: flex; align-items: center; gap: 10px; }
+    .pc-icon { font-size: 24px; flex-shrink: 0; }
+    .pc-info { flex: 1; min-width: 0; }
+    .pc-name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pc-cat { font-size: 11px; color: var(--label); margin-top: 1px; }
+    .pc-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .btn-sm { padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; border: 1px solid var(--card-border); background: var(--input-bg); color: var(--text-primary); }
+    .btn-sm.toggle-off { background: #fef2f2; border-color: #fca5a5; color: var(--red); }
+    .btn-sm.toggle-on { background: #f0fdf4; border-color: #86efac; color: var(--green); }
+    .pc-meta { display: flex; gap: 12px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #f0ede8; }
+    .meta-item { flex: 1; }
+    .meta-label { font-size: 10px; color: var(--label); }
+    .meta-val { font-size: 13px; font-weight: 600; margin-top: 2px; }
+    .meta-val.stock { color: var(--accent); }
+    .meta-val.cost { color: var(--text-secondary); }
+
+    .empty { text-align: center; color: var(--label); padding: 40px; font-size: 14px; }
+    .loading { text-align: center; color: var(--text-secondary); padding: 40px; }
+
+    /* Bottom nav */
+    .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 60px; background: #fff; border-top: 1px solid var(--card-border); display: flex; z-index: 100; box-shadow: 0 -2px 12px rgba(0,0,0,.06); }
+    .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-decoration: none; color: #999; font-size: 10px; font-weight: 600; gap: 2px; }
+    .nav-item.active { color: var(--accent); }
+    .nav-icon { font-size: 22px; }
+
+    /* Drawer */
+    .drawer-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 300; display: none; }
+    .drawer-overlay.open { display: block; }
+    .drawer { position: fixed; bottom: 0; left: 0; right: 0; max-height: 90vh; overflow-y: auto; background: var(--card-bg); border-radius: 20px 20px 0 0; padding: 24px 20px 40px; z-index: 301; transform: translateY(100%); transition: transform .3s ease; }
+    .drawer.open { transform: translateY(0); }
+    .drawer-handle { width: 40px; height: 4px; background: #ddd; border-radius: 2px; margin: 0 auto 20px; }
+    .drawer-title { font-size: 16px; font-weight: 700; margin-bottom: 18px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .form-row.single { grid-template-columns: 1fr; }
+    .form-group label { display: block; font-size: 11px; font-weight: 600; color: var(--label); margin-bottom: 5px; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 11px 12px; border: 1px solid var(--card-border); border-radius: var(--field-radius);
+      background: var(--input-bg); font-family: inherit; font-size: 14px; color: var(--text-primary);
+    }
+    .form-group textarea { resize: none; height: 64px; }
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--input-bg); border-radius: var(--field-radius); margin-bottom: 12px; }
+    .toggle-row label { font-size: 14px; font-weight: 600; }
+    .toggle { position: relative; width: 46px; height: 26px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; inset: 0; background: #ccc; border-radius: 26px; cursor: pointer; transition: .3s; }
+    .slider:before { content: ""; position: absolute; height: 20px; width: 20px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .3s; }
+    .toggle input:checked + .slider { background: var(--green); }
+    .toggle input:checked + .slider:before { transform: translateX(20px); }
+    .btn-save { width: 100%; padding: 14px; background: var(--accent); color: #fff; border: none; border-radius: var(--field-radius); font-size: 16px; font-weight: 600; cursor: pointer; font-family: inherit; margin-top: 16px; }
+    .btn-save:disabled { opacity: .5; }
+    .drawer-msg { text-align: center; font-size: 13px; margin-top: 10px; min-height: 18px; }
+    .drawer-msg.ok { color: var(--green); }
+    .drawer-msg.err { color: var(--red); }
+    .section-sep { font-size: 11px; font-weight: 600; color: var(--label); text-transform: uppercase; letter-spacing: 1px; margin: 14px 0 8px; }
+  </style>
+</head>
+<body>
+
+<div id="pinOverlay">
+  <div class="pin-card">
+    <h2>🎴 จัดการสินค้า</h2>
+    <p class="sub">เข้าถึงได้เฉพาะ Admin</p>
+    <input type="password" id="pinInput" placeholder="PIN" onkeydown="if(event.key==='Enter')checkPin()">
+    <button onclick="checkPin()">เข้าสู่ระบบ</button>
+    <div class="pin-error" id="pinError">PIN ไม่ถูกต้อง (Admin เท่านั้น)</div>
+  </div>
+</div>
+
+<div class="page" id="app" style="display:none">
+  <div class="top-bar">
+    <h1>🎴 จัดการสินค้า</h1>
+    <button class="btn-add" onclick="openAdd()">+ เพิ่มสินค้า</button>
+  </div>
+
+  <div class="filter-row">
+    <button class="filter-btn active" id="fAll" onclick="setFilter('all',this)">ทั้งหมด</button>
+    <button class="filter-btn" id="fActive" onclick="setFilter('active',this)">เปิดขาย</button>
+    <button class="filter-btn" id="fInactive" onclick="setFilter('inactive',this)">ปิดขาย</button>
+  </div>
+
+  <div id="productList"><div class="loading">กำลังโหลด...</div></div>
+</div>
+
+<!-- Drawer overlay -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+
+<!-- Edit / Add drawer -->
+<div class="drawer" id="drawer">
+  <div class="drawer-handle"></div>
+  <div class="drawer-title" id="drawerTitle">แก้ไขสินค้า</div>
+
+  <input type="hidden" id="editName">
+
+  <div class="form-row single">
+    <div class="form-group">
+      <label>ชื่อสินค้า</label>
+      <input type="text" id="fName" placeholder="ชื่อสินค้า">
+    </div>
+  </div>
+  <div class="form-row single">
+    <div class="form-group">
+      <label>หมวดหมู่</label>
+      <input type="text" id="fCategory" placeholder="หมวดหมู่">
+    </div>
+  </div>
+
+  <div class="section-sep">ราคาขาย</div>
+  <div class="form-row">
+    <div class="form-group">
+      <label>ราคา Box (฿)</label>
+      <input type="number" id="fPriceBox" placeholder="0" min="0">
+    </div>
+    <div class="form-group">
+      <label>ราคา Pack (฿)</label>
+      <input type="number" id="fPricePack" placeholder="0" min="0">
+    </div>
+  </div>
+
+  <div class="section-sep">ต้นทุน</div>
+  <div class="form-row">
+    <div class="form-group">
+      <label>ต้นทุน Box (฿)</label>
+      <input type="number" id="fCostBox" placeholder="0" min="0">
+    </div>
+    <div class="form-group">
+      <label>ต้นทุน Pack (฿)</label>
+      <input type="number" id="fCostPack" placeholder="0" min="0">
+    </div>
+  </div>
+
+  <div class="section-sep">จำกัดการสั่ง (ต่อออเดอร์)</div>
+  <div class="form-row">
+    <div class="form-group">
+      <label>Limit Box (-1 = ไม่จำกัด)</label>
+      <input type="number" id="fLimitBox" placeholder="-1">
+    </div>
+    <div class="form-group">
+      <label>Limit Pack (-1 = ไม่จำกัด)</label>
+      <input type="number" id="fLimitPack" placeholder="-1">
+    </div>
+  </div>
+
+  <div class="section-sep">อื่นๆ</div>
+  <div class="form-row single">
+    <div class="form-group">
+      <label>หมายเหตุ (แสดงให้ลูกค้าเห็น)</label>
+      <textarea id="fNotice" placeholder="เช่น: สินค้าหมดชั่วคราว"></textarea>
+    </div>
+  </div>
+
+  <div class="toggle-row" id="activeToggleRow">
+    <label>เปิดขาย</label>
+    <label class="toggle">
+      <input type="checkbox" id="fActive" checked>
+      <span class="slider"></span>
+    </label>
+  </div>
+
+  <button class="btn-save" id="btnSave" onclick="saveProduct()">บันทึก</button>
+  <div class="drawer-msg" id="drawerMsg"></div>
+</div>
+
+<nav class="bottom-nav">
+  <a class="nav-item" href="app.html"><span class="nav-icon">📋</span><span>ออเดอร์</span></a>
+  <a class="nav-item" href="app.html#receive"><span class="nav-icon">📦</span><span>สินค้า</span></a>
+  <a class="nav-item" href="app.html#warehouse"><span class="nav-icon">🏭</span><span>คลัง</span></a>
+  <a class="nav-item" href="app.html#branch"><span class="nav-icon">🏬</span><span>สาขา</span></a>
+  <a class="nav-item" href="menu.html"><span class="nav-icon">☰</span><span>เมนู</span></a>
+</nav>
+
+<script>
+const G = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
+const PIN_ADMIN = 'waka99';
+
+let _products = [];
+let _filter = 'all';
+let _isEdit = false;
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function checkPin() {
+  const val = document.getElementById('pinInput').value.trim();
+  if (val === PIN_ADMIN) {
+    sessionStorage.setItem('waka_portal_auth', '1');
+    sessionStorage.setItem('waka_staff_role', 'admin');
+    document.getElementById('pinOverlay').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    loadProducts();
+  } else {
+    const err = document.getElementById('pinError');
+    err.style.display = 'block';
+    setTimeout(() => err.style.display = 'none', 2000);
+  }
+}
+
+if (sessionStorage.getItem('waka_portal_auth') === '1' && sessionStorage.getItem('waka_staff_role') === 'admin') {
+  document.getElementById('pinOverlay').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  loadProducts();
+}
+
+async function loadProducts() {
+  document.getElementById('productList').innerHTML = '<div class="loading">กำลังโหลด...</div>';
+  try {
+    const r = await fetch(G + '?action=api&do=catalog_admin');
+    const d = await r.json();
+    _products = d.products || [];
+    renderProducts();
+  } catch(e) {
+    document.getElementById('productList').innerHTML = '<div class="empty">โหลดไม่ได้</div>';
+  }
+}
+
+function setFilter(f, btn) {
+  _filter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderProducts();
+}
+
+function renderProducts() {
+  const el = document.getElementById('productList');
+  let list = _products;
+  if (_filter === 'active') list = list.filter(p => p.active);
+  else if (_filter === 'inactive') list = list.filter(p => !p.active);
+  if (list.length === 0) { el.innerHTML = '<div class="empty">ไม่มีสินค้า</div>'; return; }
+
+  el.innerHTML = list.map(p => {
+    const hasBox = p.price_box > 0;
+    const hasPack = p.price_pack > 0;
+    return `<div class="product-card ${p.active ? '' : 'inactive'}">
+      <div class="pc-top">
+        <div class="pc-icon">🎴</div>
+        <div class="pc-info">
+          <div class="pc-name">${esc(p.name)}</div>
+          <div class="pc-cat">${esc(p.category || '—')}</div>
+        </div>
+        <div class="pc-actions">
+          <button class="btn-sm ${p.active ? 'toggle-off' : 'toggle-on'}"
+            onclick="quickToggle('${p.name.replace(/'/g,"\\'")}', ${!p.active}, this)">
+            ${p.active ? 'ปิด' : 'เปิด'}
+          </button>
+          <button class="btn-sm" onclick="openEdit(${JSON.stringify(p).replace(/"/g,'&quot;')})">แก้ไข</button>
+        </div>
+      </div>
+      <div class="pc-meta">
+        ${hasBox ? `<div class="meta-item"><div class="meta-label">ราคา Box</div><div class="meta-val">฿${p.price_box.toLocaleString()}</div></div>` : ''}
+        ${hasPack ? `<div class="meta-item"><div class="meta-label">ราคา Pack</div><div class="meta-val">฿${p.price_pack.toLocaleString()}</div></div>` : ''}
+        ${hasBox ? `<div class="meta-item"><div class="meta-label">ต้นทุน Box</div><div class="meta-val cost">฿${p.cost_box.toLocaleString()}</div></div>` : ''}
+        ${hasPack ? `<div class="meta-item"><div class="meta-label">ต้นทุน Pack</div><div class="meta-val cost">฿${p.cost_pack.toLocaleString()}</div></div>` : ''}
+        <div class="meta-item"><div class="meta-label">สต็อก</div><div class="meta-val stock">${p.qty_box}/${p.qty_pack}</div></div>
+      </div>
+      ${p.notice ? `<div style="margin-top:8px;font-size:12px;color:var(--text-secondary);background:#fef9f0;border-radius:8px;padding:6px 10px">📢 ${esc(p.notice)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function quickToggle(name, newActive, btn) {
+  btn.disabled = true;
+  try {
+    const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'updateProduct', name, active: newActive }) });
+    const d = await r.json();
+    if (d.ok) {
+      const p = _products.find(x => x.name === name);
+      if (p) p.active = newActive;
+      renderProducts();
+    } else {
+      alert(d.error || 'เกิดข้อผิดพลาด');
+      btn.disabled = false;
+    }
+  } catch(e) {
+    alert('เชื่อมต่อไม่ได้');
+    btn.disabled = false;
+  }
+}
+
+function openEdit(p) {
+  _isEdit = true;
+  document.getElementById('drawerTitle').textContent = 'แก้ไข: ' + p.name;
+  document.getElementById('editName').value = p.name;
+  document.getElementById('fName').value = p.name;
+  document.getElementById('fName').disabled = true;
+  document.getElementById('fCategory').value = p.category || '';
+  document.getElementById('fPriceBox').value = p.price_box || '';
+  document.getElementById('fPricePack').value = p.price_pack || '';
+  document.getElementById('fCostBox').value = p.cost_box || '';
+  document.getElementById('fCostPack').value = p.cost_pack || '';
+  document.getElementById('fLimitBox').value = p.limit_box >= 0 ? p.limit_box : '-1';
+  document.getElementById('fLimitPack').value = p.limit_pack >= 0 ? p.limit_pack : '-1';
+  document.getElementById('fNotice').value = p.notice || '';
+  document.getElementById('fActive').checked = p.active;
+  document.getElementById('activeToggleRow').style.display = 'flex';
+  document.getElementById('drawerMsg').textContent = '';
+  openDrawer();
+}
+
+function openAdd() {
+  _isEdit = false;
+  document.getElementById('drawerTitle').textContent = 'เพิ่มสินค้าใหม่';
+  document.getElementById('editName').value = '';
+  document.getElementById('fName').value = '';
+  document.getElementById('fName').disabled = false;
+  document.getElementById('fCategory').value = '';
+  document.getElementById('fPriceBox').value = '';
+  document.getElementById('fPricePack').value = '';
+  document.getElementById('fCostBox').value = '';
+  document.getElementById('fCostPack').value = '';
+  document.getElementById('fLimitBox').value = '-1';
+  document.getElementById('fLimitPack').value = '-1';
+  document.getElementById('fNotice').value = '';
+  document.getElementById('fActive').checked = true;
+  document.getElementById('activeToggleRow').style.display = 'none';
+  document.getElementById('drawerMsg').textContent = '';
+  openDrawer();
+}
+
+function openDrawer() {
+  document.getElementById('drawerOverlay').classList.add('open');
+  document.getElementById('drawer').classList.add('open');
+}
+
+function closeDrawer() {
+  document.getElementById('drawerOverlay').classList.remove('open');
+  document.getElementById('drawer').classList.remove('open');
+}
+
+async function saveProduct() {
+  const btn = document.getElementById('btnSave');
+  const msg = document.getElementById('drawerMsg');
+  btn.disabled = true;
+  msg.textContent = '';
+  msg.className = 'drawer-msg';
+
+  const name = _isEdit ? document.getElementById('editName').value : document.getElementById('fName').value.trim();
+  if (!name) { msg.textContent = 'กรุณาใส่ชื่อสินค้า'; msg.className = 'drawer-msg err'; btn.disabled = false; return; }
+
+  const payload = {
+    _action: _isEdit ? 'updateProduct' : 'addProduct',
+    name,
+    category: document.getElementById('fCategory').value.trim(),
+    price_box: Number(document.getElementById('fPriceBox').value) || 0,
+    price_pack: Number(document.getElementById('fPricePack').value) || 0,
+    cost_box: Number(document.getElementById('fCostBox').value) || 0,
+    cost_pack: Number(document.getElementById('fCostPack').value) || 0,
+    limit_box: document.getElementById('fLimitBox').value,
+    limit_pack: document.getElementById('fLimitPack').value,
+    notice: document.getElementById('fNotice').value.trim(),
+  };
+  if (_isEdit) payload.active = document.getElementById('fActive').checked;
+
+  try {
+    const r = await fetch(G, { method: 'POST', body: JSON.stringify(payload) });
+    const d = await r.json();
+    if (d.ok) {
+      msg.textContent = _isEdit ? 'บันทึกแล้ว ✓' : 'เพิ่มสินค้าแล้ว ✓';
+      msg.className = 'drawer-msg ok';
+      await loadProducts();
+      setTimeout(closeDrawer, 800);
+    } else {
+      msg.textContent = d.error || 'เกิดข้อผิดพลาด';
+      msg.className = 'drawer-msg err';
+    }
+  } catch(e) {
+    msg.textContent = 'เชื่อมต่อไม่ได้';
+    msg.className = 'drawer-msg err';
+  }
+  btn.disabled = false;
+}
+</script>
+</body>
+</html>

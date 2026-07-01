@@ -201,6 +201,11 @@
       <div class="menu-title">WAKA GYM</div>
       <div class="menu-desc">สแกน QR / Event / ผลแข่ง</div>
     </a>
+    <a class="menu-card" href="products.html" id="cardProducts" style="display:none">
+      <div class="menu-icon">🎴</div>
+      <div class="menu-title">จัดการสินค้า</div>
+      <div class="menu-desc">ราคา / ต้นทุน / เปิด-ปิด</div>
+    </a>
   </div>
 
   <!-- Admin only -->
@@ -272,7 +277,7 @@ function checkPin() {
     sessionStorage.setItem('waka_tstaff_auth', '1');
     sessionStorage.setItem('waka_tstaff_role', role);
     sessionStorage.setItem('waka_tstaff_branch', branch);
-    if (role === 'admin') document.getElementById('adminSection').style.display = 'block';
+    if (role === 'admin') { document.getElementById('adminSection').style.display = 'block'; document.getElementById('cardProducts').style.display = 'block'; }
     showRoleBadge(role, branch);
     loadProductLinks();
   } else {
@@ -292,7 +297,7 @@ if (sessionStorage.getItem('waka_portal_auth') === '1') {
   document.getElementById('app').style.display = 'block';
   var _r = sessionStorage.getItem('waka_staff_role') || '';
   var _b = sessionStorage.getItem('waka_staff_branch') || '';
-  if (_r === 'admin') document.getElementById('adminSection').style.display = 'block';
+  if (_r === 'admin') { document.getElementById('adminSection').style.display = 'block'; document.getElementById('cardProducts').style.display = 'block'; }
   showRoleBadge(_r, _b);
   loadProductLinks();
 }
