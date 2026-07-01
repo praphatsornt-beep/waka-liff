@@ -140,6 +140,10 @@ function doPost(e) {
       return handleAddProduct(data);
     }
 
+    if (data._action === "updateProduct") {
+      return handleUpdateProduct(data);
+    }
+
     if (data._action === "withdrawStock") {
       return handleWithdrawStock(data);
     }
@@ -1166,6 +1170,30 @@ function handleApi(params) {
         limit_box: (catRows[i][9] === "" || catRows[i][9] === undefined || catRows[i][9] === null) ? -1 : Number(catRows[i][9]),
         limit_pack: (catRows[i][10] === "" || catRows[i][10] === undefined || catRows[i][10] === null) ? -1 : Number(catRows[i][10]),
         stock_box: Number(catRows[i][7]) || 0, stock_pack: Number(catRows[i][8]) || 0,
+      });
+    }
+    return _cors(ContentService.createTextOutput(JSON.stringify({ products: products })));
+  }
+
+  // ── Admin Catalog (ทุกสินค้า รวม inactive) ──
+  if (action === "catalog_admin") {
+    var catWs = ss.getSheetByName(TAB_CATALOG);
+    if (!catWs) return _cors(ContentService.createTextOutput(JSON.stringify({ products: [] })));
+    var catRows = catWs.getDataRange().getValues();
+    var products = [];
+    for (var i = 1; i < catRows.length; i++) {
+      if (!catRows[i][0]) continue;
+      var isActive = !(catRows[i][11] === false || String(catRows[i][11]).toUpperCase() === "FALSE" || catRows[i][11] === 0);
+      products.push({
+        name: String(catRows[i][0] || "").trim(),
+        category: String(catRows[i][1] || ""),
+        cost_box: Number(catRows[i][3]) || 0, cost_pack: Number(catRows[i][4]) || 0,
+        price_box: Number(catRows[i][5]) || 0, price_pack: Number(catRows[i][6]) || 0,
+        qty_box: Number(catRows[i][7]) || 0, qty_pack: Number(catRows[i][8]) || 0,
+        limit_box: (catRows[i][9] === "" || catRows[i][9] === undefined || catRows[i][9] === null) ? -1 : Number(catRows[i][9]),
+        limit_pack: (catRows[i][10] === "" || catRows[i][10] === undefined || catRows[i][10] === null) ? -1 : Number(catRows[i][10]),
+        active: isActive,
+        notice: String(catRows[i][14] || "")
       });
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ products: products })));
@@ -2263,6 +2291,37 @@ function handleAddProduct(data) {
     ];
     catWs.appendRow(newRow);
 
+    CacheService.getScriptCache().remove("catalog_config");
+    lock.releaseLock();
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+  } catch (err) {
+    try { lock.releaseLock(); } catch(_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+function handleUpdateProduct(data) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var catWs = ss.getSheetByName(TAB_CATALOG);
+    if (!catWs) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no _catalog tab" }))); }
+    var catRows = catWs.getDataRange().getValues();
+    var targetRow = -1;
+    for (var i = 1; i < catRows.length; i++) {
+      if (String(catRows[i][0]).trim() === String(data.name).trim()) { targetRow = i + 1; break; }
+    }
+    if (targetRow === -1) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบสินค้า: " + data.name }))); }
+    if (data.category !== undefined) catWs.getRange(targetRow, 2).setValue(data.category);
+    if (data.cost_box !== undefined) catWs.getRange(targetRow, 4).setValue(Number(data.cost_box) || 0);
+    if (data.cost_pack !== undefined) catWs.getRange(targetRow, 5).setValue(Number(data.cost_pack) || 0);
+    if (data.price_box !== undefined) catWs.getRange(targetRow, 6).setValue(Number(data.price_box) || 0);
+    if (data.price_pack !== undefined) catWs.getRange(targetRow, 7).setValue(Number(data.price_pack) || 0);
+    if (data.limit_box !== undefined) catWs.getRange(targetRow, 10).setValue(data.limit_box === "" ? "" : Number(data.limit_box));
+    if (data.limit_pack !== undefined) catWs.getRange(targetRow, 11).setValue(data.limit_pack === "" ? "" : Number(data.limit_pack));
+    if (data.active !== undefined) catWs.getRange(targetRow, 12).setValue(data.active ? "TRUE" : "FALSE");
+    if (data.notice !== undefined) catWs.getRange(targetRow, 15).setValue(data.notice || "");
     CacheService.getScriptCache().remove("catalog_config");
     lock.releaseLock();
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
