@@ -162,7 +162,14 @@
   <div class="form-row single">
     <div class="form-group">
       <label>หมวดหมู่</label>
-      <input type="text" id="fCategory" placeholder="หมวดหมู่">
+      <input type="text" id="fCategory" placeholder="หมวดหมู่" list="catSuggestions">
+      <datalist id="catSuggestions"></datalist>
+    </div>
+  </div>
+  <div class="form-row single">
+    <div class="form-group">
+      <label>Barcode</label>
+      <input type="text" id="fBarcode" placeholder="สแกนหรือพิมพ์ barcode" inputmode="numeric">
     </div>
   </div>
 
@@ -226,6 +233,20 @@
     </div>
   </div>
 
+  <div id="initStockRow" style="display:none">
+    <div class="section-sep">สต็อกเริ่มต้น</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>จำนวน Box</label>
+        <input type="number" id="fInitBox" placeholder="0" min="0" inputmode="numeric">
+      </div>
+      <div class="form-group">
+        <label>จำนวน Pack</label>
+        <input type="number" id="fInitPack" placeholder="0" min="0" inputmode="numeric">
+      </div>
+    </div>
+  </div>
+
   <div class="toggle-row" id="activeToggleRow">
     <label>เปิดขาย</label>
     <label class="toggle">
@@ -286,9 +307,16 @@ async function loadProducts() {
     const d = await r.json();
     _products = d.products || [];
     renderProducts();
+    buildCatSuggestions();
   } catch(e) {
     document.getElementById('productList').innerHTML = '<div class="empty">โหลดไม่ได้</div>';
   }
+}
+
+function buildCatSuggestions() {
+  const cats = [...new Set(_products.map(p => p.category).filter(Boolean))];
+  const dl = document.getElementById('catSuggestions');
+  dl.innerHTML = cats.map(c => `<option value="${esc(c)}">`).join('');
 }
 
 function setFilter(f, btn) {
@@ -361,6 +389,7 @@ function openEdit(p) {
   document.getElementById('fName').value = p.name;
   document.getElementById('fName').disabled = true;
   document.getElementById('fCategory').value = p.category || '';
+  document.getElementById('fBarcode').value = p.barcode || '';
   document.getElementById('fPriceBox').value = p.price_box || '';
   document.getElementById('fPricePack').value = p.price_pack || '';
   document.getElementById('fCostBox').value = p.cost_box || '';
@@ -370,6 +399,7 @@ function openEdit(p) {
   document.getElementById('fNotice').value = p.notice || '';
   document.getElementById('fActive').checked = p.active;
   document.getElementById('activeToggleRow').style.display = 'flex';
+  document.getElementById('initStockRow').style.display = 'none';
   setImagePreview(p.image_url || '');
   document.getElementById('drawerMsg').textContent = '';
   openDrawer();
@@ -382,15 +412,19 @@ function openAdd() {
   document.getElementById('fName').value = '';
   document.getElementById('fName').disabled = false;
   document.getElementById('fCategory').value = '';
+  document.getElementById('fBarcode').value = '';
   document.getElementById('fPriceBox').value = '';
   document.getElementById('fPricePack').value = '';
   document.getElementById('fCostBox').value = '';
   document.getElementById('fCostPack').value = '';
   document.getElementById('fLimitBox').value = '-1';
   document.getElementById('fLimitPack').value = '-1';
+  document.getElementById('fInitBox').value = '';
+  document.getElementById('fInitPack').value = '';
   document.getElementById('fNotice').value = '';
   document.getElementById('fActive').checked = true;
   document.getElementById('activeToggleRow').style.display = 'none';
+  document.getElementById('initStockRow').style.display = 'block';
   setImagePreview('');
   document.getElementById('drawerMsg').textContent = '';
   openDrawer();
@@ -506,6 +540,7 @@ async function saveProduct() {
     _action: _isEdit ? 'updateProduct' : 'addProduct',
     name,
     category: document.getElementById('fCategory').value.trim(),
+    barcode: document.getElementById('fBarcode').value.trim(),
     price_box: Number(document.getElementById('fPriceBox').value) || 0,
     price_pack: Number(document.getElementById('fPricePack').value) || 0,
     cost_box: Number(document.getElementById('fCostBox').value) || 0,
@@ -515,6 +550,10 @@ async function saveProduct() {
     notice: document.getElementById('fNotice').value.trim(),
     image_url: document.getElementById('fImageUrl').value,
   };
+  if (!_isEdit) {
+    payload.initial_box = Number(document.getElementById('fInitBox').value) || 0;
+    payload.initial_pack = Number(document.getElementById('fInitPack').value) || 0;
+  }
   if (_isEdit) payload.active = document.getElementById('fActive').checked;
 
   try {
