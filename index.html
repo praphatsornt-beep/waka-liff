@@ -776,6 +776,14 @@
     document.getElementById("lightbox").classList.remove("show");
   }
 
+  // ── Staff redirect: ถ้าไม่ใช่ LIFF context → ไป menu.html ──────────────────
+  (function() {
+    var p = new URLSearchParams(window.location.search);
+    if (!p.get('liff.state') && !p.get('product') && !p.get('category') && p.get('all') !== '1') {
+      window.location.replace('menu.html');
+    }
+  })();
+
   // ── Config ────────────────────────────────────────────────────────────────────
   const LIFF_ID   = "2010457385-UpJLXxJ0";
   const GAS_URL   = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec";
