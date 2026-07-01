@@ -31,8 +31,13 @@
       display: flex;
       justify-content: center;
       padding: 20px;
+      padding-bottom: 80px;
     }
     .container { max-width: 420px; width: 100%; }
+    .bottom-nav { position:fixed;bottom:0;left:0;right:0;height:60px;background:#fff;border-top:1px solid var(--card-border);display:flex;z-index:100;box-shadow:0 -2px 12px rgba(0,0,0,.06); }
+    .nav-item { flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-decoration:none;color:#999;font-size:10px;font-weight:600;gap:2px;cursor:pointer; }
+    .nav-item.active { color:var(--accent); }
+    .nav-icon { font-size:22px; }
 
     /* PIN */
     #pinOverlay {
@@ -234,6 +239,14 @@
     <button onclick="logout()" style="padding:10px 24px;background:transparent;color:#d64545;border:1.5px solid #d64545;border-radius:10px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer">ออกจากระบบ</button>
   </div>
 </div>
+
+<nav class="bottom-nav">
+  <a class="nav-item" href="app.html"><span class="nav-icon">🏠</span><span>Home</span></a>
+  <a class="nav-item" href="app.html#receive"><span class="nav-icon">📦</span><span>รับเข้า</span></a>
+  <a class="nav-item" href="app.html#warehouse"><span class="nav-icon">🏭</span><span>คลัง</span></a>
+  <a class="nav-item" href="app.html#branch"><span class="nav-icon">🏬</span><span>สาขา</span></a>
+  <a class="nav-item active" href="menu.html"><span class="nav-icon">☰</span><span>เมนู</span></a>
+</nav>
 
 <script>
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
