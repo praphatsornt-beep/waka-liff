@@ -39,7 +39,8 @@
     .product-card { background: var(--card-bg); border-radius: 14px; border: 1px solid var(--card-border); padding: 14px 16px; margin-bottom: 8px; }
     .product-card.inactive { opacity: .6; }
     .pc-top { display: flex; align-items: center; gap: 10px; }
-    .pc-icon { font-size: 24px; flex-shrink: 0; }
+    .pc-thumb { width: 48px; height: 48px; border-radius: 10px; object-fit: cover; flex-shrink: 0; background: var(--input-bg); }
+    .pc-thumb-placeholder { width: 48px; height: 48px; border-radius: 10px; background: var(--input-bg); display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
     .pc-info { flex: 1; min-width: 0; }
     .pc-name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .pc-cat { font-size: 11px; color: var(--label); margin-top: 1px; }
@@ -47,8 +48,8 @@
     .btn-sm { padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; border: 1px solid var(--card-border); background: var(--input-bg); color: var(--text-primary); }
     .btn-sm.toggle-off { background: #fef2f2; border-color: #fca5a5; color: var(--red); }
     .btn-sm.toggle-on { background: #f0fdf4; border-color: #86efac; color: var(--green); }
-    .pc-meta { display: flex; gap: 12px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #f0ede8; }
-    .meta-item { flex: 1; }
+    .pc-meta { display: flex; gap: 12px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #f0ede8; flex-wrap: wrap; }
+    .meta-item { min-width: 60px; }
     .meta-label { font-size: 10px; color: var(--label); }
     .meta-val { font-size: 13px; font-weight: 600; margin-top: 2px; }
     .meta-val.stock { color: var(--accent); }
@@ -66,18 +67,36 @@
     /* Drawer */
     .drawer-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 300; display: none; }
     .drawer-overlay.open { display: block; }
-    .drawer { position: fixed; bottom: 0; left: 0; right: 0; max-height: 90vh; overflow-y: auto; background: var(--card-bg); border-radius: 20px 20px 0 0; padding: 24px 20px 40px; z-index: 301; transform: translateY(100%); transition: transform .3s ease; }
+    .drawer { position: fixed; bottom: 0; left: 0; right: 0; max-height: 92vh; overflow-y: auto; background: var(--card-bg); border-radius: 20px 20px 0 0; padding: 24px 20px 40px; z-index: 301; transform: translateY(100%); transition: transform .3s ease; }
     .drawer.open { transform: translateY(0); }
     .drawer-handle { width: 40px; height: 4px; background: #ddd; border-radius: 2px; margin: 0 auto 20px; }
     .drawer-title { font-size: 16px; font-weight: 700; margin-bottom: 18px; }
+
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
     .form-row.single { grid-template-columns: 1fr; }
     .form-group label { display: block; font-size: 11px; font-weight: 600; color: var(--label); margin-bottom: 5px; }
-    .form-group input, .form-group select, .form-group textarea {
+    .form-group input, .form-group textarea {
       width: 100%; padding: 11px 12px; border: 1px solid var(--card-border); border-radius: var(--field-radius);
       background: var(--input-bg); font-family: inherit; font-size: 14px; color: var(--text-primary);
     }
     .form-group textarea { resize: none; height: 64px; }
+
+    /* Image upload */
+    .img-section { margin-bottom: 12px; }
+    .img-preview-wrap { position: relative; width: 100%; height: 160px; border-radius: 12px; overflow: hidden; background: var(--input-bg); border: 1.5px dashed var(--card-border); display: flex; align-items: center; justify-content: center; margin-bottom: 8px; }
+    .img-preview-wrap img { width: 100%; height: 100%; object-fit: cover; }
+    .img-placeholder { text-align: center; color: var(--label); }
+    .img-placeholder .ico { font-size: 32px; display: block; margin-bottom: 6px; }
+    .img-placeholder span { font-size: 12px; }
+    .btn-upload { width: 100%; padding: 11px; border: 1.5px solid var(--accent); border-radius: var(--field-radius); background: #fff; color: var(--accent); font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .btn-upload:disabled { opacity: .5; }
+    .upload-status { font-size: 12px; text-align: center; margin-top: 6px; min-height: 16px; }
+    .upload-status.ok { color: var(--green); }
+    .upload-status.err { color: var(--red); }
+    .upload-status.loading { color: var(--text-secondary); }
+    #imgFileInput { display: none; }
+    .img-remove { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.5); color: #fff; border: none; border-radius: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer; }
+
     .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--input-bg); border-radius: var(--field-radius); margin-bottom: 12px; }
     .toggle-row label { font-size: 14px; font-weight: 600; }
     .toggle { position: relative; width: 46px; height: 26px; }
@@ -86,6 +105,7 @@
     .slider:before { content: ""; position: absolute; height: 20px; width: 20px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .3s; }
     .toggle input:checked + .slider { background: var(--green); }
     .toggle input:checked + .slider:before { transform: translateX(20px); }
+
     .btn-save { width: 100%; padding: 14px; background: var(--accent); color: #fff; border: none; border-radius: var(--field-radius); font-size: 16px; font-weight: 600; cursor: pointer; font-family: inherit; margin-top: 16px; }
     .btn-save:disabled { opacity: .5; }
     .drawer-msg { text-align: center; font-size: 13px; margin-top: 10px; min-height: 18px; }
@@ -113,9 +133,9 @@
   </div>
 
   <div class="filter-row">
-    <button class="filter-btn active" id="fAll" onclick="setFilter('all',this)">ทั้งหมด</button>
-    <button class="filter-btn" id="fActive" onclick="setFilter('active',this)">เปิดขาย</button>
-    <button class="filter-btn" id="fInactive" onclick="setFilter('inactive',this)">ปิดขาย</button>
+    <button class="filter-btn active" onclick="setFilter('all',this)">ทั้งหมด</button>
+    <button class="filter-btn" onclick="setFilter('active',this)">เปิดขาย</button>
+    <button class="filter-btn" onclick="setFilter('inactive',this)">ปิดขาย</button>
   </div>
 
   <div id="productList"><div class="loading">กำลังโหลด...</div></div>
@@ -123,6 +143,7 @@
 
 <!-- Drawer overlay -->
 <div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+<input type="file" id="imgFileInput" accept="image/*" onchange="onFileSelected(this)">
 
 <!-- Edit / Add drawer -->
 <div class="drawer" id="drawer">
@@ -130,6 +151,7 @@
   <div class="drawer-title" id="drawerTitle">แก้ไขสินค้า</div>
 
   <input type="hidden" id="editName">
+  <input type="hidden" id="fImageUrl">
 
   <div class="form-row single">
     <div class="form-group">
@@ -142,6 +164,22 @@
       <label>หมวดหมู่</label>
       <input type="text" id="fCategory" placeholder="หมวดหมู่">
     </div>
+  </div>
+
+  <div class="section-sep">รูปสินค้า</div>
+  <div class="img-section">
+    <div class="img-preview-wrap" id="imgPreviewWrap">
+      <div class="img-placeholder" id="imgPlaceholder">
+        <span class="ico">🖼️</span>
+        <span>ยังไม่มีรูป</span>
+      </div>
+      <img id="imgPreview" src="" style="display:none" alt="preview">
+      <button class="img-remove" id="btnRemoveImg" style="display:none" onclick="removeImage()">✕ ลบรูป</button>
+    </div>
+    <button class="btn-upload" id="btnUpload" onclick="document.getElementById('imgFileInput').click()">
+      📷 เลือกรูปจากมือถือ
+    </button>
+    <div class="upload-status" id="uploadStatus"></div>
   </div>
 
   <div class="section-sep">ราคาขาย</div>
@@ -211,6 +249,7 @@
 <script>
 const G = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
 const PIN_ADMIN = 'waka99';
+const IMGBB_KEY = 'YOUR_IMGBB_KEY'; // ← ใส่ key จาก imgbb.com/api
 
 let _products = [];
 let _filter = 'all';
@@ -218,6 +257,7 @@ let _isEdit = false;
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
+// ── Auth ──
 function checkPin() {
   const val = document.getElementById('pinInput').value.trim();
   if (val === PIN_ADMIN) {
@@ -232,13 +272,13 @@ function checkPin() {
     setTimeout(() => err.style.display = 'none', 2000);
   }
 }
-
 if (sessionStorage.getItem('waka_portal_auth') === '1' && sessionStorage.getItem('waka_staff_role') === 'admin') {
   document.getElementById('pinOverlay').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   loadProducts();
 }
 
+// ── Load & Render ──
 async function loadProducts() {
   document.getElementById('productList').innerHTML = '<div class="loading">กำลังโหลด...</div>';
   try {
@@ -268,9 +308,13 @@ function renderProducts() {
   el.innerHTML = list.map(p => {
     const hasBox = p.price_box > 0;
     const hasPack = p.price_pack > 0;
+    const thumbHtml = p.image_url
+      ? `<img class="pc-thumb" src="${esc(p.image_url)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">\
+         <div class="pc-thumb-placeholder" style="display:none">🎴</div>`
+      : `<div class="pc-thumb-placeholder">🎴</div>`;
     return `<div class="product-card ${p.active ? '' : 'inactive'}">
       <div class="pc-top">
-        <div class="pc-icon">🎴</div>
+        ${thumbHtml}
         <div class="pc-info">
           <div class="pc-name">${esc(p.name)}</div>
           <div class="pc-cat">${esc(p.category || '—')}</div>
@@ -295,6 +339,7 @@ function renderProducts() {
   }).join('');
 }
 
+// ── Toggle active ──
 async function quickToggle(name, newActive, btn) {
   btn.disabled = true;
   try {
@@ -304,16 +349,11 @@ async function quickToggle(name, newActive, btn) {
       const p = _products.find(x => x.name === name);
       if (p) p.active = newActive;
       renderProducts();
-    } else {
-      alert(d.error || 'เกิดข้อผิดพลาด');
-      btn.disabled = false;
-    }
-  } catch(e) {
-    alert('เชื่อมต่อไม่ได้');
-    btn.disabled = false;
-  }
+    } else { alert(d.error || 'เกิดข้อผิดพลาด'); btn.disabled = false; }
+  } catch(e) { alert('เชื่อมต่อไม่ได้'); btn.disabled = false; }
 }
 
+// ── Drawer open/close ──
 function openEdit(p) {
   _isEdit = true;
   document.getElementById('drawerTitle').textContent = 'แก้ไข: ' + p.name;
@@ -330,6 +370,7 @@ function openEdit(p) {
   document.getElementById('fNotice').value = p.notice || '';
   document.getElementById('fActive').checked = p.active;
   document.getElementById('activeToggleRow').style.display = 'flex';
+  setImagePreview(p.image_url || '');
   document.getElementById('drawerMsg').textContent = '';
   openDrawer();
 }
@@ -350,6 +391,7 @@ function openAdd() {
   document.getElementById('fNotice').value = '';
   document.getElementById('fActive').checked = true;
   document.getElementById('activeToggleRow').style.display = 'none';
+  setImagePreview('');
   document.getElementById('drawerMsg').textContent = '';
   openDrawer();
 }
@@ -362,8 +404,94 @@ function openDrawer() {
 function closeDrawer() {
   document.getElementById('drawerOverlay').classList.remove('open');
   document.getElementById('drawer').classList.remove('open');
+  document.getElementById('uploadStatus').textContent = '';
+  document.getElementById('imgFileInput').value = '';
 }
 
+// ── Image ──
+function setImagePreview(url) {
+  const img = document.getElementById('imgPreview');
+  const placeholder = document.getElementById('imgPlaceholder');
+  const removeBtn = document.getElementById('btnRemoveImg');
+  document.getElementById('fImageUrl').value = url;
+  if (url) {
+    img.src = url;
+    img.style.display = 'block';
+    placeholder.style.display = 'none';
+    removeBtn.style.display = 'block';
+  } else {
+    img.src = '';
+    img.style.display = 'none';
+    placeholder.style.display = 'flex';
+    removeBtn.style.display = 'none';
+  }
+}
+
+function removeImage() {
+  setImagePreview('');
+  document.getElementById('uploadStatus').textContent = '';
+  document.getElementById('imgFileInput').value = '';
+}
+
+async function onFileSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const statusEl = document.getElementById('uploadStatus');
+  const uploadBtn = document.getElementById('btnUpload');
+
+  if (IMGBB_KEY === 'YOUR_IMGBB_KEY') {
+    statusEl.textContent = '⚠️ ยังไม่ได้ตั้งค่า ImgBB key — สมัครที่ imgbb.com ก่อน';
+    statusEl.className = 'upload-status err';
+    input.value = '';
+    return;
+  }
+
+  if (file.size > 10 * 1024 * 1024) {
+    statusEl.textContent = 'รูปใหญ่เกิน 10MB';
+    statusEl.className = 'upload-status err';
+    input.value = '';
+    return;
+  }
+
+  statusEl.textContent = 'กำลังอัปโหลด...';
+  statusEl.className = 'upload-status loading';
+  uploadBtn.disabled = true;
+
+  try {
+    const base64 = await toBase64(file);
+    const form = new FormData();
+    form.append('key', IMGBB_KEY);
+    form.append('image', base64.split(',')[1]);
+
+    const res = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: form });
+    const data = await res.json();
+
+    if (data.success) {
+      setImagePreview(data.data.url);
+      statusEl.textContent = 'อัปโหลดสำเร็จ ✓';
+      statusEl.className = 'upload-status ok';
+    } else {
+      throw new Error(data.error?.message || 'upload failed');
+    }
+  } catch(e) {
+    statusEl.textContent = 'อัปโหลดไม่ได้: ' + e.message;
+    statusEl.className = 'upload-status err';
+  }
+  uploadBtn.disabled = false;
+  input.value = '';
+}
+
+function toBase64(file) {
+  return new Promise((res, rej) => {
+    const reader = new FileReader();
+    reader.onload = () => res(reader.result);
+    reader.onerror = rej;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ── Save ──
 async function saveProduct() {
   const btn = document.getElementById('btnSave');
   const msg = document.getElementById('drawerMsg');
@@ -385,6 +513,7 @@ async function saveProduct() {
     limit_box: document.getElementById('fLimitBox').value,
     limit_pack: document.getElementById('fLimitPack').value,
     notice: document.getElementById('fNotice').value.trim(),
+    image_url: document.getElementById('fImageUrl').value,
   };
   if (_isEdit) payload.active = document.getElementById('fActive').checked;
 

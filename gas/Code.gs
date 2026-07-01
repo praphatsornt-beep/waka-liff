@@ -2287,7 +2287,7 @@ function handleAddProduct(data) {
       Number(data.cost_box) || 0, Number(data.cost_pack) || 0,
       Number(data.price_box) || 0, Number(data.price_pack) || 0,
       Number(data.initial_box) || 0, Number(data.initial_pack) || 0,
-      limBox, limPack, "TRUE", "", data.barcode || "", ""
+      limBox, limPack, "TRUE", data.image_url || "", data.barcode || "", ""
     ];
     catWs.appendRow(newRow);
 
@@ -2321,6 +2321,7 @@ function handleUpdateProduct(data) {
     if (data.limit_box !== undefined) catWs.getRange(targetRow, 10).setValue(data.limit_box === "" ? "" : Number(data.limit_box));
     if (data.limit_pack !== undefined) catWs.getRange(targetRow, 11).setValue(data.limit_pack === "" ? "" : Number(data.limit_pack));
     if (data.active !== undefined) catWs.getRange(targetRow, 12).setValue(data.active ? "TRUE" : "FALSE");
+    if (data.image_url !== undefined) catWs.getRange(targetRow, 13).setValue(data.image_url || "");
     if (data.notice !== undefined) catWs.getRange(targetRow, 15).setValue(data.notice || "");
     CacheService.getScriptCache().remove("catalog_config");
     lock.releaseLock();
