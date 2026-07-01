@@ -615,7 +615,7 @@ async function loadWhSummary() {
     const tots={};
     for(const b of bs){for(const it of branchSummary[b]){if(!tots[it.name])tots[it.name]={name:it.name,qty_box:0,qty_pack:0,order_count:0};tots[it.name].qty_box+=it.qty_box||0;tots[it.name].qty_pack+=it.qty_pack||0;tots[it.name].order_count+=it.order_count||0;}}
     const totList=Object.values(tots).sort((a,b)=>(b.qty_box+b.qty_pack)-(a.qty_box+a.qty_pack));
-    let h='<div class="card"><h3>📊 สรุปทุกสินค้า</h3><table><tr><th>สินค้า</th><th class="num">กล่อง</th><th class="num">ซอง</th><th class="num">ออเดอร์</th></tr>';
+    let h='<div class="card"><h3>📊 ยอดรวมทุกสาขา</h3><table><tr><th>สินค้า</th><th class="num">กล่อง</th><th class="num">ซอง</th><th class="num">ออเดอร์</th></tr>';
     for(const it of totList)h+='<tr><td>'+esc(it.name)+'</td><td class="num">'+(it.qty_box||'-')+'</td><td class="num">'+(it.qty_pack||'-')+'</td><td class="num">'+it.order_count+'</td></tr>';
     h+='</table></div>';
     // แยกตามสาขา
