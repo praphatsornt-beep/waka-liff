@@ -7,98 +7,215 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #e7e5df; --card-bg: #fff; --card-border: #ddd9d2;
-      --accent: #111740; --red: #d64545; --green: #2d8f4e;
-      --text-primary: #1a1a1a; --text-secondary: #666; --label: #a8a8a8;
-      --input-bg: #f5f5f5; --field-radius: 12px;
+      --bg: #e7e5df;
+      --card-bg: #fff;
+      --card-border: #ddd9d2;
+      --accent: #111740;
+      --red: #d64545;
+      --green: #2d8f4e;
+      --orange: #d97706;
+      --blue: #2563eb;
+      --text-primary: #1a1a1a;
+      --text-secondary: #666;
+      --label: #a8a8a8;
+      --input-bg: #f5f5f5;
+      --radius: 14px;
+      --field-radius: 12px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Anuphan','Space Grotesk',sans-serif; background: var(--bg); color: var(--text-primary); min-height: 100vh; }
-    .page { max-width: 480px; margin: 0 auto; padding: 16px; padding-bottom: 80px; }
+    .page { max-width: 480px; margin: 0 auto; padding: 16px; padding-bottom: 84px; }
 
-    /* PIN */
+    /* ── PIN ── */
     #pinOverlay { position: fixed; inset: 0; background: var(--bg); z-index: 200; display: flex; align-items: center; justify-content: center; }
-    .pin-card { background: var(--card-bg); border-radius: 14px; box-shadow: 0 24px 60px rgba(40,38,34,.18); border: 1px solid var(--card-border); padding: 32px; width: 320px; text-align: center; }
-    .pin-card h2 { margin-bottom: 4px; }
-    .pin-card .sub { color: var(--text-secondary); margin-bottom: 16px; font-size: 13px; }
-    .pin-card input { width: 100%; padding: 14px; border: 1px solid var(--card-border); border-radius: var(--field-radius); font-size: 20px; text-align: center; letter-spacing: 4px; background: var(--input-bg); font-family: inherit; margin-bottom: 12px; }
+    .pin-card { background: var(--card-bg); border-radius: 22px; box-shadow: 0 24px 60px rgba(40,38,34,.18); border: 1px solid var(--card-border); padding: 36px 32px; width: 320px; text-align: center; }
+    .pin-logo { font-size: 44px; margin-bottom: 12px; }
+    .pin-card h2 { margin-bottom: 4px; font-size: 20px; }
+    .pin-card .sub { color: var(--text-secondary); margin-bottom: 22px; font-size: 13px; }
+    .pin-card input { width: 100%; padding: 14px; border: 1.5px solid var(--card-border); border-radius: var(--field-radius); font-size: 22px; text-align: center; letter-spacing: 6px; background: var(--input-bg); font-family: inherit; margin-bottom: 12px; transition: border-color .2s; }
+    .pin-card input:focus { outline: none; border-color: var(--accent); background: #fff; }
     .pin-card button { width: 100%; padding: 14px; background: var(--accent); color: #fff; border: none; border-radius: var(--field-radius); font-size: 16px; font-weight: 600; cursor: pointer; font-family: inherit; }
-    .pin-error { color: var(--red); margin-top: 8px; font-size: 13px; display: none; }
+    .pin-error { color: var(--red); margin-top: 10px; font-size: 13px; display: none; }
 
-    /* Header */
-    .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-    .top-bar h1 { font-size: 18px; font-weight: 700; }
-    .btn-add { background: var(--accent); color: #fff; border: none; border-radius: 10px; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; }
+    /* ── Header ── */
+    .top-bar {
+      background: var(--accent);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .top-bar h1 { font-size: 16px; font-weight: 700; color: #fff; }
+    .btn-add {
+      background: rgba(255,255,255,.15);
+      color: #fff;
+      border: 1.5px solid rgba(255,255,255,.3);
+      border-radius: 10px;
+      padding: 7px 14px;
+      font-size: 13px; font-weight: 600;
+      cursor: pointer; font-family: inherit;
+      transition: background .2s;
+    }
+    .btn-add:active { background: rgba(255,255,255,.25); }
 
-    /* Filter */
+    /* ── Search ── */
+    .search-row { position: relative; margin-bottom: 10px; }
+    .search-row input {
+      width: 100%; padding: 11px 14px 11px 40px;
+      border: 1.5px solid var(--card-border);
+      border-radius: var(--field-radius);
+      background: var(--card-bg);
+      font-family: inherit; font-size: 14px; color: var(--text-primary);
+      transition: border-color .2s;
+    }
+    .search-row input:focus { outline: none; border-color: var(--accent); }
+    .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 17px; opacity: .45; pointer-events: none; }
+
+    /* ── Filter pills ── */
     .filter-row { display: flex; gap: 6px; margin-bottom: 14px; }
-    .filter-btn { flex: 1; padding: 8px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card-bg); font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; color: var(--text-secondary); }
-    .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .filter-pill {
+      flex: 1; padding: 8px 4px;
+      border: 1.5px solid var(--card-border);
+      border-radius: 20px;
+      background: var(--card-bg);
+      font-size: 12px; font-weight: 600;
+      cursor: pointer; font-family: inherit; color: var(--text-secondary);
+      display: flex; align-items: center; justify-content: center; gap: 5px;
+      transition: all .2s;
+    }
+    .filter-pill.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .pill-count {
+      background: rgba(255,255,255,.22);
+      border-radius: 10px; padding: 1px 6px;
+      font-size: 10px; min-width: 18px; text-align: center;
+    }
+    .filter-pill:not(.active) .pill-count { background: #eee; color: var(--text-secondary); }
 
-    /* Product card */
-    .product-card { background: var(--card-bg); border-radius: 14px; border: 1px solid var(--card-border); padding: 14px 16px; margin-bottom: 8px; }
-    .product-card.inactive { opacity: .6; }
+    /* ── Skeleton loading ── */
+    @keyframes shimmer {
+      0%   { background-position: -300% 0; }
+      100% { background-position:  300% 0; }
+    }
+    .skel-card { background: var(--card-bg); border-radius: var(--radius); border: 1px solid var(--card-border); padding: 14px 16px; margin-bottom: 8px; overflow: hidden; }
+    .skel { background: linear-gradient(90deg,#f0ede8 25%,#e8e4de 50%,#f0ede8 75%); background-size: 300% 100%; animation: shimmer 1.5s infinite; border-radius: 6px; }
+    .sk-top { display: flex; gap: 10px; align-items: center; }
+    .sk-thumb { width: 56px; height: 56px; border-radius: 10px; flex-shrink: 0; }
+    .sk-lines { flex: 1; display: flex; flex-direction: column; gap: 7px; }
+    .sk-line { height: 11px; }
+    .sk-w70 { width: 70%; }
+    .sk-w40 { width: 40%; }
+    .sk-bottom { display: flex; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #f0ede8; }
+    .sk-cell { height: 32px; border-radius: 8px; flex: 1; }
+
+    /* ── Product card ── */
+    .product-card { background: var(--card-bg); border-radius: var(--radius); border: 1px solid var(--card-border); margin-bottom: 8px; overflow: hidden; transition: box-shadow .15s; }
+    .product-card:active { box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+    .status-strip { height: 3px; }
+    .strip-on  { background: linear-gradient(90deg, var(--green), #4ade80); }
+    .strip-off { background: #e2e8f0; }
+    .card-body { padding: 12px 14px; }
+    .product-card.card-inactive .card-body { opacity: .65; }
+
     .pc-top { display: flex; align-items: center; gap: 10px; }
-    .pc-thumb { width: 48px; height: 48px; border-radius: 10px; object-fit: cover; flex-shrink: 0; background: var(--input-bg); }
-    .pc-thumb-placeholder { width: 48px; height: 48px; border-radius: 10px; background: var(--input-bg); display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+    .pc-thumb { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; flex-shrink: 0; background: var(--input-bg); border: 1px solid var(--card-border); }
+    .pc-thumb-placeholder { width: 56px; height: 56px; border-radius: 10px; background: linear-gradient(135deg,#f0ede8,#e7e5df); display: flex; align-items: center; justify-content: center; font-size: 26px; flex-shrink: 0; border: 1px solid var(--card-border); }
     .pc-info { flex: 1; min-width: 0; }
-    .pc-name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .pc-cat { font-size: 11px; color: var(--label); margin-top: 1px; }
+    .pc-name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 5px; }
+    .pc-tags { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+    .tag { display: inline-flex; align-items: center; border-radius: 20px; padding: 2px 8px; font-size: 10px; font-weight: 600; }
+    .tag-cat  { background: #eef2ff; color: #3730a3; }
+    .tag-off  { background: #fef2f2; color: var(--red); }
+    .tag-bar  { background: var(--input-bg); color: var(--text-secondary); }
     .pc-actions { display: flex; gap: 6px; flex-shrink: 0; }
-    .btn-sm { padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; border: 1px solid var(--card-border); background: var(--input-bg); color: var(--text-primary); }
+    .btn-sm { padding: 6px 11px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; border: 1.5px solid var(--card-border); background: var(--input-bg); color: var(--text-primary); transition: transform .1s; }
+    .btn-sm:active { transform: scale(.93); }
     .btn-sm.toggle-off { background: #fef2f2; border-color: #fca5a5; color: var(--red); }
-    .btn-sm.toggle-on { background: #f0fdf4; border-color: #86efac; color: var(--green); }
-    .pc-meta { display: flex; gap: 12px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #f0ede8; flex-wrap: wrap; }
-    .meta-item { min-width: 60px; }
-    .meta-label { font-size: 10px; color: var(--label); }
-    .meta-val { font-size: 13px; font-weight: 600; margin-top: 2px; }
-    .meta-val.stock { color: var(--accent); }
-    .meta-val.cost { color: var(--text-secondary); }
+    .btn-sm.toggle-on  { background: #f0fdf4; border-color: #86efac; color: var(--green); }
 
-    .empty { text-align: center; color: var(--label); padding: 40px; font-size: 14px; }
-    .loading { text-align: center; color: var(--text-secondary); padding: 40px; }
+    /* Price grid */
+    .pc-prices { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #f0ede8; }
+    .price-cell { background: var(--input-bg); border-radius: 8px; padding: 7px 10px; }
+    .price-label { font-size: 10px; color: var(--label); margin-bottom: 2px; }
+    .price-val { font-size: 14px; font-weight: 700; }
+    .price-margin { font-size: 10px; color: var(--green); margin-top: 1px; font-weight: 600; }
+    .price-margin.neg { color: var(--red); }
 
-    /* Bottom nav */
+    /* Stock */
+    .pc-stock { display: flex; gap: 6px; margin-top: 6px; }
+    .stock-pill { flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px; border-radius: 8px; padding: 5px 8px; font-size: 12px; font-weight: 600; }
+    .sp-ok   { background: #eff6ff; color: var(--blue); }
+    .sp-low  { background: #fff7ed; color: var(--orange); }
+    .sp-zero { background: #fef2f2; color: var(--red); }
+
+    /* Notice */
+    .notice-bar { margin-top: 8px; background: #fef9f0; border-radius: 8px; padding: 6px 10px; font-size: 12px; color: var(--text-secondary); display: flex; gap: 5px; }
+
+    /* Empty / section label */
+    .empty-state { text-align: center; padding: 60px 20px; }
+    .empty-icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-text { color: var(--text-secondary); font-size: 14px; }
+    .section-label { font-size: 11px; font-weight: 700; color: var(--label); text-transform: uppercase; letter-spacing: .8px; margin: 14px 0 6px; padding-left: 4px; }
+
+    /* ── Bottom nav ── */
     .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 60px; background: #fff; border-top: 1px solid var(--card-border); display: flex; z-index: 100; box-shadow: 0 -2px 12px rgba(0,0,0,.06); }
     .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-decoration: none; color: #999; font-size: 10px; font-weight: 600; gap: 2px; }
     .nav-item.active { color: var(--accent); }
     .nav-icon { font-size: 22px; }
 
-    /* Drawer */
-    .drawer-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 300; display: none; }
+    /* ── Drawer ── */
+    .drawer-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 300; display: none; backdrop-filter: blur(2px); }
     .drawer-overlay.open { display: block; }
-    .drawer { position: fixed; bottom: 0; left: 0; right: 0; max-height: 92vh; overflow-y: auto; background: var(--card-bg); border-radius: 20px 20px 0 0; padding: 24px 20px 40px; z-index: 301; transform: translateY(100%); transition: transform .3s ease; }
-    .drawer.open { transform: translateY(0); }
-    .drawer-handle { width: 40px; height: 4px; background: #ddd; border-radius: 2px; margin: 0 auto 20px; }
-    .drawer-title { font-size: 16px; font-weight: 700; margin-bottom: 18px; }
-
-    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
-    .form-row.single { grid-template-columns: 1fr; }
-    .form-group label { display: block; font-size: 11px; font-weight: 600; color: var(--label); margin-bottom: 5px; }
-    .form-group input, .form-group textarea {
-      width: 100%; padding: 11px 12px; border: 1px solid var(--card-border); border-radius: var(--field-radius);
-      background: var(--input-bg); font-family: inherit; font-size: 14px; color: var(--text-primary);
+    .drawer {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      max-height: 93vh; overflow-y: auto;
+      background: var(--bg);
+      border-radius: 24px 24px 0 0;
+      padding: 0 0 40px;
+      z-index: 301;
+      transform: translateY(100%);
+      transition: transform .35s cubic-bezier(.32,.72,0,1);
     }
+    .drawer.open { transform: translateY(0); }
+    .drawer-handle-wrap { background: var(--card-bg); border-radius: 24px 24px 0 0; padding: 10px 20px 16px; margin-bottom: 8px; }
+    .drawer-handle { width: 40px; height: 4px; background: #ddd; border-radius: 2px; margin: 0 auto 16px; }
+    .drawer-title { font-size: 17px; font-weight: 700; }
+
+    /* Form sections inside drawer */
+    .form-sect { background: var(--card-bg); border-radius: var(--radius); padding: 14px 16px; margin: 0 16px 10px; }
+    .form-sect-title { font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 12px; opacity: .7; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .form-row.single { grid-template-columns: 1fr; }
+    .form-row + .form-row { margin-top: 10px; }
+    .form-group label { display: block; font-size: 11px; font-weight: 600; color: var(--label); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .4px; }
+    .form-group input, .form-group textarea {
+      width: 100%; padding: 11px 12px;
+      border: 1.5px solid var(--card-border);
+      border-radius: var(--field-radius);
+      background: var(--input-bg); font-family: inherit; font-size: 14px; color: var(--text-primary);
+      transition: border-color .2s, background .2s;
+    }
+    .form-group input:focus, .form-group textarea:focus { outline: none; border-color: var(--accent); background: #fff; }
+    .form-group input:disabled { opacity: .55; cursor: not-allowed; }
     .form-group textarea { resize: none; height: 64px; }
 
     /* Image upload */
-    .img-section { margin-bottom: 12px; }
-    .img-preview-wrap { position: relative; width: 100%; height: 160px; border-radius: 12px; overflow: hidden; background: var(--input-bg); border: 1.5px dashed var(--card-border); display: flex; align-items: center; justify-content: center; margin-bottom: 8px; }
+    .img-preview-wrap { position: relative; width: 100%; height: 150px; border-radius: 12px; overflow: hidden; background: var(--input-bg); border: 2px dashed var(--card-border); display: flex; align-items: center; justify-content: center; margin-bottom: 8px; transition: border-color .2s; }
     .img-preview-wrap img { width: 100%; height: 100%; object-fit: cover; }
     .img-placeholder { text-align: center; color: var(--label); }
-    .img-placeholder .ico { font-size: 32px; display: block; margin-bottom: 6px; }
+    .img-placeholder .ico { font-size: 30px; display: block; margin-bottom: 6px; }
     .img-placeholder span { font-size: 12px; }
-    .btn-upload { width: 100%; padding: 11px; border: 1.5px solid var(--accent); border-radius: var(--field-radius); background: #fff; color: var(--accent); font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .btn-upload { width: 100%; padding: 11px; border: 1.5px solid var(--accent); border-radius: var(--field-radius); background: #fff; color: var(--accent); font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all .2s; }
+    .btn-upload:hover { background: var(--accent); color: #fff; }
     .btn-upload:disabled { opacity: .5; }
     .upload-status { font-size: 12px; text-align: center; margin-top: 6px; min-height: 16px; }
     .upload-status.ok { color: var(--green); }
     .upload-status.err { color: var(--red); }
     .upload-status.loading { color: var(--text-secondary); }
     #imgFileInput { display: none; }
-    .img-remove { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.5); color: #fff; border: none; border-radius: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer; }
+    .img-remove { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.55); color: #fff; border: none; border-radius: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer; }
 
-    .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--input-bg); border-radius: var(--field-radius); margin-bottom: 12px; }
-    .toggle-row label { font-size: 14px; font-weight: 600; }
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; background: var(--card-bg); border-radius: var(--field-radius); margin: 0 16px 10px; }
+    .toggle-row label:first-child { font-size: 14px; font-weight: 600; }
     .toggle { position: relative; width: 46px; height: 26px; }
     .toggle input { opacity: 0; width: 0; height: 0; }
     .slider { position: absolute; inset: 0; background: #ccc; border-radius: 26px; cursor: pointer; transition: .3s; }
@@ -106,19 +223,20 @@
     .toggle input:checked + .slider { background: var(--green); }
     .toggle input:checked + .slider:before { transform: translateX(20px); }
 
-    .btn-save { width: 100%; padding: 14px; background: var(--accent); color: #fff; border: none; border-radius: var(--field-radius); font-size: 16px; font-weight: 600; cursor: pointer; font-family: inherit; margin-top: 16px; }
+    .btn-save { width: calc(100% - 32px); margin: 16px 16px 0; padding: 15px; background: var(--accent); color: #fff; border: none; border-radius: var(--field-radius); font-size: 16px; font-weight: 700; cursor: pointer; font-family: inherit; transition: opacity .2s; display: block; }
+    .btn-save:active { opacity: .85; }
     .btn-save:disabled { opacity: .5; }
-    .drawer-msg { text-align: center; font-size: 13px; margin-top: 10px; min-height: 18px; }
+    .drawer-msg { text-align: center; font-size: 13px; margin: 10px 16px 0; min-height: 18px; }
     .drawer-msg.ok { color: var(--green); }
     .drawer-msg.err { color: var(--red); }
-    .section-sep { font-size: 11px; font-weight: 600; color: var(--label); text-transform: uppercase; letter-spacing: 1px; margin: 14px 0 8px; }
   </style>
 </head>
 <body>
 
 <div id="pinOverlay">
   <div class="pin-card">
-    <h2>🎴 จัดการสินค้า</h2>
+    <div class="pin-logo">🎴</div>
+    <h2>จัดการสินค้า</h2>
     <p class="sub">เข้าถึงได้เฉพาะ Admin</p>
     <input type="password" id="pinInput" placeholder="PIN" onkeydown="if(event.key==='Enter')checkPin()">
     <button onclick="checkPin()">เข้าสู่ระบบ</button>
@@ -132,49 +250,70 @@
     <button class="btn-add" onclick="openAdd()">+ เพิ่มสินค้า</button>
   </div>
 
-  <div class="filter-row">
-    <button class="filter-btn active" onclick="setFilter('all',this)">ทั้งหมด</button>
-    <button class="filter-btn" onclick="setFilter('active',this)">เปิดขาย</button>
-    <button class="filter-btn" onclick="setFilter('inactive',this)">ปิดขาย</button>
+  <div class="search-row">
+    <span class="search-icon">🔍</span>
+    <input type="text" id="searchInput" placeholder="ค้นหาสินค้า..." oninput="renderProducts()">
   </div>
 
-  <div id="productList"><div class="loading">กำลังโหลด...</div></div>
+  <div class="filter-row">
+    <button class="filter-pill active" onclick="setFilter('all',this)" id="pill_all">
+      ทั้งหมด <span class="pill-count" id="cnt_all">0</span>
+    </button>
+    <button class="filter-pill" onclick="setFilter('active',this)" id="pill_active">
+      เปิดขาย <span class="pill-count" id="cnt_active">0</span>
+    </button>
+    <button class="filter-pill" onclick="setFilter('inactive',this)" id="pill_inactive">
+      ปิดขาย <span class="pill-count" id="cnt_inactive">0</span>
+    </button>
+  </div>
+
+  <div id="productList">
+    <!-- skeleton -->
+    <div class="skel-card"><div class="sk-top"><div class="skel sk-thumb"></div><div class="sk-lines"><div class="skel sk-line sk-w70"></div><div class="skel sk-line sk-w40"></div></div></div><div class="sk-bottom"><div class="skel sk-cell"></div><div class="skel sk-cell"></div></div></div>
+    <div class="skel-card"><div class="sk-top"><div class="skel sk-thumb"></div><div class="sk-lines"><div class="skel sk-line sk-w70"></div><div class="skel sk-line sk-w40"></div></div></div><div class="sk-bottom"><div class="skel sk-cell"></div><div class="skel sk-cell"></div></div></div>
+    <div class="skel-card"><div class="sk-top"><div class="skel sk-thumb"></div><div class="sk-lines"><div class="skel sk-line sk-w70"></div><div class="skel sk-line sk-w40"></div></div></div><div class="sk-bottom"><div class="skel sk-cell"></div><div class="skel sk-cell"></div></div></div>
+  </div>
 </div>
 
-<!-- Drawer overlay -->
 <div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
 <input type="file" id="imgFileInput" accept="image/*" onchange="onFileSelected(this)">
 
-<!-- Edit / Add drawer -->
 <div class="drawer" id="drawer">
-  <div class="drawer-handle"></div>
-  <div class="drawer-title" id="drawerTitle">แก้ไขสินค้า</div>
+  <div class="drawer-handle-wrap">
+    <div class="drawer-handle"></div>
+    <div class="drawer-title" id="drawerTitle">แก้ไขสินค้า</div>
+  </div>
 
   <input type="hidden" id="editName">
   <input type="hidden" id="fImageUrl">
 
-  <div class="form-row single">
-    <div class="form-group">
-      <label>ชื่อสินค้า</label>
-      <input type="text" id="fName" placeholder="ชื่อสินค้า">
+  <!-- ข้อมูลสินค้า -->
+  <div class="form-sect">
+    <div class="form-sect-title">ข้อมูลสินค้า</div>
+    <div class="form-row single" style="margin-bottom:10px">
+      <div class="form-group">
+        <label>ชื่อสินค้า</label>
+        <input type="text" id="fName" placeholder="ชื่อสินค้า">
+      </div>
     </div>
-  </div>
-  <div class="form-row single">
-    <div class="form-group">
-      <label>หมวดหมู่</label>
-      <input type="text" id="fCategory" placeholder="หมวดหมู่" list="catSuggestions">
-      <datalist id="catSuggestions"></datalist>
+    <div class="form-row single" style="margin-bottom:10px">
+      <div class="form-group">
+        <label>หมวดหมู่</label>
+        <input type="text" id="fCategory" placeholder="พิมพ์หรือเลือก" list="catSuggestions">
+        <datalist id="catSuggestions"></datalist>
+      </div>
     </div>
-  </div>
-  <div class="form-row single">
-    <div class="form-group">
-      <label>Barcode</label>
-      <input type="text" id="fBarcode" placeholder="สแกนหรือพิมพ์ barcode" inputmode="numeric">
+    <div class="form-row single">
+      <div class="form-group">
+        <label>Barcode</label>
+        <input type="text" id="fBarcode" placeholder="สแกนหรือพิมพ์" inputmode="numeric">
+      </div>
     </div>
   </div>
 
-  <div class="section-sep">รูปสินค้า</div>
-  <div class="img-section">
+  <!-- รูปสินค้า -->
+  <div class="form-sect">
+    <div class="form-sect-title">รูปสินค้า</div>
     <div class="img-preview-wrap" id="imgPreviewWrap">
       <div class="img-placeholder" id="imgPlaceholder">
         <span class="ico">🖼️</span>
@@ -189,64 +328,80 @@
     <div class="upload-status" id="uploadStatus"></div>
   </div>
 
-  <div class="section-sep">ราคาขาย</div>
-  <div class="form-row">
-    <div class="form-group">
-      <label>ราคา Box (฿)</label>
-      <input type="number" id="fPriceBox" placeholder="0" min="0">
-    </div>
-    <div class="form-group">
-      <label>ราคา Pack (฿)</label>
-      <input type="number" id="fPricePack" placeholder="0" min="0">
-    </div>
-  </div>
-
-  <div class="section-sep">ต้นทุน</div>
-  <div class="form-row">
-    <div class="form-group">
-      <label>ต้นทุน Box (฿)</label>
-      <input type="number" id="fCostBox" placeholder="0" min="0">
-    </div>
-    <div class="form-group">
-      <label>ต้นทุน Pack (฿)</label>
-      <input type="number" id="fCostPack" placeholder="0" min="0">
-    </div>
-  </div>
-
-  <div class="section-sep">จำกัดการสั่ง (ต่อออเดอร์)</div>
-  <div class="form-row">
-    <div class="form-group">
-      <label>Limit Box (-1 = ไม่จำกัด)</label>
-      <input type="number" id="fLimitBox" placeholder="-1">
-    </div>
-    <div class="form-group">
-      <label>Limit Pack (-1 = ไม่จำกัด)</label>
-      <input type="number" id="fLimitPack" placeholder="-1">
-    </div>
-  </div>
-
-  <div class="section-sep">อื่นๆ</div>
-  <div class="form-row single">
-    <div class="form-group">
-      <label>หมายเหตุ (แสดงให้ลูกค้าเห็น)</label>
-      <textarea id="fNotice" placeholder="เช่น: สินค้าหมดชั่วคราว"></textarea>
-    </div>
-  </div>
-
-  <div id="initStockRow" style="display:none">
-    <div class="section-sep">สต็อกเริ่มต้น</div>
+  <!-- ราคาขาย -->
+  <div class="form-sect">
+    <div class="form-sect-title">ราคาขาย</div>
     <div class="form-row">
       <div class="form-group">
-        <label>จำนวน Box</label>
-        <input type="number" id="fInitBox" placeholder="0" min="0" inputmode="numeric">
+        <label>Box (฿)</label>
+        <input type="number" id="fPriceBox" placeholder="0" min="0">
       </div>
       <div class="form-group">
-        <label>จำนวน Pack</label>
-        <input type="number" id="fInitPack" placeholder="0" min="0" inputmode="numeric">
+        <label>Pack (฿)</label>
+        <input type="number" id="fPricePack" placeholder="0" min="0">
       </div>
     </div>
   </div>
 
+  <!-- ต้นทุน -->
+  <div class="form-sect">
+    <div class="form-sect-title">ต้นทุน</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Box (฿)</label>
+        <input type="number" id="fCostBox" placeholder="0" min="0">
+      </div>
+      <div class="form-group">
+        <label>Pack (฿)</label>
+        <input type="number" id="fCostPack" placeholder="0" min="0">
+      </div>
+    </div>
+  </div>
+
+  <!-- จำกัดการสั่ง -->
+  <div class="form-sect">
+    <div class="form-sect-title">จำกัดการสั่ง / ออเดอร์</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Limit Box</label>
+        <input type="number" id="fLimitBox" placeholder="-1 = ไม่จำกัด">
+      </div>
+      <div class="form-group">
+        <label>Limit Pack</label>
+        <input type="number" id="fLimitPack" placeholder="-1 = ไม่จำกัด">
+      </div>
+    </div>
+  </div>
+
+  <!-- อื่นๆ -->
+  <div class="form-sect">
+    <div class="form-sect-title">อื่นๆ</div>
+    <div class="form-row single">
+      <div class="form-group">
+        <label>หมายเหตุ (แสดงให้ลูกค้าเห็น)</label>
+        <textarea id="fNotice" placeholder="เช่น: สินค้าหมดชั่วคราว"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- สต็อกเริ่มต้น (add mode only) -->
+  <div id="initStockRow" style="display:none">
+    <div class="form-sect">
+      <div class="form-sect-title">สต็อกเริ่มต้น</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>จำนวน Box</label>
+          <input type="number" id="fInitBox" placeholder="0" min="0" inputmode="numeric">
+        </div>
+        <div class="form-group">
+          <label>จำนวน Pack</label>
+          <input type="number" id="fInitPack" placeholder="0" min="0" inputmode="numeric">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- เปิดขาย toggle (edit mode only) -->
   <div class="toggle-row" id="activeToggleRow">
     <label>เปิดขาย</label>
     <label class="toggle">
@@ -261,9 +416,9 @@
 
 <nav class="bottom-nav">
   <a class="nav-item" href="app.html"><span class="nav-icon">📋</span><span>ออเดอร์</span></a>
-  <a class="nav-item" href="wakagym-staff.html"><span class="nav-icon">🏆</span><span>GYM</span></a>
   <a class="nav-item" href="app.html#warehouse"><span class="nav-icon">🏭</span><span>คลัง</span></a>
   <a class="nav-item" href="app.html#branch"><span class="nav-icon">🏬</span><span>สาขา</span></a>
+  <a class="nav-item" href="wakagym-staff.html"><span class="nav-icon">🏆</span><span>GYM</span></a>
   <a class="nav-item" href="menu.html"><span class="nav-icon">☰</span><span>เมนู</span></a>
 </nav>
 
@@ -301,7 +456,6 @@ if (sessionStorage.getItem('waka_portal_auth') === '1' && sessionStorage.getItem
 
 // ── Load & Render ──
 async function loadProducts() {
-  document.getElementById('productList').innerHTML = '<div class="loading">กำลังโหลด...</div>';
   try {
     const r = await fetch(G + '?action=api&do=catalog_admin');
     const d = await r.json();
@@ -309,60 +463,108 @@ async function loadProducts() {
     renderProducts();
     buildCatSuggestions();
   } catch(e) {
-    document.getElementById('productList').innerHTML = '<div class="empty">โหลดไม่ได้</div>';
+    document.getElementById('productList').innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">โหลดไม่ได้ ลองใหม่อีกครั้ง</div></div>';
   }
 }
 
 function buildCatSuggestions() {
   const cats = [...new Set(_products.map(p => p.category).filter(Boolean))];
-  const dl = document.getElementById('catSuggestions');
-  dl.innerHTML = cats.map(c => `<option value="${esc(c)}">`).join('');
+  document.getElementById('catSuggestions').innerHTML = cats.map(c => `<option value="${esc(c)}">`).join('');
 }
 
 function setFilter(f, btn) {
   _filter = f;
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.filter-pill').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderProducts();
 }
 
+function updateFilterCounts(all) {
+  document.getElementById('cnt_all').textContent     = all.length;
+  document.getElementById('cnt_active').textContent  = all.filter(p => p.active).length;
+  document.getElementById('cnt_inactive').textContent= all.filter(p => !p.active).length;
+}
+
 function renderProducts() {
   const el = document.getElementById('productList');
+  const q = (document.getElementById('searchInput').value || '').trim().toLowerCase();
+
   let list = _products;
-  if (_filter === 'active') list = list.filter(p => p.active);
+  if (q) list = list.filter(p => p.name.toLowerCase().includes(q) || (p.category||'').toLowerCase().includes(q) || (p.barcode||'').includes(q));
+  updateFilterCounts(list);
+  if (_filter === 'active')   list = list.filter(p => p.active);
   else if (_filter === 'inactive') list = list.filter(p => !p.active);
-  if (list.length === 0) { el.innerHTML = '<div class="empty">ไม่มีสินค้า</div>'; return; }
+
+  if (list.length === 0) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">${q ? '🔍' : '📦'}</div><div class="empty-text">${q ? 'ไม่พบสินค้า "'+esc(q)+'"' : 'ไม่มีสินค้า'}</div></div>`;
+    return;
+  }
 
   el.innerHTML = list.map(p => {
-    const hasBox = p.price_box > 0;
+    const hasBox  = p.price_box > 0;
     const hasPack = p.price_pack > 0;
+    const marginBox  = hasBox  ? (p.price_box  - p.cost_box)  : null;
+    const marginPack = hasPack ? (p.price_pack - p.cost_pack) : null;
+
     const thumbHtml = p.image_url
-      ? `<img class="pc-thumb" src="${esc(p.image_url)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">\
+      ? `<img class="pc-thumb" src="${esc(p.image_url)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
          <div class="pc-thumb-placeholder" style="display:none">🎴</div>`
       : `<div class="pc-thumb-placeholder">🎴</div>`;
-    return `<div class="product-card ${p.active ? '' : 'inactive'}">
-      <div class="pc-top">
-        ${thumbHtml}
-        <div class="pc-info">
-          <div class="pc-name">${esc(p.name)}</div>
-          <div class="pc-cat">${esc(p.category || '—')}</div>
+
+    const qtyBox  = p.qty_box  ?? '—';
+    const qtyPack = p.qty_pack ?? '—';
+    const stockClass = (b, pk) => {
+      const v = Math.min(b ?? 99, pk ?? 99);
+      return v === 0 ? 'sp-zero' : v < 5 ? 'sp-low' : 'sp-ok';
+    };
+
+    return `<div class="product-card ${p.active ? '' : 'card-inactive'}">
+      <div class="status-strip ${p.active ? 'strip-on' : 'strip-off'}"></div>
+      <div class="card-body">
+        <div class="pc-top">
+          ${thumbHtml}
+          <div class="pc-info">
+            <div class="pc-name">${esc(p.name)}</div>
+            <div class="pc-tags">
+              ${p.category ? `<span class="tag tag-cat">${esc(p.category)}</span>` : ''}
+              ${!p.active  ? `<span class="tag tag-off">ปิดขาย</span>` : ''}
+              ${p.barcode  ? `<span class="tag tag-bar">🔖 ${esc(p.barcode)}</span>` : ''}
+            </div>
+          </div>
+          <div class="pc-actions">
+            <button class="btn-sm ${p.active ? 'toggle-off' : 'toggle-on'}"
+              onclick="quickToggle('${p.name.replace(/'/g,"\\'")}',${!p.active},this)">
+              ${p.active ? 'ปิด' : 'เปิด'}
+            </button>
+            <button class="btn-sm" onclick="openEdit(${JSON.stringify(p).replace(/"/g,'&quot;')})">แก้ไข</button>
+          </div>
         </div>
-        <div class="pc-actions">
-          <button class="btn-sm ${p.active ? 'toggle-off' : 'toggle-on'}"
-            onclick="quickToggle('${p.name.replace(/'/g,"\\'")}', ${!p.active}, this)">
-            ${p.active ? 'ปิด' : 'เปิด'}
-          </button>
-          <button class="btn-sm" onclick="openEdit(${JSON.stringify(p).replace(/"/g,'&quot;')})">แก้ไข</button>
+
+        ${(hasBox || hasPack) ? `
+        <div class="pc-prices">
+          ${hasBox  ? `<div class="price-cell">
+            <div class="price-label">ราคา Box</div>
+            <div class="price-val">฿${p.price_box.toLocaleString()}</div>
+            ${marginBox !== null ? `<div class="price-margin ${marginBox < 0 ? 'neg' : ''}">กำไร ฿${marginBox.toLocaleString()}</div>` : ''}
+          </div>` : ''}
+          ${hasPack ? `<div class="price-cell">
+            <div class="price-label">ราคา Pack</div>
+            <div class="price-val">฿${p.price_pack.toLocaleString()}</div>
+            ${marginPack !== null ? `<div class="price-margin ${marginPack < 0 ? 'neg' : ''}">กำไร ฿${marginPack.toLocaleString()}</div>` : ''}
+          </div>` : ''}
+        </div>` : ''}
+
+        <div class="pc-stock">
+          <div class="stock-pill ${stockClass(p.qty_box, p.qty_pack)}">
+            📦 Box <strong>${qtyBox}</strong>
+          </div>
+          <div class="stock-pill ${stockClass(p.qty_pack, p.qty_box)}">
+            🧃 Pack <strong>${qtyPack}</strong>
+          </div>
         </div>
+
+        ${p.notice ? `<div class="notice-bar">📢 <span>${esc(p.notice)}</span></div>` : ''}
       </div>
-      <div class="pc-meta">
-        ${hasBox ? `<div class="meta-item"><div class="meta-label">ราคา Box</div><div class="meta-val">฿${p.price_box.toLocaleString()}</div></div>` : ''}
-        ${hasPack ? `<div class="meta-item"><div class="meta-label">ราคา Pack</div><div class="meta-val">฿${p.price_pack.toLocaleString()}</div></div>` : ''}
-        ${hasBox ? `<div class="meta-item"><div class="meta-label">ต้นทุน Box</div><div class="meta-val cost">฿${p.cost_box.toLocaleString()}</div></div>` : ''}
-        ${hasPack ? `<div class="meta-item"><div class="meta-label">ต้นทุน Pack</div><div class="meta-val cost">฿${p.cost_pack.toLocaleString()}</div></div>` : ''}
-        <div class="meta-item"><div class="meta-label">สต็อก</div><div class="meta-val stock">${p.qty_box}/${p.qty_pack}</div></div>
-      </div>
-      ${p.notice ? `<div style="margin-top:8px;font-size:12px;color:var(--text-secondary);background:#fef9f0;border-radius:8px;padding:6px 10px">📢 ${esc(p.notice)}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -381,25 +583,25 @@ async function quickToggle(name, newActive, btn) {
   } catch(e) { alert('เชื่อมต่อไม่ได้'); btn.disabled = false; }
 }
 
-// ── Drawer open/close ──
+// ── Drawer ──
 function openEdit(p) {
   _isEdit = true;
   document.getElementById('drawerTitle').textContent = 'แก้ไข: ' + p.name;
-  document.getElementById('editName').value = p.name;
-  document.getElementById('fName').value = p.name;
-  document.getElementById('fName').disabled = true;
-  document.getElementById('fCategory').value = p.category || '';
-  document.getElementById('fBarcode').value = p.barcode || '';
-  document.getElementById('fPriceBox').value = p.price_box || '';
-  document.getElementById('fPricePack').value = p.price_pack || '';
-  document.getElementById('fCostBox').value = p.cost_box || '';
-  document.getElementById('fCostPack').value = p.cost_pack || '';
-  document.getElementById('fLimitBox').value = p.limit_box >= 0 ? p.limit_box : '-1';
-  document.getElementById('fLimitPack').value = p.limit_pack >= 0 ? p.limit_pack : '-1';
-  document.getElementById('fNotice').value = p.notice || '';
-  document.getElementById('fActive').checked = p.active;
+  document.getElementById('editName').value         = p.name;
+  document.getElementById('fName').value            = p.name;
+  document.getElementById('fName').disabled         = true;
+  document.getElementById('fCategory').value        = p.category || '';
+  document.getElementById('fBarcode').value         = p.barcode || '';
+  document.getElementById('fPriceBox').value        = p.price_box || '';
+  document.getElementById('fPricePack').value       = p.price_pack || '';
+  document.getElementById('fCostBox').value         = p.cost_box || '';
+  document.getElementById('fCostPack').value        = p.cost_pack || '';
+  document.getElementById('fLimitBox').value        = p.limit_box >= 0 ? p.limit_box : '-1';
+  document.getElementById('fLimitPack').value       = p.limit_pack >= 0 ? p.limit_pack : '-1';
+  document.getElementById('fNotice').value          = p.notice || '';
+  document.getElementById('fActive').checked        = p.active;
   document.getElementById('activeToggleRow').style.display = 'flex';
-  document.getElementById('initStockRow').style.display = 'none';
+  document.getElementById('initStockRow').style.display   = 'none';
   setImagePreview(p.image_url || '');
   document.getElementById('drawerMsg').textContent = '';
   openDrawer();
@@ -408,23 +610,15 @@ function openEdit(p) {
 function openAdd() {
   _isEdit = false;
   document.getElementById('drawerTitle').textContent = 'เพิ่มสินค้าใหม่';
-  document.getElementById('editName').value = '';
-  document.getElementById('fName').value = '';
-  document.getElementById('fName').disabled = false;
+  ['editName','fBarcode','fPriceBox','fPricePack','fCostBox','fCostPack','fNotice','fInitBox','fInitPack'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('fName').value     = '';
+  document.getElementById('fName').disabled  = false;
   document.getElementById('fCategory').value = '';
-  document.getElementById('fBarcode').value = '';
-  document.getElementById('fPriceBox').value = '';
-  document.getElementById('fPricePack').value = '';
-  document.getElementById('fCostBox').value = '';
-  document.getElementById('fCostPack').value = '';
-  document.getElementById('fLimitBox').value = '-1';
+  document.getElementById('fLimitBox').value  = '-1';
   document.getElementById('fLimitPack').value = '-1';
-  document.getElementById('fInitBox').value = '';
-  document.getElementById('fInitPack').value = '';
-  document.getElementById('fNotice').value = '';
-  document.getElementById('fActive').checked = true;
+  document.getElementById('fActive').checked  = true;
   document.getElementById('activeToggleRow').style.display = 'none';
-  document.getElementById('initStockRow').style.display = 'block';
+  document.getElementById('initStockRow').style.display   = 'block';
   setImagePreview('');
   document.getElementById('drawerMsg').textContent = '';
   openDrawer();
@@ -446,18 +640,14 @@ function closeDrawer() {
 function setImagePreview(url) {
   const img = document.getElementById('imgPreview');
   const placeholder = document.getElementById('imgPlaceholder');
-  const removeBtn = document.getElementById('btnRemoveImg');
+  const removeBtn   = document.getElementById('btnRemoveImg');
   document.getElementById('fImageUrl').value = url;
   if (url) {
-    img.src = url;
-    img.style.display = 'block';
-    placeholder.style.display = 'none';
-    removeBtn.style.display = 'block';
+    img.src = url; img.style.display = 'block';
+    placeholder.style.display = 'none'; removeBtn.style.display = 'block';
   } else {
-    img.src = '';
-    img.style.display = 'none';
-    placeholder.style.display = 'flex';
-    removeBtn.style.display = 'none';
+    img.src = ''; img.style.display = 'none';
+    placeholder.style.display = 'flex'; removeBtn.style.display = 'none';
   }
 }
 
@@ -468,52 +658,37 @@ function removeImage() {
 }
 
 async function onFileSelected(input) {
-  const file = input.files[0];
-  if (!file) return;
-
+  const file = input.files[0]; if (!file) return;
   const statusEl = document.getElementById('uploadStatus');
   const uploadBtn = document.getElementById('btnUpload');
-
   if (IMGBB_KEY === 'YOUR_IMGBB_KEY') {
-    statusEl.textContent = '⚠️ ยังไม่ได้ตั้งค่า ImgBB key — สมัครที่ imgbb.com ก่อน';
-    statusEl.className = 'upload-status err';
-    input.value = '';
-    return;
+    statusEl.textContent = '⚠️ ยังไม่ได้ตั้งค่า ImgBB key';
+    statusEl.className = 'upload-status err'; input.value = ''; return;
   }
-
   if (file.size > 10 * 1024 * 1024) {
     statusEl.textContent = 'รูปใหญ่เกิน 10MB';
-    statusEl.className = 'upload-status err';
-    input.value = '';
-    return;
+    statusEl.className = 'upload-status err'; input.value = ''; return;
   }
-
   statusEl.textContent = 'กำลังอัปโหลด...';
   statusEl.className = 'upload-status loading';
   uploadBtn.disabled = true;
-
   try {
     const base64 = await toBase64(file);
     const form = new FormData();
     form.append('key', IMGBB_KEY);
     form.append('image', base64.split(',')[1]);
-
-    const res = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: form });
+    const res  = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: form });
     const data = await res.json();
-
     if (data.success) {
       setImagePreview(data.data.url);
       statusEl.textContent = 'อัปโหลดสำเร็จ ✓';
       statusEl.className = 'upload-status ok';
-    } else {
-      throw new Error(data.error?.message || 'upload failed');
-    }
+    } else { throw new Error(data.error?.message || 'upload failed'); }
   } catch(e) {
     statusEl.textContent = 'อัปโหลดไม่ได้: ' + e.message;
     statusEl.className = 'upload-status err';
   }
-  uploadBtn.disabled = false;
-  input.value = '';
+  uploadBtn.disabled = false; input.value = '';
 }
 
 function toBase64(file) {
@@ -529,29 +704,27 @@ function toBase64(file) {
 async function saveProduct() {
   const btn = document.getElementById('btnSave');
   const msg = document.getElementById('drawerMsg');
-  btn.disabled = true;
-  msg.textContent = '';
-  msg.className = 'drawer-msg';
+  btn.disabled = true; msg.textContent = ''; msg.className = 'drawer-msg';
 
   const name = _isEdit ? document.getElementById('editName').value : document.getElementById('fName').value.trim();
   if (!name) { msg.textContent = 'กรุณาใส่ชื่อสินค้า'; msg.className = 'drawer-msg err'; btn.disabled = false; return; }
 
   const payload = {
-    _action: _isEdit ? 'updateProduct' : 'addProduct',
+    _action:    _isEdit ? 'updateProduct' : 'addProduct',
     name,
-    category: document.getElementById('fCategory').value.trim(),
-    barcode: document.getElementById('fBarcode').value.trim(),
-    price_box: Number(document.getElementById('fPriceBox').value) || 0,
+    category:   document.getElementById('fCategory').value.trim(),
+    barcode:    document.getElementById('fBarcode').value.trim(),
+    price_box:  Number(document.getElementById('fPriceBox').value)  || 0,
     price_pack: Number(document.getElementById('fPricePack').value) || 0,
-    cost_box: Number(document.getElementById('fCostBox').value) || 0,
-    cost_pack: Number(document.getElementById('fCostPack').value) || 0,
-    limit_box: document.getElementById('fLimitBox').value,
+    cost_box:   Number(document.getElementById('fCostBox').value)   || 0,
+    cost_pack:  Number(document.getElementById('fCostPack').value)  || 0,
+    limit_box:  document.getElementById('fLimitBox').value,
     limit_pack: document.getElementById('fLimitPack').value,
-    notice: document.getElementById('fNotice').value.trim(),
-    image_url: document.getElementById('fImageUrl').value,
+    notice:     document.getElementById('fNotice').value.trim(),
+    image_url:  document.getElementById('fImageUrl').value,
   };
   if (!_isEdit) {
-    payload.initial_box = Number(document.getElementById('fInitBox').value) || 0;
+    payload.initial_box  = Number(document.getElementById('fInitBox').value)  || 0;
     payload.initial_pack = Number(document.getElementById('fInitPack').value) || 0;
   }
   if (_isEdit) payload.active = document.getElementById('fActive').checked;

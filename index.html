@@ -780,7 +780,13 @@
   (function() {
     var p = new URLSearchParams(window.location.search);
     if (!p.get('liff.state') && !p.get('product') && !p.get('category') && p.get('all') !== '1') {
-      window.location.replace('menu.html');
+      // ตรวจ sessionStorage ด้วย เผื่อ LIFF login redirect ทำให้ liff.state หายจาก URL
+      var hasSavedFilter = sessionStorage.getItem('waka_filter_category') ||
+                           sessionStorage.getItem('waka_filter_product')  ||
+                           sessionStorage.getItem('waka_filter_all') === '1';
+      if (!hasSavedFilter) {
+        window.location.replace('menu.html');
+      }
     }
   })();
 
