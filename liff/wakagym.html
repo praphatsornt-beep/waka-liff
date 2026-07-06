@@ -198,7 +198,7 @@ let eventInfo = null, tokenThreshold = 30;
 async function init() {
   try {
     await liff.init({ liffId: LIFF_ID });
-    if (!liff.isLoggedIn()) { liff.login(); return; }
+    if (!liff.isLoggedIn()) { liff.login({ redirectUri: window.location.href }); return; }
     lineProfile = await liff.getProfile();
   } catch (e) {
     lineProfile = { userId: "dev_user", displayName: "Dev", pictureUrl: "" };
