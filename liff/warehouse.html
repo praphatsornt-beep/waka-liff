@@ -300,7 +300,8 @@
 </div>
 
 <script>
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
+const WAKA_S  = 'wk26xK9mPqRt';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec?_s=' + WAKA_S;
 const PIN_ADMIN = 'waka99';
 const BRANCH_CODES = { 'ts01': 'ต้นสักคอร์เนอร์', 'mt01': 'เมืองทองธานี', 'sn01': 'ศรีนครินทร์' };
 
@@ -349,7 +350,7 @@ async function loadAll() {
 // ── สรุปสาขา ──
 async function loadSummary() {
   try {
-    const res = await fetch(GAS_URL + '?action=api&do=branch_summary');
+    const res = await fetch(GAS_URL + '&action=api&do=branch_summary');
     const data = await res.json();
     branchSummary = data.branches || {};
     renderSummary();
@@ -416,7 +417,7 @@ function renderTotalSummary() {
 // ── สต็อกกลาง ──
 async function loadCentralStock() {
   try {
-    const res = await fetch(GAS_URL + '?action=api&do=central_stock');
+    const res = await fetch(GAS_URL + '&action=api&do=central_stock');
     const data = await res.json();
     centralStock = data.stock || [];
   } catch (err) {}
@@ -525,7 +526,7 @@ async function loadHistory() {
   const el = document.getElementById('historyContent');
   el.innerHTML = '<div class="empty">กำลังโหลด...</div>';
   try {
-    const res = await fetch(GAS_URL + '?action=api&do=shipments');
+    const res = await fetch(GAS_URL + '&action=api&do=shipments');
     const data = await res.json();
     const shipments = data.shipments || [];
     if (shipments.length === 0) {
@@ -590,8 +591,8 @@ async function loadStock() {
 
   try {
     const [cRes, bRes] = await Promise.all([
-      fetch(GAS_URL + '?action=api&do=central_stock'),
-      fetch(GAS_URL + '?action=api&do=branch_stock')
+      fetch(GAS_URL + '&action=api&do=central_stock'),
+      fetch(GAS_URL + '&action=api&do=branch_stock')
     ]);
     const cData = await cRes.json();
     const bData = await bRes.json();

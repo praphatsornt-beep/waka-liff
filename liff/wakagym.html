@@ -190,7 +190,8 @@
 
 <script>
 const LIFF_ID = "2010457385-UpJLXxJ0";
-const GAS_URL = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec";
+const WAKA_S  = "wk26xK9mPqRt";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec?_s=" + WAKA_S;
 
 let lineProfile = {}, slipBase64 = null, paymentMethod = "transfer";
 let eventInfo = null, tokenThreshold = 30;
@@ -214,7 +215,7 @@ async function init() {
 
   try {
     var [statusRes, configRes] = await Promise.all([
-      fetch(GAS_URL + "?action=api&do=wakagym_status&line_user_id=" + encodeURIComponent(lineProfile.userId) + "&_t=" + Date.now()),
+      fetch(GAS_URL + "&action=api&do=wakagym_status&line_user_id=" + encodeURIComponent(lineProfile.userId) + "&_t=" + Date.now()),
       fetch(GAS_URL)
     ]);
     var statusData = await statusRes.json();

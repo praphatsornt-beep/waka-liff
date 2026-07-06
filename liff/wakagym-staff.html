@@ -159,7 +159,8 @@
 </div>
 
 <script>
-var GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
+var WAKA_S  = 'wk26xK9mPqRt';
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec?_s=' + WAKA_S;
 var scanner = null, currentRole = '', selectedTier = 'L', loadedPlayers = [];
 
 var TOKEN_TABLE = {
@@ -236,7 +237,7 @@ async function lookupGroup(groupId) {
   document.getElementById('playerCards').innerHTML = '<div style="text-align:center;color:#a8a8a8;padding:16px">กำลังโหลด...</div>';
   document.getElementById('allGivenMsg').style.display = 'none';
   try {
-    var res = await fetch(GAS_URL + '?action=api&do=wakagym_lookup&group_id=' + encodeURIComponent(groupId) + '&_t=' + Date.now());
+    var res = await fetch(GAS_URL + '&action=api&do=wakagym_lookup&group_id=' + encodeURIComponent(groupId) + '&_t=' + Date.now());
     var data = await res.json();
     if (data.error) { document.getElementById('playerCards').innerHTML = '<div style="text-align:center;color:#d64545;padding:16px">ไม่พบรหัส ' + esc(groupId) + '</div>'; return; }
     renderPlayers(data.players || []);
@@ -284,7 +285,7 @@ function renderPlayers(players) {
 async function giveRewards(regId, btn) {
   btn.disabled = true; btn.textContent = 'กำลังบันทึก...';
   try {
-    var res = await fetch(GAS_URL + '?action=api&do=wakagym_give_rewards&reg_id=' + encodeURIComponent(regId) + '&_t=' + Date.now());
+    var res = await fetch(GAS_URL + '&action=api&do=wakagym_give_rewards&reg_id=' + encodeURIComponent(regId) + '&_t=' + Date.now());
     var data = await res.json();
     if (data.ok) btn.outerHTML = '<div class="pc-status given">✅ ' + (data.already ? 'แจกไปแล้ว' : 'แจกรางวัลแล้ว') + '</div>';
     else btn.textContent = 'เกิดข้อผิดพลาด';
@@ -294,7 +295,7 @@ async function giveRewards(regId, btn) {
 async function giveBox(playerName, btn) {
   btn.disabled = true; btn.textContent = 'กำลังบันทึก...';
   try {
-    var res = await fetch(GAS_URL + '?action=api&do=wakagym_give_box&player_name=' + encodeURIComponent(playerName) + '&_t=' + Date.now());
+    var res = await fetch(GAS_URL + '&action=api&do=wakagym_give_box&player_name=' + encodeURIComponent(playerName) + '&_t=' + Date.now());
     var data = await res.json();
     if (data.ok) btn.outerHTML = '<div class="pc-status given">✅ ให้ Box แล้ว</div>';
     else btn.textContent = 'เกิดข้อผิดพลาด';
@@ -329,7 +330,7 @@ async function createEvent() {
   var btn = document.getElementById('createEventBtn');
   btn.disabled = true; btn.textContent = 'กำลังสร้าง...';
   try {
-    var res = await fetch(GAS_URL + '?action=api&do=wakagym_create_event&branch=' + encodeURIComponent(branch) + '&tier=' + selectedTier + '&created_by=' + encodeURIComponent(currentRole) + '&_t=' + Date.now());
+    var res = await fetch(GAS_URL + '&action=api&do=wakagym_create_event&branch=' + encodeURIComponent(branch) + '&tier=' + selectedTier + '&created_by=' + encodeURIComponent(currentRole) + '&_t=' + Date.now());
     var data = await res.json();
     if (data.ok) {
       document.getElementById('eventStatus').innerHTML = '✅ สร้าง Event สำเร็จ!<br>ID: ' + data.event_id + ' · Tier ' + data.tier + ' · ' + data.entry_fee + '฿';
@@ -345,7 +346,7 @@ async function loadPlayersForResults() {
   var el = document.getElementById('resultsPlayerList');
   el.innerHTML = '<div style="text-align:center;color:#a8a8a8;padding:16px">กำลังโหลด...</div>';
   try {
-    var res = await fetch(GAS_URL + '?action=api&do=wakagym_players&_t=' + Date.now());
+    var res = await fetch(GAS_URL + '&action=api&do=wakagym_players&_t=' + Date.now());
     var data = await res.json();
     loadedPlayers = data.players || [];
     if (loadedPlayers.length === 0) { el.innerHTML = '<div style="text-align:center;color:#a8a8a8;padding:16px">ไม่มีผู้เล่นวันนี้</div>'; return; }
@@ -373,7 +374,7 @@ async function submitResults() {
   var btn = document.getElementById('submitResultsBtn');
   btn.disabled = true; btn.textContent = 'กำลังบันทึก...';
   try {
-    var res = await fetch(GAS_URL + '?action=api&do=wakagym_submit_results&results=' + encodeURIComponent(JSON.stringify(results)) + '&_t=' + Date.now());
+    var res = await fetch(GAS_URL + '&action=api&do=wakagym_submit_results&results=' + encodeURIComponent(JSON.stringify(results)) + '&_t=' + Date.now());
     var data = await res.json();
     if (data.ok) {
       var summary = '';
@@ -391,7 +392,7 @@ async function loadSummary() {
   var el = document.getElementById('summaryContent');
   el.innerHTML = '<div style="text-align:center;color:#a8a8a8;padding:20px">กำลังโหลด...</div>';
   try {
-    var res = await fetch(GAS_URL + '?action=api&do=wakagym_summary&_t=' + Date.now());
+    var res = await fetch(GAS_URL + '&action=api&do=wakagym_summary&_t=' + Date.now());
     var d = await res.json();
     if (d.error) { el.innerHTML = '<div style="color:#d64545;text-align:center">' + esc(d.error) + '</div>'; return; }
     var html = '<div style="text-align:center;font-size:12px;color:var(--text-secondary);margin-bottom:12px">📅 ' + esc(d.date) + '</div>';

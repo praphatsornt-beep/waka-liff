@@ -258,7 +258,8 @@
 </div>
 
 <script>
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
+const WAKA_S = 'wk26xK9mPqRt';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec?_s=' + WAKA_S;
 const params = new URLSearchParams(location.search);
 const branch = params.get('branch') || '';
 const PIN_ADMIN = 'waka99';
@@ -316,7 +317,7 @@ async function loadAll() {
 
 async function loadOrders() {
   try {
-    const res = await fetch(GAS_URL + '?action=api&do=branch_orders&branch=' + encodeURIComponent(branch));
+    const res = await fetch(GAS_URL + '&action=api&do=branch_orders&branch=' + encodeURIComponent(branch));
     const data = await res.json();
     if (data.error) { document.getElementById('ordersList').innerHTML = '<div class="empty">' + esc(data.error) + '</div>'; return; }
     allOrders = data.orders || [];
@@ -409,7 +410,7 @@ async function loadStock() {
   const el = document.getElementById('stockContent');
   el.innerHTML = '<div class="empty">กำลังโหลด...</div>';
   try {
-    const res = await fetch(GAS_URL + '?action=api&do=branch_stock&branch=' + encodeURIComponent(branch));
+    const res = await fetch(GAS_URL + '&action=api&do=branch_stock&branch=' + encodeURIComponent(branch));
     const data = await res.json();
     const stock = data.stock || [];
     if (stock.length === 0) {

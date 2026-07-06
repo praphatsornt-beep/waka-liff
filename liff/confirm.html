@@ -138,7 +138,8 @@
   </div>
 
 <script>
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
+const WAKA_S = 'wk26xK9mPqRt';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec?_s=' + WAKA_S;
 const params = new URLSearchParams(location.search);
 const orderId = params.get('order') || '';
 
@@ -150,7 +151,7 @@ if (!orderId) {
 
 async function loadOrder() {
   try {
-    const res = await fetch(GAS_URL + '?action=api&do=order_status&order=' + encodeURIComponent(orderId));
+    const res = await fetch(GAS_URL + '&action=api&do=order_status&order=' + encodeURIComponent(orderId));
     const data = await res.json();
     if (data.error) {
       document.getElementById('main').innerHTML = '<div class="error-msg">' + escHtml(data.error) + '</div>';
@@ -224,7 +225,7 @@ async function doConfirm() {
   btn.textContent = 'กำลังบันทึก...';
 
   try {
-    const res = await fetch(GAS_URL + '?action=api&do=customer_confirm&order=' + encodeURIComponent(orderId));
+    const res = await fetch(GAS_URL + '&action=api&do=customer_confirm&order=' + encodeURIComponent(orderId));
     const data = await res.json();
     if (data.error) {
       alert(data.error);

@@ -423,7 +423,8 @@
 </nav>
 
 <script>
-const G = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
+const WAKA_S = 'wk26xK9mPqRt';
+const G = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec?_s=' + WAKA_S;
 const PIN_ADMIN = 'waka99';
 const IMGBB_KEY = 'YOUR_IMGBB_KEY'; // ← ใส่ key จาก imgbb.com/api
 
@@ -457,7 +458,7 @@ if (sessionStorage.getItem('waka_portal_auth') === '1' && sessionStorage.getItem
 // ── Load & Render ──
 async function loadProducts() {
   try {
-    const r = await fetch(G + '?action=api&do=catalog_admin');
+    const r = await fetch(G + '&action=api&do=catalog_admin');
     const d = await r.json();
     _products = d.products || [];
     renderProducts();

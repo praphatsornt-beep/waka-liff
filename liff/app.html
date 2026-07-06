@@ -513,7 +513,8 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const G = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec';
+const WAKA_S = 'wk26xK9mPqRt';
+const G = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec?_s=' + WAKA_S;
 const PIN_ADMIN = 'waka99';
 const BRANCH_CODES = { 'ts01': 'ต้นสักคอร์เนอร์', 'mt01': 'เมืองทองธานี', 'sn01': 'ศรีนครินทร์' };
 const LIFF_BASE = 'https://liff.line.me/2010457385-UpJLXxJ0';
@@ -637,7 +638,7 @@ function renderOrders() {
 async function loadDashboard() {
   gid('recentOrders').innerHTML = '<div class="loading">กำลังโหลด...</div>';
   try {
-    const r = await fetch(G+'?action=api&do=dashboard'); const d = await r.json();
+    const r = await fetch(G+'&action=api&do=dashboard'); const d = await r.json();
     _allOrders = d.recent_orders || [];
     renderOrders();
   } catch(e) { gid('recentOrders').innerHTML='<div class="empty">โหลดไม่ได้</div>'; }
@@ -648,7 +649,7 @@ async function loadDashboard() {
 // ══════════════════════════════════════════════════════════
 async function loadProducts() {
   try {
-    const r=await fetch(G+'?action=api&do=product_list'); const d=await r.json();
+    const r=await fetch(G+'&action=api&do=product_list'); const d=await r.json();
     products=d.products||[];
     const sel=gid('productSelect'); sel.innerHTML='<option value="">-- เลือกจากรายการ --</option>';
     const wd=gid('wdProduct'); wd.innerHTML='<option value="">-- เลือก --</option>';
@@ -672,7 +673,7 @@ async function lookupBarcode(code) {
   code=String(code).trim(); if(!code)return;
   const local=products.find(p=>p.barcode===code);
   if(local){showProduct(local);return;}
-  try{const r=await fetch(G+'?action=api&do=lookup_barcode&barcode='+encodeURIComponent(code));const d=await r.json();
+  try{const r=await fetch(G+'&action=api&do=lookup_barcode&barcode='+encodeURIComponent(code));const d=await r.json();
     if(d.found){showProduct(d.product);}
     else toast('ไม่พบ barcode "'+code+'" — ไปที่ จัดการสินค้า เพื่อเพิ่ม',2);
   }catch(e){toast('ค้นหาไม่ได้',1);}
@@ -715,7 +716,7 @@ function switchWhSub(s) {
 async function loadWarehouse(){loadWhSummary();}
 
 async function loadWhSummary() {
-  try{const r=await fetch(G+'?action=api&do=branch_summary');const d=await r.json();branchSummary=d.branches||{};
+  try{const r=await fetch(G+'&action=api&do=branch_summary');const d=await r.json();branchSummary=d.branches||{};
     const el=gid('whSummary');const bs=Object.keys(branchSummary);
     if(!bs.length){el.innerHTML='<div class="empty">ไม่มีออเดอร์ที่ยังไม่ส่ง</div>';return;}
     // สรุปรวมทุกสินค้า
@@ -741,7 +742,7 @@ async function loadWhSummary() {
 }
 
 async function loadWhCreate() {
-  try{const r=await fetch(G+'?action=api&do=central_stock');const d=await r.json();centralStock=d.stock||[];}catch(_){}
+  try{const r=await fetch(G+'&action=api&do=central_stock');const d=await r.json();centralStock=d.stock||[];}catch(_){}
   const el=gid('whCreate');
   let h='<div class="card"><h3>📦 สร้างล็อตส่งสาขา</h3>';
   h+='<select class="branch-sel" id="shipBranch" onchange="renderShipForm()"><option value="">-- เลือกสาขา --</option><option value="ต้นสักคอร์เนอร์">ต้นสักคอร์เนอร์</option><option value="เมืองทองธานี">เมืองทองธานี</option><option value="ศรีนครินทร์">ศรีนครินทร์</option></select>';
@@ -810,7 +811,7 @@ async function createShipment() {
 }
 
 async function loadWhHistory() {
-  try{const r=await fetch(G+'?action=api&do=shipments');const d=await r.json();const list=d.shipments||[];
+  try{const r=await fetch(G+'&action=api&do=shipments');const d=await r.json();const list=d.shipments||[];
     const el=gid('whHistory');if(!list.length){el.innerHTML='<div class="empty">ไม่มีประวัติ</div>';return;}
     el.innerHTML=list.map(s=>{const items=JSON.parse(s.items_json||'[]');const itemStr=items.map(i=>{const tb=(i.qty_box||0)+(i.qty_box_extra||0),tp=(i.qty_pack||0)+(i.qty_pack_extra||0);return i.name+(tb?' Box:'+tb:'')+(tp?' Pack:'+tp:'');}).join(', ');
       const isRecv=s.status==='รับแล้ว';
@@ -827,7 +828,7 @@ async function receiveShipment(id) {
 }
 
 async function loadWhStock() {
-  try{const [r1,r2]=await Promise.all([fetch(G+'?action=api&do=central_stock'),fetch(G+'?action=api&do=branch_stock')]);
+  try{const [r1,r2]=await Promise.all([fetch(G+'&action=api&do=central_stock'),fetch(G+'&action=api&do=branch_stock')]);
     const d1=await r1.json(),d2=await r2.json();
     let h='<div class="card"><h3>คลังกลาง</h3><table><tr><th>สินค้า</th><th class="num">Box</th><th class="num">Pack</th></tr>';
     for(const s of d1.stock||[])h+='<tr><td>'+esc(s.name)+'</td><td class="num">'+s.qty_box+'</td><td class="num">'+s.qty_pack+'</td></tr>';
@@ -906,7 +907,7 @@ function closeBrView() {
 // ── รับของจากคลัง ──
 async function loadIncoming() {
   const branch=gid('branchSelect').value;if(!branch)return;
-  try{const r=await fetch(G+'?action=api&do=shipments');const d=await r.json();
+  try{const r=await fetch(G+'&action=api&do=shipments');const d=await r.json();
     const pending=(d.shipments||[]).filter(s=>s.to_branch===branch&&s.status!=='รับแล้ว');
     const el=gid('incomingList');
     if(!pending.length){el.innerHTML='<div class="empty">ไม่มีล็อตที่รอรับ ✅</div>';return;}
@@ -943,7 +944,7 @@ function onBranchChange() {
 
 async function loadBrOrders() {
   const b=gid('branchSelect').value;if(!b){gid('brOrders').innerHTML='<div class="empty">เลือกสาขาก่อน</div>';return;}
-  try{const r=await fetch(G+'?action=api&do=branch_orders&branch='+encodeURIComponent(b));const d=await r.json();
+  try{const r=await fetch(G+'&action=api&do=branch_orders&branch='+encodeURIComponent(b));const d=await r.json();
     const el=gid('brOrders');if(!d.orders||!d.orders.length){el.innerHTML='<div class="empty">ไม่มีออเดอร์</div>';return;}
     el.innerHTML=d.orders.map(o=>{const ff=o.fulfillment||'รอ';const sc=ff==='รับแล้ว'||ff==='สาขายืนยัน'?'s-done':ff==='พร้อมรับ'?'s-ok':'s-wait';
       let items=[];try{items=JSON.parse(o.items_json||'[]');}catch(_){}
@@ -970,7 +971,7 @@ async function loadBrOrders() {
 
 async function searchOrders() {
   const q=gid('searchOrder').value.trim();if(!q)return;
-  try{const r=await fetch(G+'?action=api&do=search&q='+encodeURIComponent(q));const d=await r.json();
+  try{const r=await fetch(G+'&action=api&do=search&q='+encodeURIComponent(q));const d=await r.json();
     const el=gid('searchResults');if(!d.orders||!d.orders.length){el.innerHTML='<div class="empty">ไม่พบ</div>';return;}
     el.innerHTML=d.orders.map(o=>{const ff=o.fulfillment||'รอ';const canHandover=['พร้อมรับ','รอเตรียม'].includes(ff);
       let items=[];try{items=JSON.parse(o.items_json||'[]');}catch(_){}
@@ -1002,7 +1003,7 @@ async function handoverOrder(oid) {
 
 async function loadBrStock() {
   const b=gid('branchSelect').value;if(!b){gid('brStock').innerHTML='<div class="empty">เลือกสาขาก่อน</div>';return;}
-  try{const r=await fetch(G+'?action=api&do=branch_stock&branch='+encodeURIComponent(b));const d=await r.json();
+  try{const r=await fetch(G+'&action=api&do=branch_stock&branch='+encodeURIComponent(b));const d=await r.json();
     const el=gid('brStock');if(!d.stock||!d.stock.length){el.innerHTML='<div class="empty">ไม่มีสต็อก</div>';return;}
     let h='<div class="card"><table><tr><th>สินค้า</th><th class="num">Box</th><th class="num">Pack</th></tr>';
     for(const s of d.stock)h+='<tr><td>'+esc(s.name)+'</td><td class="num">'+s.qty_box+'</td><td class="num">'+s.qty_pack+'</td></tr>';
@@ -1024,7 +1025,7 @@ async function submitWithdraw() {
 
 async function loadWithdrawals() {
   const b=gid('branchSelect').value;if(!b)return;
-  try{const r=await fetch(G+'?action=api&do=withdrawals&branch='+encodeURIComponent(b));const d=await r.json();
+  try{const r=await fetch(G+'&action=api&do=withdrawals&branch='+encodeURIComponent(b));const d=await r.json();
     const el=gid('wdHistory');if(!d.withdrawals||!d.withdrawals.length){el.innerHTML='<div class="empty">ยังไม่มี</div>';return;}
     let h='<table><tr><th>เวลา</th><th>สินค้า</th><th class="num">จำนวน</th><th>เหตุผล</th></tr>';
     for(const w of d.withdrawals)h+='<tr><td style="font-size:11px">'+esc(w.timestamp)+'</td><td>'+esc(w.name)+'</td><td class="num">'+w.qty+' '+(w.type==='box'?'กล่อง':'ซอง')+'</td><td>'+esc(w.reason)+'</td></tr>';
@@ -1084,7 +1085,7 @@ async function gymLookupGroup(groupId) {
   gid('gymPlayerCards').innerHTML='<div style="text-align:center;color:#a8a8a8;padding:16px">กำลังโหลด...</div>';
   gid('gymAllGivenMsg').style.display='none';
   try{
-    var res=await fetch(G+'?action=api&do=wakagym_lookup&group_id='+encodeURIComponent(groupId)+'&_t='+Date.now());
+    var res=await fetch(G+'&action=api&do=wakagym_lookup&group_id='+encodeURIComponent(groupId)+'&_t='+Date.now());
     var data=await res.json();
     if(data.error){gid('gymPlayerCards').innerHTML='<div style="text-align:center;color:var(--red);padding:16px">ไม่พบรหัส '+esc(groupId)+'</div>';return;}
     gymRenderPlayers(data.players||[]);
@@ -1118,14 +1119,14 @@ function gymRenderPlayers(players) {
 }
 async function gymGiveRewards(regId,btn){
   btn.disabled=true;btn.textContent='กำลังบันทึก...';
-  try{var res=await fetch(G+'?action=api&do=wakagym_give_rewards&reg_id='+encodeURIComponent(regId)+'&_t='+Date.now());var data=await res.json();
+  try{var res=await fetch(G+'&action=api&do=wakagym_give_rewards&reg_id='+encodeURIComponent(regId)+'&_t='+Date.now());var data=await res.json();
     if(data.ok)btn.outerHTML='<div class="gym-pc-status given">✅ '+(data.already?'แจกไปแล้ว':'แจกรางวัลแล้ว')+'</div>';
     else btn.textContent='เกิดข้อผิดพลาด';
   }catch(e){btn.textContent='ลองอีกครั้ง';btn.disabled=false;}
 }
 async function gymGiveBox(playerName,btn){
   btn.disabled=true;btn.textContent='กำลังบันทึก...';
-  try{var res=await fetch(G+'?action=api&do=wakagym_give_box&player_name='+encodeURIComponent(playerName)+'&_t='+Date.now());var data=await res.json();
+  try{var res=await fetch(G+'&action=api&do=wakagym_give_box&player_name='+encodeURIComponent(playerName)+'&_t='+Date.now());var data=await res.json();
     if(data.ok)btn.outerHTML='<div class="gym-pc-status given">✅ ให้ Box แล้ว</div>';
     else btn.textContent='เกิดข้อผิดพลาด';
   }catch(e){btn.textContent='ลองอีกครั้ง';btn.disabled=false;}
@@ -1142,7 +1143,7 @@ function gymUpdateRewardPreview(){
 async function gymCreateEvent(){
   var branch=gid('branchSelect').value,btn=gid('gymCreateEventBtn');
   btn.disabled=true;btn.textContent='กำลังสร้าง...';
-  try{var res=await fetch(G+'?action=api&do=wakagym_create_event&branch='+encodeURIComponent(branch)+'&tier='+gymSelectedTier+'&created_by='+encodeURIComponent(userRole)+'&_t='+Date.now());
+  try{var res=await fetch(G+'&action=api&do=wakagym_create_event&branch='+encodeURIComponent(branch)+'&tier='+gymSelectedTier+'&created_by='+encodeURIComponent(userRole)+'&_t='+Date.now());
     var data=await res.json();
     gid('gymEventStatus').innerHTML=data.ok?'✅ สร้าง Event สำเร็จ!<br>ID: '+data.event_id+' · Tier '+data.tier+' · '+data.entry_fee+'฿':'❌ '+(data.error||'เกิดข้อผิดพลาด');
   }catch(e){gid('gymEventStatus').textContent='❌ '+e.message;}
@@ -1150,7 +1151,7 @@ async function gymCreateEvent(){
 }
 async function gymLoadPlayersForResults(){
   var el=gid('gymResultsPlayerList');el.innerHTML='<div style="text-align:center;color:#a8a8a8;padding:16px">กำลังโหลด...</div>';
-  try{var res=await fetch(G+'?action=api&do=wakagym_players&_t='+Date.now());var data=await res.json();
+  try{var res=await fetch(G+'&action=api&do=wakagym_players&_t='+Date.now());var data=await res.json();
     gymLoadedPlayers=data.players||[];
     if(!gymLoadedPlayers.length){el.innerHTML='<div class="empty">ไม่มีผู้เล่นวันนี้</div>';return;}
     var html='';
@@ -1170,7 +1171,7 @@ async function gymSubmitResults(){
     results.push({reg_id:gymLoadedPlayers[i].reg_id,placement:place,wins_3match:wins});
   }
   var btn=gid('gymSubmitResultsBtn');btn.disabled=true;btn.textContent='กำลังบันทึก...';
-  try{var res=await fetch(G+'?action=api&do=wakagym_submit_results&results='+encodeURIComponent(JSON.stringify(results))+'&_t='+Date.now());
+  try{var res=await fetch(G+'&action=api&do=wakagym_submit_results&results='+encodeURIComponent(JSON.stringify(results))+'&_t='+Date.now());
     var data=await res.json();
     if(data.ok){var s='';for(var p of(data.processed||[]))s+=p.player_name+': '+p.placement+' → 🪙'+p.tokens+' + 📦'+p.promo_packs+'ซอง\n';alert('บันทึกสำเร็จ!\n\n'+s);btn.textContent='✅ บันทึกแล้ว';}
     else{alert('Error: '+(data.error||'ไม่สำเร็จ'));btn.disabled=false;btn.textContent='💾 บันทึกผลแข่งขัน';}
@@ -1178,7 +1179,7 @@ async function gymSubmitResults(){
 }
 async function gymLoadSummary(){
   var el=gid('gymSummaryContent');el.innerHTML='<div class="empty">กำลังโหลด...</div>';
-  try{var res=await fetch(G+'?action=api&do=wakagym_summary&_t='+Date.now());var d=await res.json();
+  try{var res=await fetch(G+'&action=api&do=wakagym_summary&_t='+Date.now());var d=await res.json();
     if(d.error){el.innerHTML='<div style="color:var(--red);text-align:center">'+esc(d.error)+'</div>';return;}
     var html='<div style="text-align:center;font-size:12px;color:var(--text2);margin-bottom:12px">📅 '+esc(d.date)+'</div>';
     html+='<div class="gym-summary-row"><div class="gym-summary-card"><div class="sc-title">ผู้เล่น</div><div class="sc-value">'+d.total_players+'</div></div>';

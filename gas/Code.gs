@@ -3,9 +3,10 @@
 // Deploy as Web App: Execute as "Me", Who has access: "Anyone"
 // ──────────────────────────────────────────────────────────────────────────────
 
-const PROPS      = PropertiesService.getScriptProperties();
-const LINE_TOKEN = PROPS.getProperty("LINE_TOKEN");
-const SHEET_ID   = PROPS.getProperty("SHEET_ID");
+const PROPS         = PropertiesService.getScriptProperties();
+const LINE_TOKEN    = PROPS.getProperty("LINE_TOKEN");
+const SHEET_ID      = PROPS.getProperty("SHEET_ID");
+const SCRIPT_SECRET = PROPS.getProperty("SCRIPT_SECRET") || "";
 
 const TAB_ORDERS  = "orders";
 const TAB_CATALOG = "_catalog";
@@ -43,6 +44,10 @@ function _cors(output) {
 function doGet(e) {
   try {
     var action = (e && e.parameter && e.parameter.action) || "";
+
+    if (action !== "confirm" && SCRIPT_SECRET && (e.parameter._s || "") !== SCRIPT_SECRET) {
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+    }
 
     if (action === "confirm") {
       return handleCustomerConfirm(e.parameter.order || "", e);
@@ -115,6 +120,10 @@ function handleCustomerConfirm(orderId, e) {
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
+
+    if (!Array.isArray(data.events) && SCRIPT_SECRET && (e.parameter._s || "") !== SCRIPT_SECRET) {
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+    }
 
     if (data._action === "sendConfirmLink") {
       return handleSendConfirmLink(data);
