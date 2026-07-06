@@ -495,7 +495,7 @@
   }
 
   function logout() {
-    localStorage.removeItem(PIN_KEY);
+    sessionStorage.clear();
     document.getElementById("mainApp").style.display = "none";
     document.getElementById("pinOverlay").style.display = "flex";
     document.getElementById("pinInput").value = "";

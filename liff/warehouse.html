@@ -315,7 +315,7 @@ if (sessionStorage.getItem('waka_portal_auth') === '1') {
 
 function checkPin() {
   const pin = document.getElementById('pinInput').value.trim();
-  if (pin === PIN_ADMIN || BRANCH_CODES[pin]) {
+  if (pin === PIN_ADMIN) {
     sessionStorage.setItem('waka_portal_auth', '1');
     document.getElementById('pinOverlay').style.display = 'none';
     document.getElementById('app').style.display = 'block';

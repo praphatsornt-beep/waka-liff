@@ -274,18 +274,24 @@ if (!branch) {
 }
 
 if (sessionStorage.getItem('waka_portal_auth') === '1' && branch) {
-  document.getElementById('pinOverlay').style.display = 'none';
-  document.getElementById('app').style.display = 'block';
-  document.getElementById('branchTitle').textContent = 'สาขา' + branch;
-  loadAll();
+  var _role = sessionStorage.getItem('waka_staff_role') || '';
+  var _sessBranch = sessionStorage.getItem('waka_staff_branch') || '';
+  if (_role === 'admin' || _sessBranch === branch) {
+    document.getElementById('pinOverlay').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('branchTitle').textContent = 'สาขา' + branch;
+    loadAll();
+  }
 }
 
 function checkPin() {
   var pin = document.getElementById('pinInput').value.trim();
-  if (pin === PIN_ADMIN || BRANCH_CODES[pin]) {
+  var isAdmin = pin === PIN_ADMIN;
+  var branchFromPin = BRANCH_CODES[pin] || null;
+  if (isAdmin || (branchFromPin && branchFromPin === branch)) {
     sessionStorage.setItem('waka_portal_auth', '1');
-    sessionStorage.setItem('waka_staff_role', pin === PIN_ADMIN ? 'admin' : 'staff');
-    sessionStorage.setItem('waka_staff_branch', BRANCH_CODES[pin] || 'ทั้งหมด');
+    sessionStorage.setItem('waka_staff_role', isAdmin ? 'admin' : 'staff');
+    sessionStorage.setItem('waka_staff_branch', branchFromPin || 'ทั้งหมด');
     document.getElementById('pinOverlay').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     document.getElementById('branchTitle').textContent = 'สาขา' + branch;

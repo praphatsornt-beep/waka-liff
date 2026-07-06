@@ -201,7 +201,8 @@ async function init() {
     if (!liff.isLoggedIn()) { liff.login({ redirectUri: window.location.href }); return; }
     lineProfile = await liff.getProfile();
   } catch (e) {
-    lineProfile = { userId: "dev_user", displayName: "Dev", pictureUrl: "" };
+    document.getElementById("loadingState").innerHTML = '<p style="color:var(--red,#ef4444);padding:24px;text-align:center">กรุณาเปิดลิงก์นี้ผ่าน LINE เท่านั้น</p>';
+    return;
   }
   document.getElementById("profileName").textContent = lineProfile.displayName || "—";
   if (lineProfile.pictureUrl) document.getElementById("profileImg").src = lineProfile.pictureUrl;
