@@ -309,10 +309,11 @@ let logs = JSON.parse(sessionStorage.getItem('receive_logs') || '[]');
 
 function checkPin() {
   var pin = document.getElementById('pinInput').value.trim();
-  if (pin === PIN_ADMIN || BRANCH_CODES[pin]) {
+  if (pin === PIN_ADMIN) {
     document.getElementById('pinOverlay').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     sessionStorage.setItem('waka_portal_auth', '1');
+    sessionStorage.setItem('waka_staff_role', 'admin');
     loadProducts();
     renderLog();
   } else {
@@ -321,7 +322,7 @@ function checkPin() {
   }
 }
 
-if (sessionStorage.getItem('waka_portal_auth') === '1') {
+if (sessionStorage.getItem('waka_portal_auth') === '1' && sessionStorage.getItem('waka_staff_role') === 'admin') {
   document.getElementById('pinOverlay').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   loadProducts();

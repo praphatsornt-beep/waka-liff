@@ -374,7 +374,7 @@ async function submitResults() {
   var btn = document.getElementById('submitResultsBtn');
   btn.disabled = true; btn.textContent = 'กำลังบันทึก...';
   try {
-    var res = await fetch(GAS_URL + '&action=api&do=wakagym_submit_results&results=' + encodeURIComponent(JSON.stringify(results)) + '&_t=' + Date.now());
+    var res = await fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'api', do: 'wakagym_submit_results', results: results }) });
     var data = await res.json();
     if (data.ok) {
       var summary = '';

@@ -165,6 +165,10 @@ function doPost(e) {
       return handleWakagymRegister(data);
     }
 
+    if (data.action === "api") {
+      return handleApi(data);
+    }
+
     if (Array.isArray(data.events)) {
       for (var ev = 0; ev < data.events.length; ev++) {
         var evt = data.events[ev];
@@ -1513,7 +1517,9 @@ function handleApi(params) {
   if (action === "wakagym_submit_results") {
     var srEventId = params.event_id || "";
     var srResults = [];
-    try { srResults = JSON.parse(params.results || "[]"); } catch(_) {}
+    try {
+      srResults = Array.isArray(params.results) ? params.results : JSON.parse(params.results || "[]");
+    } catch(_) {}
     if (srResults.length === 0) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no results" })));
     var srSs = ss;
     var srRegWs = srSs.getSheetByName(TAB_WAKAGYM_REG);
@@ -2182,6 +2188,8 @@ function _driveUrl(url) {
 }
 
 function handleConfirmSlip(data) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
   try {
     var ss = SpreadsheetApp.openById(SHEET_ID);
     var ws = ss.getSheetByName(TAB_ORDERS);
@@ -2219,6 +2227,8 @@ function handleConfirmSlip(data) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
   } catch (err) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  } finally {
+    lock.releaseLock();
   }
 }
 
