@@ -348,6 +348,8 @@ function doPost(e) {
     try {
       var cfgWs   = ss.getSheetByName(TAB_CONFIG);
       var financeId = _getConfigValue(cfgWs, "finance_line_id");
+      var bankAccount = _getConfigValue(cfgWs, "bank_account") || "";
+      var bankName    = _getConfigValue(cfgWs, "bank_account_name") || "";
       var streamlitUrl = "https://waka-tournament-e6wsqmhuhhexratyiub65f.streamlit.app/orders";
       if (financeId) {
         var itemsSummary = (data.items || []).map(function(i) {
@@ -403,7 +405,7 @@ function doPost(e) {
           _linePush(financeId, finMsg2);
         }
       }
-      if (data.lineUserId) notifyCustomer(data.lineUserId, { orderId: orderId, items: data.items, displayName: data.displayName, branch: data.branch, address: data.address, total: data.total, slipStatus: slipStatus });
+      if (data.lineUserId) notifyCustomer(data.lineUserId, { orderId: orderId, items: data.items, displayName: data.displayName, branch: data.branch, address: data.address, total: data.total, slipStatus: slipStatus, bankAccount: bankAccount, bankName: bankName });
     } catch(_) {}
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ success: true, orderId: orderId, slipStatus: slipStatus })));
@@ -538,6 +540,11 @@ function notifyCustomer(userId, order) {
     lines.push("ที่อยู่จัดส่ง: " + order.address);
     lines.push("");
     lines.push("หากที่อยู่ไม่ถูกต้อง กรุณาแจ้งพนักงานหรือแอดมินเพื่อดำเนินการแก้ไขด่วนครับ");
+  }
+  if (order.bankAccount) {
+    lines.push("");
+    lines.push("💳 โอนเงินมาที่: " + order.bankAccount);
+    if (order.bankName) lines.push("ชื่อบัญชี: " + order.bankName);
   }
   lines.push("");
   lines.push("ทีมงานจะตรวจสอบและแจ้งกลับทาง LINE ครับ");
