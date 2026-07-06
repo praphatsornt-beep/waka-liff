@@ -157,6 +157,10 @@ function doPost(e) {
       return handleWithdrawStock(data);
     }
 
+    if (data._action === "partialReady") {
+      return handlePartialReady(data);
+    }
+
     if (data._action === "confirmSlip") {
       return handleConfirmSlip(data);
     }
@@ -2403,6 +2407,68 @@ function handleWithdrawStock(data) {
 
     lock.releaseLock();
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+  } catch (err) {
+    try { lock.releaseLock(); } catch(_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+// ── แจ้งพร้อมรับบางส่วน (item-level fulfillment) ──────────────────────────
+// data: { order_id, indices: [0,1,...] }  zero-based index ของ items ที่พร้อมส่ง
+function handlePartialReady(data) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var ws = ss.getSheetByName(TAB_ORDERS);
+    var rows = ws.getDataRange().getValues();
+    var hdr = rows[0];
+    var col = function(name) { return hdr.indexOf(name); };
+    var nowStr = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
+
+    for (var i = 1; i < rows.length; i++) {
+      if (String(rows[i][col("order_id")]) !== String(data.order_id)) continue;
+
+      var items = [];
+      try { items = JSON.parse(rows[i][col("items_json")] || "[]"); } catch(_) {}
+
+      var indices = data.indices || [];
+      for (var k = 0; k < indices.length; k++) {
+        var idx = Number(indices[k]);
+        if (idx >= 0 && idx < items.length && !items[idx].fulfilled_at) {
+          items[idx].fulfilled_at = nowStr;
+        }
+      }
+
+      var allDone = items.every(function(it) { return it.fulfilled_at; });
+      var newFf = allDone ? "พร้อมรับ" : "บางส่วน";
+
+      ws.getRange(i + 1, col("items_json") + 1).setValue(JSON.stringify(items));
+      ws.getRange(i + 1, col("fulfillment") + 1).setValue(newFf);
+      if (allDone && col("fulfilled_at") >= 0) ws.getRange(i + 1, col("fulfilled_at") + 1).setValue(nowStr);
+
+      var uid = rows[i][col("line_user_id")] || "";
+      var orderId = String(rows[i][col("order_id")] || "");
+      var branch = rows[i][col("branch")] || "";
+      if (uid) {
+        var readyLines = items.filter(function(it) { return it.fulfilled_at; }).map(function(it) {
+          return "  ✅ " + it.name + " (" + (it.type === "box" ? "กล่อง" : "ซอง") + ") x" + it.qty;
+        }).join("\n");
+        var waitLines = items.filter(function(it) { return !it.fulfilled_at; }).map(function(it) {
+          return "  ⏳ " + it.name + " (" + (it.type === "box" ? "กล่อง" : "ซอง") + ") x" + it.qty;
+        }).join("\n");
+        var msg = (allDone ? "📦 สินค้าพร้อมรับทั้งหมดแล้ว!" : "📦 สินค้าบางส่วนพร้อมรับแล้ว!")
+          + "\nออเดอร์: #" + orderId + "\n\n" + readyLines;
+        if (waitLines) msg += "\n\n" + waitLines + "\n(ยังรอสินค้า Preorder)";
+        msg += "\n\nกรุณามารับที่สาขา: " + branch;
+        _linePush(uid, msg);
+      }
+
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, fulfillment: newFf })));
+    }
+    lock.releaseLock();
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
