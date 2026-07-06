@@ -2342,6 +2342,63 @@ function handleUpdateProduct(data) {
   }
 }
 
+// ── เบิกสินค้าจากสต็อกสาขา ────────────────────────────────────────────────
+// data: { branch, name, type, qty, reason }
+function handleWithdrawStock(data) {
+  var branch = String(data.branch || "").trim();
+  var name   = String(data.name   || "").trim();
+  var type   = String(data.type   || "box").trim();
+  var qty    = Number(data.qty)   || 0;
+  var reason = String(data.reason || "").trim();
+
+  if (!branch || !name || qty <= 0) {
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ข้อมูลไม่ครบ (branch, name, qty)" })));
+  }
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var bsWs = ss.getSheetByName(TAB_STOCK_BRANCH);
+    if (!bsWs) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่มีข้อมูลสต็อกสาขา" })));
+    }
+
+    var bsRows = bsWs.getDataRange().getValues();
+    var found = false;
+    for (var r = 1; r < bsRows.length; r++) {
+      if (String(bsRows[r][0]).trim() !== name) continue;
+      if (String(bsRows[r][2]).trim() !== branch) continue;
+      if (type === "box") {
+        bsWs.getRange(r + 1, 4).setValue(Math.max(0, (Number(bsRows[r][3]) || 0) - qty));
+      } else {
+        bsWs.getRange(r + 1, 5).setValue(Math.max(0, (Number(bsRows[r][4]) || 0) - qty));
+      }
+      found = true;
+      break;
+    }
+    if (!found) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบ " + name + " ในสต็อกสาขา " + branch })));
+    }
+
+    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
+    var wWs = ss.getSheetByName("withdrawals");
+    if (!wWs) {
+      wWs = ss.insertSheet("withdrawals");
+      wWs.appendRow(["timestamp", "branch", "name", "type", "qty", "reason"]);
+    }
+    wWs.appendRow([now, branch, name, type, qty, reason]);
+
+    lock.releaseLock();
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+  } catch (err) {
+    try { lock.releaseLock(); } catch(_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
 function clearCache() {
   CacheService.getScriptCache().remove("catalog_config");
 }

@@ -308,7 +308,7 @@ const BRANCH_CODES = { 'ts01': 'ต้นสักคอร์เนอร์', 
 let branchSummary = {};
 let centralStock = [];
 
-if (sessionStorage.getItem('waka_portal_auth') === '1') {
+if (sessionStorage.getItem('waka_portal_auth') === '1' && sessionStorage.getItem('waka_staff_role') === 'admin') {
   document.getElementById('pinOverlay').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   loadAll();
