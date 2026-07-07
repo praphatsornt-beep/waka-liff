@@ -856,6 +856,7 @@
         prod = prod || sp.get("product");
         cat  = cat  || sp.get("category");
         if (!all) all = sp.get("all") === "1";
+        slug = slug || sp.get("slug") || null;
         // LINE sometimes wraps liff.state inside liff.state — recurse once
         var inner = (!prod && !cat && !all) ? (sp.get("liff.state") || "") : "";
         if (inner) _parseLs(inner);

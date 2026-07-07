@@ -159,7 +159,9 @@ async function loadLinks() {
       prodEl.innerHTML = '<div class="loading">ไม่มีสินค้า</div>';
     } else {
       prodEl.innerHTML = catalog.map(p => {
-        const link = LIFF_BASE + '?liff.state=' + encodeURIComponent('?product=' + p.name);
+        const link = p.slug
+          ? LIFF_BASE + '?liff.state=' + encodeURIComponent('?slug=' + p.slug)
+          : LIFF_BASE + '?liff.state=' + encodeURIComponent('?product=' + p.name);
         const prices = [];
         if (p.price_box)  prices.push('Box ' + Number(p.price_box).toLocaleString() + '.-');
         if (p.price_pack) prices.push('Pack ' + Number(p.price_pack).toLocaleString() + '.-');
