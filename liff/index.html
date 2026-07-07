@@ -779,10 +779,11 @@
   // ── Staff redirect: ถ้าไม่ใช่ LIFF context → ไป menu.html ──────────────────
   (function() {
     var p = new URLSearchParams(window.location.search);
-    if (!p.get('liff.state') && !p.get('product') && !p.get('category') && p.get('all') !== '1') {
+    if (!p.get('liff.state') && !p.get('product') && !p.get('category') && !p.get('slug') && p.get('all') !== '1') {
       // ตรวจ sessionStorage ด้วย เผื่อ LIFF login redirect ทำให้ liff.state หายจาก URL
       var hasSavedFilter = sessionStorage.getItem('waka_filter_category') ||
                            sessionStorage.getItem('waka_filter_product')  ||
+                           sessionStorage.getItem('waka_filter_slug')     ||
                            sessionStorage.getItem('waka_filter_all') === '1';
       if (!hasSavedFilter) {
         window.location.replace('menu.html');
@@ -845,7 +846,7 @@
     var cat  = p.get("category");
     var all  = p.get("all") === "1";
     var liffState = p.get("liff.state") || "";
-    var slug = null;
+    var slug = p.get("slug") || null;
 
     // Extract product/category/all from liff.state (handles "?X=Y", "/?X=Y", and LINE double-wrap)
     var _parseLs = function(ls) {
@@ -871,15 +872,18 @@
     if (!all) {
       prod = prod || sessionStorage.getItem("waka_filter_product") || null;
       cat  = cat  || sessionStorage.getItem("waka_filter_category") || null;
+      slug = slug || sessionStorage.getItem("waka_filter_slug") || null;
       all  = sessionStorage.getItem("waka_filter_all") === "1";
     }
 
     // Refresh sessionStorage for the next redirect (if any)
     sessionStorage.removeItem("waka_filter_product");
     sessionStorage.removeItem("waka_filter_category");
+    sessionStorage.removeItem("waka_filter_slug");
     sessionStorage.removeItem("waka_filter_all");
     if (!all && prod) sessionStorage.setItem("waka_filter_product", prod);
     if (!all && cat)  sessionStorage.setItem("waka_filter_category", cat);
+    if (!all && slug) sessionStorage.setItem("waka_filter_slug", slug);
     if (all)          sessionStorage.setItem("waka_filter_all", "1");
 
     return { product: prod || null, category: cat || null, slug: slug || null, all: all };
