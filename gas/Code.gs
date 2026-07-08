@@ -1241,6 +1241,7 @@ function handleApi(params) {
           slip_status: slip,
           fulfillment: String(rows[i][col("fulfillment")] || ""),
           branch: String(rows[i][col("branch")] || ""),
+          address: String(rows[i][col("address")] || ""),
           timestamp: ts,
         });
       }
@@ -1249,6 +1250,31 @@ function handleApi(params) {
       orders_today: ordersToday, revenue_today: revenueToday,
       pending_count: pendingCount, recent_orders: recentOrders,
     })));
+  }
+
+  // ── รายการจัดส่งพัสดุ ──
+  if (action === "delivery_orders") {
+    var col = function(name) { return hdr.indexOf(name); };
+    var deliveries = [];
+    for (var i = rows.length - 1; i >= 1; i--) {
+      var branch = String(rows[i][col("branch")] || "");
+      if (branch !== "จัดส่ง") continue;
+      var ff = String(rows[i][col("fulfillment")] || "");
+      if (ff === "จัดส่งแล้ว" || ff === "รับแล้ว") continue;
+      deliveries.push({
+        order_id:    String(rows[i][col("order_id")]    || ""),
+        real_name:   String(rows[i][col("real_name")]   || ""),
+        display_name:String(rows[i][col("display_name")]|| ""),
+        phone:       String(rows[i][col("phone")]       || ""),
+        address:     String(rows[i][col("address")]     || ""),
+        items_json:  String(rows[i][col("items_json")]  || "[]"),
+        total:       Number(rows[i][col("total")])      || 0,
+        slip_status: String(rows[i][col("slip_status")] || ""),
+        fulfillment: ff,
+        timestamp:   String(rows[i][col("timestamp")]   || ""),
+      });
+    }
+    return _cors(ContentService.createTextOutput(JSON.stringify({ deliveries: deliveries })));
   }
 
   // ── รายการเบิกสินค้า ──
