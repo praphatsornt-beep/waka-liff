@@ -534,6 +534,10 @@ function restoreCatalogLimits(ss, items) {
   }
 }
 
+function _clearDashCache() {
+  try { CacheService.getScriptCache().remove("dashboard_v1"); } catch(_) {}
+}
+
 function writeOrder(ss, d) {
   let ws = ss.getSheetByName(TAB_ORDERS);
   if (!ws) {
@@ -550,6 +554,7 @@ function writeOrder(ss, d) {
     d.itemsJson, d.total, d.branch, _sanitize(d.realName), _sanitize(d.phone), _sanitize(d.address),
     d.slipStatus, d.slipUrl, d.slipAmount, d.slipTxnId, d.notes,
   ]);
+  _clearDashCache();
 }
 
 function notifyBranch(groupId, order) {
@@ -978,6 +983,7 @@ function handleApi(params) {
         if (col("staff_confirmed_at") >= 0) ws.getRange(j+1, col("staff_confirmed_at")+1).setValue(now);
         if (uid) _linePush(uid, "สาขาส่งมอบสินค้าแล้ว กรุณากดยืนยันรับของ\n\nออเดอร์: #" + orderId + "\n\nกดยืนยัน:\n" + trackUrl);
       }
+      _clearDashCache();
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, status: newStatus, time: now })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
@@ -1274,6 +1280,10 @@ function handleApi(params) {
 
   // ── Dashboard KPI ──
   if (action === "dashboard") {
+    var dashCache = CacheService.getScriptCache();
+    var cached = dashCache.get("dashboard_v1");
+    if (cached) return _cors(ContentService.createTextOutput(cached));
+
     var col = function(name) { return hdr.indexOf(name); };
     var today = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
     var ordersToday = 0, revenueToday = 0, pendingCount = 0;
@@ -1302,10 +1312,12 @@ function handleApi(params) {
         });
       }
     }
-    return _cors(ContentService.createTextOutput(JSON.stringify({
+    var dashJson = JSON.stringify({
       orders_today: ordersToday, revenue_today: revenueToday,
       pending_count: pendingCount, recent_orders: recentOrders,
-    })));
+    });
+    dashCache.put("dashboard_v1", dashJson, 30);
+    return _cors(ContentService.createTextOutput(dashJson));
   }
 
   // ── ยกเลิกออเดอร์ (admin) ──
@@ -1337,6 +1349,7 @@ function handleApi(params) {
           "หากมีข้อสงสัยกรุณาติดต่อทีมงาน 🙏"
         );
       }
+      _clearDashCache();
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
