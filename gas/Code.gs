@@ -484,6 +484,52 @@ function deductStock(ss, items) {
   if (changed) range.setValues(rows);
 }
 
+function restoreStock(ss, items) {
+  var ws = ss.getSheetByName(TAB_CATALOG);
+  if (!ws) return;
+  var range = ws.getDataRange();
+  var rows = range.getValues();
+  var changed = false;
+  for (var idx = 0; idx < items.length; idx++) {
+    var item = items[idx];
+    for (var r = 1; r < rows.length; r++) {
+      if (String(rows[r][0]).trim() !== String(item.name).trim()) continue;
+      if (item.type === "box") {
+        rows[r][7] = (Number(rows[r][7]) || 0) + (item.qty || 1);
+      } else {
+        rows[r][8] = (Number(rows[r][8]) || 0) + (item.qty || 1);
+      }
+      changed = true;
+      break;
+    }
+  }
+  if (changed) range.setValues(rows);
+}
+
+function restoreCatalogLimits(ss, items) {
+  var ws = ss.getSheetByName(TAB_CATALOG);
+  if (!ws) return;
+  var range = ws.getDataRange();
+  var rows = range.getValues();
+  var changed = false;
+  for (var idx = 0; idx < items.length; idx++) {
+    var item = items[idx];
+    for (var r = 1; r < rows.length; r++) {
+      if (String(rows[r][0]).trim() !== String(item.name).trim()) continue;
+      var colIdx = item.type === "box" ? 9 : 10;
+      var limit = rows[r][colIdx];
+      if (limit === "" || limit === undefined || limit === null) break;
+      rows[r][colIdx] = (Number(limit) || 0) + (item.qty || 1);
+      changed = true;
+      break;
+    }
+  }
+  if (changed) {
+    range.setValues(rows);
+    CacheService.getScriptCache().remove("catalog_config");
+  }
+}
+
 function writeOrder(ss, d) {
   let ws = ss.getSheetByName(TAB_ORDERS);
   if (!ws) {
@@ -1250,6 +1296,40 @@ function handleApi(params) {
       orders_today: ordersToday, revenue_today: revenueToday,
       pending_count: pendingCount, recent_orders: recentOrders,
     })));
+  }
+
+  // ── ยกเลิกออเดอร์ (admin) ──
+  if (action === "cancel_order") {
+    var orderId = params.order || "";
+    if (!orderId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing order" })));
+    var col = function(name) { return hdr.indexOf(name); };
+    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
+    for (var i = 1; i < rows.length; i++) {
+      if (String(rows[i][col("order_id")]) !== orderId) continue;
+      var ff = String(rows[i][col("fulfillment")] || "");
+      if (ff === "รับแล้ว" || ff === "ยกเลิก") {
+        return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่สามารถยกเลิกออเดอร์นี้ได้" })));
+      }
+      var items = [];
+      try { items = JSON.parse(String(rows[i][col("items_json")] || "[]")); } catch(_) {}
+      if (items.length > 0) {
+        restoreStock(ss, items);
+        restoreCatalogLimits(ss, items);
+      }
+      ws.getRange(i + 1, col("fulfillment") + 1).setValue("ยกเลิก");
+      var uid = String(rows[i][col("line_user_id")] || "");
+      if (uid) {
+        _linePush(uid,
+          "❌ ออเดอร์ #" + orderId + " ถูกยกเลิก\n\n" +
+          "ทีมงาน WAKA ได้รับออเดอร์แรกของคุณเรียบร้อยแล้วค่ะ\n" +
+          "ออเดอร์นี้จึงขอยกเลิกเพื่อให้สิทธิ์ลูกค้าท่านอื่น\n" +
+          "(สินค้ามีจำกัด)\n\n" +
+          "หากมีข้อสงสัยกรุณาติดต่อทีมงาน 🙏"
+        );
+      }
+      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+    }
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
   }
 
   // ── รายการจัดส่งพัสดุ ──
