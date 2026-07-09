@@ -862,10 +862,12 @@ function handleStaffPage(orderId, action) {
       if (col("fulfillment") >= 0) ws.getRange(i+1, col("fulfillment")+1).setValue("กำลังจัดส่งไปสาขา");
       if (col("fulfilled_at") >= 0) ws.getRange(i+1, col("fulfilled_at")+1).setValue(now);
       ff = "กำลังจัดส่งไปสาขา";
+      _clearDashCache();
     } else if (action === "ready") {
       if (col("fulfillment") >= 0) ws.getRange(i+1, col("fulfillment")+1).setValue("พร้อมรับ");
       if (col("fulfilled_at") >= 0) ws.getRange(i+1, col("fulfilled_at")+1).setValue(now);
       ff = "พร้อมรับ";
+      _clearDashCache();
       var uid2 = r[col("line_user_id")];
       if (uid2) {
         var trackUrl2 = "https://waka-liff.vercel.app/confirm.html?order=" + orderId;
@@ -876,6 +878,7 @@ function handleStaffPage(orderId, action) {
       if (col("fulfillment") >= 0) ws.getRange(i+1, col("fulfillment")+1).setValue(ffValue);
       if (col("staff_confirmed_at") >= 0) ws.getRange(i+1, col("staff_confirmed_at")+1).setValue(now);
       ff = ffValue;
+      _clearDashCache();
       var uid3 = r[col("line_user_id")];
       if (uid3) {
         var trackUrl3 = "https://waka-liff.vercel.app/confirm.html?order=" + orderId;
