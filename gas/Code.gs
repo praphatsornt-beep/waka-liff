@@ -3,6 +3,11 @@
 // Deploy as Web App: Execute as "Me", Who has access: "Anyone"
 // ──────────────────────────────────────────────────────────────────────────────
 
+function warmup() {
+  // keepalive — run via time-based trigger every 5 min to prevent cold start
+  SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty("SHEET_ID"));
+}
+
 const PROPS         = PropertiesService.getScriptProperties();
 const LINE_TOKEN    = PROPS.getProperty("LINE_TOKEN");
 const SHEET_ID      = PROPS.getProperty("SHEET_ID");
