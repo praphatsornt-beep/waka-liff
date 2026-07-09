@@ -204,10 +204,7 @@ function doPost(e) {
       }
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
     }
-    var lock = LockService.getScriptLock();
-    lock.waitLock(15000);
-    var orderId = _genOrderId();
-    var ss      = SpreadsheetApp.openById(SHEET_ID);
+    var ss = SpreadsheetApp.openById(SHEET_ID);
 
     var slipStatus = "ไม่มีสลิป";
     var slipNote   = "ลูกค้าไม่ได้แนบสลิป";
@@ -295,6 +292,13 @@ function doPost(e) {
         }
       }
     }
+
+    // ── Lock เฉพาะช่วงวิกฤต: ตรวจ + หักสต็อก + บันทึกออเดอร์ ──
+    var lock = LockService.getScriptLock();
+    if (!lock.tryLock(10000)) {
+      return _cors(ContentService.createTextOutput(JSON.stringify({ success: false, error: "ระบบยุ่งอยู่ กรุณาลองใหม่สักครู่" })));
+    }
+    var orderId = _genOrderId();
 
     // ── ตรวจ limit ใน _catalog ก่อนรับออเดอร์ ──
     if (data.items && data.items.length > 0) {

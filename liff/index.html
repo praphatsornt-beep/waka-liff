@@ -1091,26 +1091,57 @@
     const key = encodeKey(name) + "__" + type;
     const limitAttr = (limit !== undefined && limit >= 0) ? ` data-limit="${limit}"` : "";
     const soldOut = (limit !== undefined && limit === 0);
-    let stockHint = "";
-    if (soldOut) {
-      stockHint = `<span style="color:var(--red);font-size:11px;margin-left:6px">หมด</span>`;
-    } else if (limit !== undefined && limit > 0 && limit <= 20) {
-      stockHint = `<span style="color:var(--label);font-size:11px;margin-left:6px">เหลือ ${limit}</span>`;
-    }
+    const hintText = soldOut ? "หมด" : (limit !== undefined && limit > 0 && limit <= 20 ? `เหลือ ${limit}` : "");
+    const hintColor = soldOut ? "var(--red)" : "var(--label)";
+    const stockHint = `<span id="hint_${key}" style="color:${hintColor};font-size:11px;margin-left:6px">${hintText}</span>`;
     return `
       <div class="type-row">
         <span class="type-label">${label}${stockHint}</span>
         <span class="type-price">${price.toLocaleString()} .-</span>
         <div class="qty-ctrl">
-          <button onclick="changeQty('${encodeKey(name)}','${type}',${price},-1)" ${soldOut ? "disabled" : ""}>-</button>
+          <button id="btn_minus_${key}" onclick="changeQty('${encodeKey(name)}','${type}',${price},-1)" ${soldOut ? "disabled" : ""}>-</button>
           <span class="qty-num" id="qty_${key}"${limitAttr}>0</span>
-          <button onclick="changeQty('${encodeKey(name)}','${type}',${price},1)" ${soldOut ? "disabled" : ""}>+</button>
+          <button id="btn_plus_${key}" onclick="changeQty('${encodeKey(name)}','${type}',${price},1)" ${soldOut ? "disabled" : ""}>+</button>
         </div>
       </div>`;
   }
 
   function encodeKey(name) {
     return name.replace(/[^a-zA-Z0-9ก-๙]/g, "_");
+  }
+
+  async function refreshCatalog() {
+    try {
+      const res = await fetch(GAS_URL);
+      const data = await res.json();
+      if (data.error) return;
+      catalog = data.catalog || [];
+      configData = data.config || {};
+      try { localStorage.setItem("waka_catalog", JSON.stringify(data)); } catch(_) {}
+      applyFilters();
+      const hasItems = Object.values(quantities).some(v => v > 0);
+      if (!hasItems) {
+        renderCatalog();
+      } else {
+        catalog.forEach(p => {
+          [["box", p.limit_box], ["pack", p.limit_pack]].forEach(([type, limit]) => {
+            const k = encodeKey(p.name) + "__" + type;
+            const qtyEl = document.getElementById("qty_" + k);
+            const hintEl = document.getElementById("hint_" + k);
+            const plusBtn = document.getElementById("btn_plus_" + k);
+            if (!qtyEl) return;
+            if (limit !== undefined && limit >= 0) qtyEl.dataset.limit = limit;
+            else delete qtyEl.dataset.limit;
+            const soldOut = limit !== undefined && limit === 0;
+            if (hintEl) {
+              hintEl.style.color = soldOut ? "var(--red)" : "var(--label)";
+              hintEl.textContent = soldOut ? "หมด" : (limit !== undefined && limit > 0 && limit <= 20 ? `เหลือ ${limit}` : "");
+            }
+            if (plusBtn) plusBtn.disabled = soldOut;
+          });
+        });
+      }
+    } catch(_) {}
   }
 
   function changeQty(nameKey, type, price, delta) {
@@ -1547,6 +1578,8 @@
   }
 
   init();
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshCatalog(); });
+  setInterval(refreshCatalog, 60000);
 </script>
 </body>
 </html>
