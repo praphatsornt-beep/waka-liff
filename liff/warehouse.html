@@ -432,7 +432,7 @@ function loadShipmentForm() {
   const needs = branchSummary[branch] || [];
   const allProducts = [...new Set([...centralStock.map(s => s.name), ...needs.map(n => n.name)])];
 
-  let html = '<table><tr><th>สินค้า</th><th>สต็อก</th><th>ออเดอร์</th><th>เผื่อ</th><th>รวมส่ง</th></tr>';
+  let html = '<table><tr><th style="width:36px"></th><th>สินค้า</th><th>สต็อก</th><th>ออเดอร์</th><th>เผื่อ</th><th>รวมส่ง</th></tr>';
   for (const name of allProducts) {
     const need = needs.find(n => n.name === name) || { qty_box: 0, qty_pack: 0 };
     const stock = centralStock.find(s => s.name === name) || { qty_box: 0, qty_pack: 0 };
@@ -441,28 +441,41 @@ function loadShipmentForm() {
 
     if (hasBox) {
       const orderQty = need.qty_box || 0;
+      const checked = orderQty > 0 ? 'checked' : '';
       html += '<tr data-name="' + esc(name) + '" data-type="box" data-order="' + orderQty + '">';
+      html += '<td><input type="checkbox" class="ship-check" ' + checked + ' onchange="updateShipRow(this)"></td>';
       html += '<td>' + esc(name) + ' <small style="color:var(--label)">(กล่อง)</small></td>';
       html += '<td>' + stock.qty_box + '</td>';
       html += '<td>' + orderQty + '</td>';
-      html += '<td><input type="number" class="qty-input ship-extra" value="0" min="0" oninput="updateShipTotal(this)"></td>';
-      html += '<td class="ship-total" style="font-weight:700">' + orderQty + '</td>';
+      html += '<td><input type="number" class="qty-input ship-extra" value="0" min="0" oninput="updateShipTotal(this)" ' + (!checked ? 'disabled' : '') + '></td>';
+      html += '<td class="ship-total" style="font-weight:700">' + (checked ? orderQty : '-') + '</td>';
       html += '</tr>';
     }
     if (hasPack) {
       const orderQty = need.qty_pack || 0;
+      const checked = orderQty > 0 ? 'checked' : '';
       html += '<tr data-name="' + esc(name) + '" data-type="pack" data-order="' + orderQty + '">';
+      html += '<td><input type="checkbox" class="ship-check" ' + checked + ' onchange="updateShipRow(this)"></td>';
       html += '<td>' + esc(name) + ' <small style="color:var(--label)">(ซอง)</small></td>';
       html += '<td>' + stock.qty_pack + '</td>';
       html += '<td>' + orderQty + '</td>';
-      html += '<td><input type="number" class="qty-input ship-extra" value="0" min="0" oninput="updateShipTotal(this)"></td>';
-      html += '<td class="ship-total" style="font-weight:700">' + orderQty + '</td>';
+      html += '<td><input type="number" class="qty-input ship-extra" value="0" min="0" oninput="updateShipTotal(this)" ' + (!checked ? 'disabled' : '') + '></td>';
+      html += '<td class="ship-total" style="font-weight:700">' + (checked ? orderQty : '-') + '</td>';
       html += '</tr>';
     }
   }
   html += '</table>';
   html += '<button class="btn btn-primary" style="margin-top:12px" onclick="createShipment()">📦 สร้างล็อตส่งสาขา</button>';
   el.innerHTML = html;
+}
+
+function updateShipRow(checkbox) {
+  const row = checkbox.closest('tr');
+  const extraInput = row.querySelector('.ship-extra');
+  const orderQty = parseInt(row.dataset.order) || 0;
+  extraInput.disabled = !checkbox.checked;
+  if (!checkbox.checked) { extraInput.value = 0; row.querySelector('.ship-total').textContent = '-'; }
+  else { row.querySelector('.ship-total').textContent = orderQty; }
 }
 
 function updateShipTotal(input) {
@@ -479,6 +492,8 @@ async function createShipment() {
   const rows = document.querySelectorAll('#shipmentForm tr[data-name]');
   const itemMap = {};
   rows.forEach(row => {
+    const checkbox = row.querySelector('.ship-check');
+    if (!checkbox || !checkbox.checked) return;
     const name = row.dataset.name;
     const type = row.dataset.type;
     const orderQty = parseInt(row.dataset.order) || 0;
