@@ -994,8 +994,8 @@ async function loadWhHistory() {
   try{const r=await fetch(G+'&action=api&do=shipments');const d=await r.json();const list=d.shipments||[];
     const el=gid('whHistory');if(!list.length){el.innerHTML='<div class="empty">ไม่มีประวัติ</div>';return;}
     el.innerHTML=list.map(s=>{const items=JSON.parse(s.items_json||'[]');const itemStr=items.map(i=>{const tb=(i.qty_box||0)+(i.qty_box_extra||0),tp=(i.qty_pack||0)+(i.qty_pack_extra||0);return i.name+(tb?' Box:'+tb:'')+(tp?' Pack:'+tp:'');}).join(', ');
-      const isRecv=s.status==='รับแล้ว';
-      return `<div class="card"><div style="display:flex;justify-content:space-between"><strong>${esc(s.shipment_id)}</strong><span class="status ${isRecv?'s-done':'s-wait'}">${esc(s.status)}</span></div><div style="font-size:12px;color:var(--text2);margin-top:4px">→ ${esc(s.to_branch)} · ${esc(s.timestamp)}</div><div style="font-size:12px;margin-top:4px">${esc(itemStr)}</div>${!isRecv?'<button class="btn btn-green btn-sm" style="margin-top:8px" onclick="receiveShipment(\''+s.shipment_id+'\')">✅ ยืนยันรับของ</button>':''}</div>`;
+      const isRecv=s.status==='รับแล้ว';const isCancelled=s.status==='ยกเลิก';
+      return `<div class="card"><div style="display:flex;justify-content:space-between"><strong>${esc(s.shipment_id)}</strong><span class="status ${isRecv?'s-done':'s-wait'}">${esc(s.status)}</span></div><div style="font-size:12px;color:var(--text2);margin-top:4px">→ ${esc(s.to_branch)} · ${esc(s.timestamp)}</div><div style="font-size:12px;margin-top:4px">${esc(itemStr)}</div>${(!isRecv&&!isCancelled)?'<button class="btn btn-green btn-sm" style="margin-top:8px" onclick="receiveShipment(\''+s.shipment_id+'\')">✅ ยืนยันรับของ</button>':''}</div>`;
     }).join('');
   }catch(e){gid('whHistory').innerHTML='<div class="empty">โหลดไม่ได้</div>';}
 }

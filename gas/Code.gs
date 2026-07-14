@@ -40,6 +40,10 @@ const TOKEN_TABLE = {
 
 const TOKEN_BOX_THRESHOLD = 30;
 
+// จำนวน promo pack ตามจำนวน wins ใน 3-match (0-3)
+// 0 wins = 1 ซอง (ทุกคนได้อย่างน้อย 1), 3 wins = 3 ซอง — แก้ได้ตรงนี้
+const PROMO_TABLE = { 0: 1, 1: 1, 2: 2, 3: 3 };
+
 function _cors(output) {
   return output.setMimeType(ContentService.MimeType.JSON);
 }
@@ -3058,5 +3062,165 @@ function testPartialFlow() {
   }
 
   Logger.log("── Test เสร็จสิ้น ──");
+}
+
+// ────────────────────────────────────────────────────────────────
+// testWakagymFlow — รัน full WAKA GYM flow โดยไม่ต้องเปิด browser
+// เลือก testWakagymFlow แล้วกด Run ดู log ใน Execution Log
+// ⚠️  จะส่ง LINE ไป group_staff จริง (1 ข้อความต่อผู้เล่น)
+// ────────────────────────────────────────────────────────────────
+function testWakagymFlow() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var today = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
+  var testTag = "TEST_WG_" + new Date().getTime();
+
+  // ── 1. สร้าง event วันนี้ tier S ──────────────────────────────
+  var evWs = _ensureTab(ss, TAB_WAKAGYM_EVENTS,
+    ["event_id","date","branch","tier","entry_fee","status","created_by"]);
+  var testEventId = testTag + "_EV";
+  evWs.appendRow([testEventId, today, "WAKA GYM", "S", 200, "open", "test"]);
+  Logger.log("✅ สร้าง event: " + testEventId);
+
+  // ── 2. ลงทะเบียน 2 คน (cash, dev_user — ไม่ push LINE ลูกค้า) ──
+  var r1 = handleWakagymRegister({
+    lineUserId: "dev_user", displayName: "TestUser1",
+    players: [{ playerName: testTag + "_P1", realName: testTag + "_P1" }],
+    paymentMethod: "cash", phone: "0800000001"
+  });
+  var d1 = JSON.parse(r1.getContent());
+  Logger.log("register P1: " + JSON.stringify(d1));
+  if (!d1.success) { Logger.log("❌ FAIL register P1"); _testWgCleanup(ss, testTag, testEventId); return; }
+  var regId1 = d1.results[0].regId;
+  Logger.log("✅ reg P1: " + regId1);
+
+  var r2 = handleWakagymRegister({
+    lineUserId: "dev_user", displayName: "TestUser2",
+    players: [{ playerName: testTag + "_P2", realName: testTag + "_P2" }],
+    paymentMethod: "cash", phone: "0800000002"
+  });
+  var d2 = JSON.parse(r2.getContent());
+  Logger.log("register P2: " + JSON.stringify(d2));
+  if (!d2.success) { Logger.log("❌ FAIL register P2"); _testWgCleanup(ss, testTag, testEventId); return; }
+  var regId2 = d2.results[0].regId;
+  Logger.log("✅ reg P2: " + regId2);
+
+  // ── 3. Submit results (inline logic เหมือน wakagym_submit_results) ──
+  var regWs = ss.getSheetByName(TAB_WAKAGYM_REG);
+  var statsWs = ss.getSheetByName(TAB_PLAYER_STATS);
+  var regRows = regWs.getDataRange().getValues();
+  var regHdr = regRows[0];
+  var rc = function(n) { return regHdr.indexOf(n); };
+  var stRows = statsWs.getDataRange().getValues();
+  var stHdr = stRows[0];
+  var stc = function(n) { return stHdr.indexOf(n); };
+
+  var srResults = [
+    { reg_id: regId1, placement: "1st",  wins_3match: 3 },
+    { reg_id: regId2, placement: "2nd",  wins_3match: 2 }
+  ];
+  var tier = "S";
+  var expectedTokens = {};
+  for (var ri = 0; ri < srResults.length; ri++) {
+    var sr = srResults[ri];
+    var wins = Math.min(Math.max(parseInt(sr.wins_3match) || 0, 0), 3);
+    var tokens = (TOKEN_TABLE[tier] && TOKEN_TABLE[tier][sr.placement]) || 0;
+    var promos = PROMO_TABLE[wins] || 1;
+    expectedTokens[sr.reg_id] = tokens;
+    for (var rj = 1; rj < regRows.length; rj++) {
+      if (String(regRows[rj][rc("reg_id")]) !== sr.reg_id) continue;
+      var pName = String(regRows[rj][rc("player_name")] || "").trim();
+      if (rc("placement") >= 0)     regWs.getRange(rj+1, rc("placement")+1).setValue(sr.placement);
+      if (rc("wins_3match") >= 0)   regWs.getRange(rj+1, rc("wins_3match")+1).setValue(wins);
+      if (rc("tokens_earned") >= 0) regWs.getRange(rj+1, rc("tokens_earned")+1).setValue(tokens);
+      if (rc("promo_packs") >= 0)   regWs.getRange(rj+1, rc("promo_packs")+1).setValue(promos);
+      for (var si = 1; si < stRows.length; si++) {
+        if (String(stRows[si][stc("player_name")]).trim() !== pName) continue;
+        var curTok = (Number(stRows[si][stc("total_tokens")]) || 0) + tokens;
+        statsWs.getRange(si+1, stc("total_tokens")+1).setValue(curTok);
+        stRows[si][stc("total_tokens")] = curTok;
+        break;
+      }
+      Logger.log("✅ บันทึกผล " + pName + ": " + sr.placement + " → 🪙" + tokens + " 📦" + promos);
+      break;
+    }
+  }
+
+  // ── 4. Give rewards ──────────────────────────────────────────
+  var rewardRegIds = [regId1, regId2];
+  regRows = regWs.getDataRange().getValues(); // reload after writes
+  regHdr = regRows[0];
+  rc = function(n) { return regHdr.indexOf(n); };
+  for (var gi = 1; gi < regRows.length; gi++) {
+    var rid = String(regRows[gi][rc("reg_id")]);
+    if (rewardRegIds.indexOf(rid) < 0) continue;
+    if (String(regRows[gi][rc("rewards_given")]).toLowerCase() === "true") continue;
+    var givenAt = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
+    regWs.getRange(gi+1, rc("rewards_given")+1).setValue("TRUE");
+    if (rc("note") >= 0) regWs.getRange(gi+1, rc("note")+1).setValue("TEST แจก " + givenAt);
+    Logger.log("✅ give rewards: " + String(regRows[gi][rc("player_name")]));
+  }
+
+  // ── 5. Verify player_stats ───────────────────────────────────
+  stRows = statsWs.getDataRange().getValues();
+  stHdr = stRows[0];
+  stc = function(n) { return stHdr.indexOf(n); };
+  regRows = regWs.getDataRange().getValues();
+  regHdr = regRows[0];
+  rc = function(n) { return regHdr.indexOf(n); };
+  var allPass = true;
+  for (var vi = 1; vi < regRows.length; vi++) {
+    var vRid = String(regRows[vi][rc("reg_id")]);
+    if (rewardRegIds.indexOf(vRid) < 0) continue;
+    var vName = String(regRows[vi][rc("player_name")] || "").trim();
+    var vExpected = expectedTokens[vRid] || 0;
+    var vRewards = String(regRows[vi][rc("rewards_given")] || "");
+    for (var vsi = 1; vsi < stRows.length; vsi++) {
+      if (String(stRows[vsi][stc("player_name")]).trim() !== vName) continue;
+      var vActual = Number(stRows[vsi][stc("total_tokens")]) || 0;
+      if (vActual === vExpected && vRewards.toLowerCase() === "true") {
+        Logger.log("✅ PASS " + vName + ": tokens=" + vActual + " rewards_given=" + vRewards);
+      } else {
+        Logger.log("❌ FAIL " + vName + ": tokens=" + vActual + " (expected " + vExpected + ") rewards=" + vRewards);
+        allPass = false;
+      }
+      break;
+    }
+  }
+  Logger.log(allPass ? "✅ ทุก assertion ผ่าน" : "❌ มี assertion ที่ fail");
+
+  // ── 6. Cleanup ────────────────────────────────────────────────
+  _testWgCleanup(ss, testTag, testEventId);
+  Logger.log("── testWakagymFlow เสร็จสิ้น ──");
+}
+
+function _testWgCleanup(ss, testTag, testEventId) {
+  // ลบจาก wakagym_events
+  var evWs = ss.getSheetByName(TAB_WAKAGYM_EVENTS);
+  if (evWs) {
+    var evRows = evWs.getDataRange().getValues();
+    for (var i = evRows.length - 1; i >= 1; i--) {
+      if (String(evRows[i][0]) === testEventId) { evWs.deleteRow(i+1); break; }
+    }
+  }
+  // ลบจาก wakagym_reg
+  var regWs = ss.getSheetByName(TAB_WAKAGYM_REG);
+  if (regWs) {
+    var regRows = regWs.getDataRange().getValues();
+    for (var i = regRows.length - 1; i >= 1; i--) {
+      if (String(regRows[i][regRows[0].indexOf("player_name")]).indexOf(testTag) === 0 ||
+          String(regRows[i][regRows[0].indexOf("real_name")]).indexOf(testTag) === 0) {
+        regWs.deleteRow(i+1);
+      }
+    }
+  }
+  // ลบจาก player_stats
+  var stWs = ss.getSheetByName(TAB_PLAYER_STATS);
+  if (stWs) {
+    var stRows = stWs.getDataRange().getValues();
+    for (var i = stRows.length - 1; i >= 1; i--) {
+      if (String(stRows[i][0]).indexOf(testTag) === 0) { stWs.deleteRow(i+1); }
+    }
+  }
+  Logger.log("🧹 ลบ test data แล้ว (" + testTag + ")");
 }
 
