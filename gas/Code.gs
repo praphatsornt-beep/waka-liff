@@ -142,6 +142,10 @@ function doPost(e) {
       return handleReceiveShipment(data);
     }
 
+    if (data._action === "cancelShipment") {
+      return handleCancelShipment(data);
+    }
+
     if (data._action === "handoverOrder") {
       return handleHandoverOrder(data);
     }
@@ -2164,6 +2168,54 @@ function handleCreateShipment(data) {
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, shipment_id: shipId })));
   } catch (err) {
+    try { lock.releaseLock(); } catch(_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+// ── Shipment: ยกเลิกลอต + คืนสต็อกกลาง ─────────────────────────────────────
+function handleCancelShipment(data) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var shWs = ss.getSheetByName(TAB_SHIPMENTS);
+    if (!shWs) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no shipments tab" }))); }
+    var shRows = shWs.getDataRange().getValues();
+    var shHdr = shRows[0];
+    var colIdx = function(n) { return shHdr.indexOf(n); };
+    for (var i = 1; i < shRows.length; i++) {
+      if (String(shRows[i][colIdx("shipment_id")]) !== String(data.shipment_id)) continue;
+      var status = String(shRows[i][colIdx("status")] || "");
+      if (status === "รับแล้ว") {
+        lock.releaseLock();
+        return _cors(ContentService.createTextOutput(JSON.stringify({ error: "สาขารับของแล้ว ไม่สามารถยกเลิกได้" })));
+      }
+      // คืนสต็อกกลาง
+      var items = [];
+      try { items = JSON.parse(String(shRows[i][colIdx("items_json")] || "[]")); } catch(_) {}
+      var catWs = ss.getSheetByName(TAB_CATALOG);
+      if (catWs && items.length > 0) {
+        var catRows = catWs.getDataRange().getValues();
+        for (var idx = 0; idx < items.length; idx++) {
+          var it = items[idx];
+          var totalBox = (it.qty_box || 0) + (it.qty_box_extra || 0);
+          var totalPack = (it.qty_pack || 0) + (it.qty_pack_extra || 0);
+          for (var r = 1; r < catRows.length; r++) {
+            if (String(catRows[r][0]).trim() !== String(it.name).trim()) continue;
+            if (totalBox > 0) catWs.getRange(r + 1, 8).setValue((Number(catRows[r][7]) || 0) + totalBox);
+            if (totalPack > 0) catWs.getRange(r + 1, 9).setValue((Number(catRows[r][8]) || 0) + totalPack);
+            break;
+          }
+        }
+      }
+      shWs.getRange(i + 1, colIdx("status") + 1).setValue("ยกเลิก");
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+    }
+    lock.releaseLock();
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบลอต" })));
+  } catch(err) {
     try { lock.releaseLock(); } catch(_) {}
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
   }
