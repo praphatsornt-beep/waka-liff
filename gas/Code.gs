@@ -326,6 +326,22 @@ function doPost(e) {
         try { lock.releaseLock(); } catch(_) {}
         return _cors(ContentService.createTextOutput(JSON.stringify({ success: false, error: limitCheck.error })));
       }
+      // ทำเครื่องหมาย preorder items — limit มีค่าแต่ stock = 0
+      // ใช้ตอน cancel เพื่อข้ามการคืน qty_box/pack (ไม่เคยหักจริง)
+      for (var pi = 0; pi < data.items.length; pi++) {
+        var pIt = data.items[pi];
+        for (var pr = 1; pr < catRowsForOrder.length; pr++) {
+          if (String(catRowsForOrder[pr][0]).trim() !== String(pIt.name).trim()) continue;
+          var pLimitCol = pIt.type === "box" ? 9 : 10;
+          var pStockCol = pIt.type === "box" ? 7 : 8;
+          var pLimit = catRowsForOrder[pr][pLimitCol];
+          var pHasLimit = !(pLimit === "" || pLimit === undefined || pLimit === null);
+          if (pHasLimit && (Number(catRowsForOrder[pr][pStockCol]) || 0) === 0) {
+            pIt._preorder = true;
+          }
+          break;
+        }
+      }
     }
 
     writeOrder(ss, {
@@ -536,6 +552,9 @@ function restoreStock(ss, items) {
   var changed = false;
   for (var idx = 0; idx < items.length; idx++) {
     var item = items[idx];
+    // _preorder = true หมายความว่าตอนสั่งซื้อ qty_box/pack เป็น 0 → deductStock ไม่ได้หักจริง
+    // จึงไม่คืน qty กลับ (ป้องกัน ghost stock)
+    if (item._preorder) continue;
     for (var r = 1; r < rows.length; r++) {
       if (String(rows[r][0]).trim() !== String(item.name).trim()) continue;
       if (item.type === "box") {
