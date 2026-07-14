@@ -693,9 +693,11 @@ async function loadStock() {
       let html = '';
       for (const branch of Object.keys(byBranch)) {
         html += '<div class="section-title">🏬 ' + esc(branch) + '</div>';
-        html += '<table><tr><th>สินค้า</th><th>กล่อง</th><th>ซอง</th></tr>';
+        html += '<table><tr><th>สินค้า</th><th>กล่อง</th><th>ซอง</th><th></th></tr>';
         for (const s of byBranch[branch]) {
-          html += '<tr><td>' + esc(s.name) + '</td><td>' + s.qty_box + '</td><td>' + s.qty_pack + '</td></tr>';
+          html += '<tr><td>' + esc(s.name) + '</td><td>' + (s.qty_box||0) + '</td><td>' + (s.qty_pack||0) + '</td>';
+          html += '<td><button class="btn" style="padding:4px 8px;font-size:11px;background:#fee2e2;color:var(--red);border:none;width:auto;min-width:unset" onclick="returnStockItem(\'' + esc(branch) + '\',\'' + esc(s.name) + '\',' + (s.qty_box||0) + ',' + (s.qty_pack||0) + ')">📤 คืน</button></td>';
+          html += '</tr>';
         }
         html += '</table>';
       }
@@ -704,6 +706,37 @@ async function loadStock() {
   } catch (err) {
     cEl.innerHTML = '<div class="empty">โหลดไม่ได้</div>';
     bEl.innerHTML = '<div class="empty">โหลดไม่ได้</div>';
+  }
+}
+
+async function returnStockItem(branch, name, maxBox, maxPack) {
+  let qtyBox = 0, qtyPack = 0;
+  if (maxBox > 0) {
+    const inp = prompt('คืนสต็อกกลับคลัง\n' + name + ' · ' + branch + '\n\nจำนวนกล่องที่คืน (มีอยู่ ' + maxBox + ' กล่อง)\nใส่ 0 เพื่อข้าม');
+    if (inp === null) return;
+    qtyBox = Math.min(parseInt(inp) || 0, maxBox);
+  }
+  if (maxPack > 0) {
+    const inp = prompt('คืนสต็อกกลับคลัง\n' + name + ' · ' + branch + '\n\nจำนวนซองที่คืน (มีอยู่ ' + maxPack + ' ซอง)\nใส่ 0 เพื่อข้าม');
+    if (inp === null) return;
+    qtyPack = Math.min(parseInt(inp) || 0, maxPack);
+  }
+  if (qtyBox <= 0 && qtyPack <= 0) return;
+  const lines = [];
+  if (qtyBox  > 0) lines.push('กล่อง: ' + qtyBox);
+  if (qtyPack > 0) lines.push('ซอง: '  + qtyPack);
+  if (!confirm('คืน ' + name + '\nจาก ' + branch + ' → คลังกลาง\n' + lines.join('\n') + '\n\nสต็อกกลางจะเพิ่มขึ้นอัตโนมัติ')) return;
+  try {
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify({ _action: 'returnStock', branch, name, qty_box: qtyBox, qty_pack: qtyPack })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    alert('คืนสต็อกสำเร็จ! สต็อกกลางได้รับคืนแล้ว');
+    loadStock();
+  } catch (err) {
+    alert('เกิดข้อผิดพลาด: ' + err.message);
   }
 }
 

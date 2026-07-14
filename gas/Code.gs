@@ -166,6 +166,10 @@ function doPost(e) {
       return handleWithdrawStock(data);
     }
 
+    if (data._action === "returnStock") {
+      return handleReturnStock(data);
+    }
+
     if (data._action === "partialReady") {
       return handlePartialReady(data);
     }
@@ -2591,6 +2595,64 @@ function handleWithdrawStock(data) {
     }
     wWs.appendRow([now, branch, name, type, qty, reason]);
 
+    lock.releaseLock();
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+  } catch (err) {
+    try { lock.releaseLock(); } catch(_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+// ── คืนสต็อกจากสาขากลับคลังกลาง ──────────────────────────────────────────
+// data: { branch, name, qty_box, qty_pack }
+function handleReturnStock(data) {
+  var branch  = String(data.branch   || "").trim();
+  var name    = String(data.name     || "").trim();
+  var qtyBox  = Number(data.qty_box  || 0);
+  var qtyPack = Number(data.qty_pack || 0);
+
+  if (!branch || !name || (qtyBox <= 0 && qtyPack <= 0)) {
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ข้อมูลไม่ครบ" })));
+  }
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var ss    = SpreadsheetApp.openById(SHEET_ID);
+    var bsWs  = ss.getSheetByName(TAB_STOCK_BRANCH);
+    var catWs = ss.getSheetByName(TAB_CATALOG);
+    if (!bsWs)  { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่มีข้อมูลสต็อกสาขา" }))); }
+    if (!catWs) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่มีข้อมูลคลังกลาง" }))); }
+
+    // ลดสต็อกสาขา
+    var bsRows = bsWs.getDataRange().getValues();
+    var found = false;
+    for (var r = 1; r < bsRows.length; r++) {
+      if (String(bsRows[r][0]).trim() !== name) continue;
+      if (String(bsRows[r][2]).trim() !== branch) continue;
+      if (qtyBox  > 0) bsWs.getRange(r + 1, 4).setValue(Math.max(0, (Number(bsRows[r][3]) || 0) - qtyBox));
+      if (qtyPack > 0) bsWs.getRange(r + 1, 5).setValue(Math.max(0, (Number(bsRows[r][4]) || 0) - qtyPack));
+      found = true;
+      break;
+    }
+    if (!found) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบ " + name + " ในสต็อกสาขา " + branch }))); }
+
+    // เพิ่มสต็อกกลาง
+    var catRows = catWs.getDataRange().getValues();
+    for (var c = 1; c < catRows.length; c++) {
+      if (String(catRows[c][0]).trim() !== name) continue;
+      if (qtyBox  > 0) catWs.getRange(c + 1, 8).setValue((Number(catRows[c][7]) || 0) + qtyBox);
+      if (qtyPack > 0) catWs.getRange(c + 1, 9).setValue((Number(catRows[c][8]) || 0) + qtyPack);
+      break;
+    }
+
+    // บันทึก log
+    var logWs = ss.getSheetByName("stock_returns");
+    if (!logWs) { logWs = ss.insertSheet("stock_returns"); logWs.appendRow(["timestamp","branch","name","qty_box","qty_pack"]); }
+    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
+    logWs.appendRow([now, branch, name, qtyBox, qtyPack]);
+
+    CacheService.getScriptCache().remove("catalog_config");
     lock.releaseLock();
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
