@@ -177,6 +177,10 @@ function doPost(e) {
       return handleReturnStock(data);
     }
 
+    if (data._action === "uploadProductImage") {
+      return handleUploadProductImage(data);
+    }
+
     if (data._action === "confirmSlip") {
       return handleConfirmSlip(data);
     }
@@ -2634,6 +2638,27 @@ function handlePartialCancelItems(data) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+// ── อัปโหลดรูปสินค้าไป Google Drive ────────────────────────────────────────
+// data: { base64, mimeType, filename }
+function handleUploadProductImage(data) {
+  try {
+    var base64 = data.base64 || "";
+    if (!base64) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no image" })));
+    var folderId = PROPS.getProperty("PRODUCT_IMG_FOLDER_ID") || PROPS.getProperty("SLIP_FOLDER_ID");
+    var folder = folderId ? DriveApp.getFolderById(folderId) : DriveApp.getRootFolder();
+    var mimeType = data.mimeType || "image/jpeg";
+    var filename = String(data.filename || ("product_" + new Date().getTime() + ".jpg")).replace(/[^a-zA-Z0-9._-]/g, "_");
+    var bytes = Utilities.base64Decode(base64);
+    var blob = Utilities.newBlob(bytes, mimeType, filename);
+    var file = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    var url = "https://drive.google.com/thumbnail?id=" + file.getId() + "&sz=w800";
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, url: url })));
+  } catch(err) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
   }
 }

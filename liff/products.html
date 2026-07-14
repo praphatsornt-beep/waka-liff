@@ -426,7 +426,6 @@
 const WAKA_S = 'wk26xK9mPqRt';
 const G = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec?_s=' + WAKA_S;
 const PIN_ADMIN = 'waka99';
-const IMGBB_KEY = 'YOUR_IMGBB_KEY'; // ← ใส่ key จาก imgbb.com/api
 
 let _products = [];
 let _filter = 'all';
@@ -662,10 +661,6 @@ async function onFileSelected(input) {
   const file = input.files[0]; if (!file) return;
   const statusEl = document.getElementById('uploadStatus');
   const uploadBtn = document.getElementById('btnUpload');
-  if (IMGBB_KEY === 'YOUR_IMGBB_KEY') {
-    statusEl.textContent = '⚠️ ยังไม่ได้ตั้งค่า ImgBB key';
-    statusEl.className = 'upload-status err'; input.value = ''; return;
-  }
   if (file.size > 10 * 1024 * 1024) {
     statusEl.textContent = 'รูปใหญ่เกิน 10MB';
     statusEl.className = 'upload-status err'; input.value = ''; return;
@@ -675,16 +670,22 @@ async function onFileSelected(input) {
   uploadBtn.disabled = true;
   try {
     const base64 = await toBase64(file);
-    const form = new FormData();
-    form.append('key', IMGBB_KEY);
-    form.append('image', base64.split(',')[1]);
-    const res  = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: form });
-    const data = await res.json();
-    if (data.success) {
-      setImagePreview(data.data.url);
+    const r = await fetch(G, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        _action: 'uploadProductImage',
+        base64: base64.split(',')[1],
+        mimeType: file.type || 'image/jpeg',
+        filename: 'product_' + Date.now() + '_' + file.name
+      })
+    });
+    const data = await r.json();
+    if (data.ok && data.url) {
+      setImagePreview(data.url);
       statusEl.textContent = 'อัปโหลดสำเร็จ ✓';
       statusEl.className = 'upload-status ok';
-    } else { throw new Error(data.error?.message || 'upload failed'); }
+    } else { throw new Error(data.error || 'upload failed'); }
   } catch(e) {
     statusEl.textContent = 'อัปโหลดไม่ได้: ' + e.message;
     statusEl.className = 'upload-status err';
