@@ -177,10 +177,6 @@ function doPost(e) {
       return handleReturnStock(data);
     }
 
-    if (data._action === "partialReady") {
-      return handlePartialReady(data);
-    }
-
     if (data._action === "confirmSlip") {
       return handleConfirmSlip(data);
     }
@@ -2351,7 +2347,7 @@ function handleReceiveShipment(data) {
         var oSlip = oRows[j][oCol("slip_status")] || "";
         var oFf = oRows[j][oCol("fulfillment")] || "";
         if (oBranch !== branch || oSlip !== "ยืนยัน") continue;
-        if (["พร้อมรับ","สาขายืนยัน","รับแล้ว"].indexOf(oFf) >= 0) continue;
+        if (["พร้อมรับ","บางส่วน","รับบางส่วนแล้ว","สาขายืนยัน","รับแล้ว"].indexOf(oFf) >= 0) continue;
         // อัปเดต fulfillment เป็น "พร้อมรับ"
         if (oCol("fulfillment") >= 0) ws.getRange(j + 1, oCol("fulfillment") + 1).setValue("พร้อมรับ");
         if (oCol("fulfilled_at") >= 0) ws.getRange(j + 1, oCol("fulfilled_at") + 1).setValue(now);
@@ -2921,69 +2917,102 @@ function handleReturnStock(data) {
   }
 }
 
-// ── แจ้งพร้อมรับบางส่วน (item-level fulfillment) ──────────────────────────
-// data: { order_id, indices: [0,1,...] }  zero-based index ของ items ที่พร้อมส่ง
-function handlePartialReady(data) {
-  var lock = LockService.getScriptLock();
-  lock.waitLock(10000);
-  try {
-    var ss = SpreadsheetApp.openById(SHEET_ID);
-    var ws = ss.getSheetByName(TAB_ORDERS);
-    var rows = ws.getDataRange().getValues();
-    var hdr = rows[0];
-    var col = function(name) { return hdr.indexOf(name); };
-    var nowStr = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
-
-    for (var i = 1; i < rows.length; i++) {
-      if (String(rows[i][col("order_id")]) !== String(data.order_id)) continue;
-
-      var items = [];
-      try { items = JSON.parse(rows[i][col("items_json")] || "[]"); } catch(_) {}
-
-      var indices = data.indices || [];
-      for (var k = 0; k < indices.length; k++) {
-        var idx = Number(indices[k]);
-        if (idx >= 0 && idx < items.length && !items[idx].fulfilled_at) {
-          items[idx].fulfilled_at = nowStr;
-        }
-      }
-
-      var allDone = items.every(function(it) { return it.fulfilled_at; });
-      var newFf = allDone ? "พร้อมรับ" : "บางส่วน";
-
-      ws.getRange(i + 1, col("items_json") + 1).setValue(JSON.stringify(items));
-      ws.getRange(i + 1, col("fulfillment") + 1).setValue(newFf);
-      if (allDone && col("fulfilled_at") >= 0) ws.getRange(i + 1, col("fulfilled_at") + 1).setValue(nowStr);
-
-      var uid = rows[i][col("line_user_id")] || "";
-      var orderId = String(rows[i][col("order_id")] || "");
-      var branch = rows[i][col("branch")] || "";
-      if (uid) {
-        var readyLines = items.filter(function(it) { return it.fulfilled_at; }).map(function(it) {
-          return "  ✅ " + it.name + " (" + (it.type === "box" ? "กล่อง" : "ซอง") + ") x" + it.qty;
-        }).join("\n");
-        var waitLines = items.filter(function(it) { return !it.fulfilled_at; }).map(function(it) {
-          return "  ⏳ " + it.name + " (" + (it.type === "box" ? "กล่อง" : "ซอง") + ") x" + it.qty;
-        }).join("\n");
-        var msg = (allDone ? "📦 สินค้าพร้อมรับทั้งหมดแล้ว!" : "📦 สินค้าบางส่วนพร้อมรับแล้ว!")
-          + "\nออเดอร์: #" + orderId + "\n\n" + readyLines;
-        if (waitLines) msg += "\n\n" + waitLines + "\n(ยังรอสินค้า Preorder)";
-        msg += "\n\nกรุณามารับที่สาขา: " + branch;
-        _linePush(uid, msg);
-      }
-
-      lock.releaseLock();
-      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, fulfillment: newFf })));
-    }
-    lock.releaseLock();
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
-  } catch (err) {
-    try { lock.releaseLock(); } catch(_) {}
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
-  }
-}
-
 function clearCache() {
   CacheService.getScriptCache().remove("catalog_config");
+}
+
+// ── TEST: ทดสอบ partial fulfillment flow โดยไม่กระทบออเดอร์จริง ─────────────
+// รันจาก GAS Editor → เลือก testPartialFlow → กด Run
+// ดู log ใน Execution Log
+function testPartialFlow() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var ws = ss.getSheetByName(TAB_ORDERS);
+  var hdr = ws.getRange(1, 1, 1, ws.getLastColumn()).getValues()[0];
+  var col = function(name) { return hdr.indexOf(name); };
+
+  var testId = "TEST_" + new Date().getTime();
+  var testItems = [
+    { name: "TEST-ITEM-A", type: "box", qty: 1, price: 100 },
+    { name: "TEST-ITEM-B", type: "box", qty: 2, price: 200 },
+  ];
+  // เพิ่ม test row — ใช้ line_user_id "dev_user" เพื่อกัน LINE push จริง
+  var newRow = new Array(hdr.length).fill("");
+  newRow[col("order_id")]    = testId;
+  newRow[col("timestamp")]   = "2099-01-01T00:00:00+07:00";
+  newRow[col("line_user_id")]= "dev_user";
+  newRow[col("display_name")]= "TEST";
+  newRow[col("items_json")]  = JSON.stringify(testItems);
+  newRow[col("total")]       = 300;
+  newRow[col("branch")]      = "ต้นสักคอร์เนอร์";
+  newRow[col("slip_status")] = "ยืนยัน";
+  newRow[col("fulfillment")] = "";
+  ws.appendRow(newRow);
+  Logger.log("✅ สร้าง test order: " + testId);
+
+  // 1. แจ้งพร้อมรับ item[0] เท่านั้น
+  var r1 = handlePartialReady({ order_id: testId, indices: [0] });
+  var d1 = JSON.parse(r1.getContent());
+  Logger.log("partialReady(indices=[0]): " + JSON.stringify(d1));
+  if (d1.ok && d1.fulfillment === "บางส่วน") {
+    Logger.log("✅ PASS: fulfillment = บางส่วน");
+  } else {
+    Logger.log("❌ FAIL: expected บางส่วน, got " + d1.fulfillment);
+  }
+
+  // 2. ตรวจ items_json — item[0] ต้องมี ready_at, item[1] ต้องไม่มี
+  var rows = ws.getDataRange().getValues();
+  var testRow = null;
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][col("order_id")]) === testId) { testRow = rows[i]; break; }
+  }
+  if (testRow) {
+    var items = JSON.parse(testRow[col("items_json")]);
+    Logger.log("items[0].ready_at = " + items[0].ready_at);
+    Logger.log("items[1].ready_at = " + items[1].ready_at);
+    if (items[0].ready_at && !items[1].ready_at) Logger.log("✅ PASS: ready_at ถูกต้อง");
+    else Logger.log("❌ FAIL: ready_at ไม่ถูกต้อง");
+  }
+
+  // 3. ส่งมอบ (handover) — ควรหักเฉพาะ item[0]
+  var r2 = handleHandoverOrder({ order_id: testId });
+  var d2 = JSON.parse(r2.getContent());
+  Logger.log("handoverOrder: " + JSON.stringify(d2));
+  if (d2.ok && d2.fulfillment === "รับบางส่วนแล้ว") {
+    Logger.log("✅ PASS: fulfillment = รับบางส่วนแล้ว");
+  } else {
+    Logger.log("❌ FAIL: expected รับบางส่วนแล้ว, got " + d2.fulfillment);
+  }
+
+  // 4. ตรวจ items_json — item[0] ต้องมี handed_at, item[1] ยังไม่มี
+  rows = ws.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][col("order_id")]) === testId) { testRow = rows[i]; break; }
+  }
+  if (testRow) {
+    var items2 = JSON.parse(testRow[col("items_json")]);
+    Logger.log("items[0].handed_at = " + items2[0].handed_at);
+    Logger.log("items[1].handed_at = " + items2[1].handed_at);
+    if (items2[0].handed_at && !items2[1].handed_at) Logger.log("✅ PASS: handed_at ถูกต้อง");
+    else Logger.log("❌ FAIL: handed_at ไม่ถูกต้อง");
+  }
+
+  // 5. ยกเลิก item[1] ที่เหลือ
+  var r3 = handlePartialCancelItems({ order_id: testId, indices: [1], reason: "test" });
+  var d3 = JSON.parse(r3.getContent());
+  Logger.log("partialCancelItems(indices=[1]): " + JSON.stringify(d3));
+  if (d3.ok && d3.cancelled === 1) Logger.log("✅ PASS: ยกเลิก 1 item");
+  else Logger.log("❌ FAIL: " + JSON.stringify(d3));
+
+  // ลบ test row
+  rows = ws.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][col("order_id")]) === testId) {
+      ws.deleteRow(i + 1);
+      Logger.log("🧹 ลบ test row แล้ว");
+      break;
+    }
+  }
+
+  Logger.log("── Test เสร็จสิ้น ──");
 }
 
