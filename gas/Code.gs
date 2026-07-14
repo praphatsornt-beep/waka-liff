@@ -149,6 +149,14 @@ function doPost(e) {
       return handleHandoverOrder(data);
     }
 
+    if (data._action === "partialReady") {
+      return handlePartialReady(data);
+    }
+
+    if (data._action === "partialCancelItems") {
+      return handlePartialCancelItems(data);
+    }
+
     if (data._action === "addStock") {
       return handleAddStock(data);
     }
@@ -921,8 +929,13 @@ function handleStaffPage(orderId, action) {
     try { items = JSON.parse(r[col("items_json")] || "[]"); } catch(e) {}
     var itemsHtml = "";
     for (var idx = 0; idx < items.length; idx++) {
-      var unit = items[idx].type === "box" ? "กล่อง" : "ซอง";
-      itemsHtml += "<div>" + items[idx].name + " (" + unit + ") x" + items[idx].qty + "</div>";
+      var it = items[idx];
+      var unit = it.type === "box" ? "กล่อง" : "ซอง";
+      var badge = "";
+      if (it.cancelled_at) badge = ' <span style="color:#d64545;font-size:11px">[ยกเลิก]</span>';
+      else if (it.handed_at) badge = ' <span style="color:#2d8f4e;font-size:11px">✅ ส่งมอบแล้ว</span>';
+      else if (it.ready_at) badge = ' <span style="color:#d97706;font-size:11px">⏳ พร้อมรับ</span>';
+      itemsHtml += "<div style='margin:4px 0'>" + it.name + " (" + unit + ") x" + it.qty + badge + "</div>";
     }
 
     var baseUrl = gasUrl + "?action=staff&order=" + orderId + "&do=";
@@ -933,8 +946,10 @@ function handleStaffPage(orderId, action) {
       buttonsHtml = '<a href="' + baseUrl + 'shipping" style="' + btnStyle + ';background:#2196F3">📤 จัดส่งไปสาขาแล้ว</a>';
     } else if (ff === "กำลังจัดส่งไปสาขา") {
       buttonsHtml = '<a href="' + baseUrl + 'ready" style="' + btnStyle + ';background:#FF9800">📍 ถึงสาขาแล้ว / พร้อมรับ</a>';
-    } else if (ff === "พร้อมรับ") {
+    } else if (ff === "พร้อมรับ" || ff === "บางส่วน") {
       buttonsHtml = '<a href="' + baseUrl + 'handover" style="' + btnStyle + ';background:#06c755">🤝 ส่งมอบสินค้าแล้ว</a>';
+    } else if (ff === "รับบางส่วนแล้ว") {
+      buttonsHtml = '<div style="text-align:center;padding:12px;background:#fff8e1;border-radius:10px;color:#d97706;font-weight:bold;margin-bottom:8px">📦 ส่งมอบบางส่วนแล้ว รอสินค้าที่เหลือ</div>';
     } else if (ff === "รอเตรียม" && isDelivery) {
       buttonsHtml = '<a href="' + baseUrl + 'handover" style="' + btnStyle + ';background:#06c755">🚚 จัดส่งพัสดุแล้ว</a>';
     } else if (ff === "สาขายืนยัน" || ff === "รับแล้ว") {
@@ -1057,8 +1072,13 @@ function handleApi(params) {
       if (String(rows[m][col("order_id")]) !== orderId) continue;
       var staffAt = rows[m][col("staff_confirmed_at")] || "";
       var custAt = rows[m][col("customer_confirmed_at")] || "";
-      if (custAt) return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, already: true })));
+      var ff = String(rows[m][col("fulfillment")] || "");
+      if (custAt && ff === "รับแล้ว") return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, already: true })));
       if (!staffAt) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "staff ยังไม่ส่งมอบ" })));
+      // ถ้าออเดอร์ยังมีสินค้าค้างอยู่ → บอกลูกค้าแต่ไม่ปิด order
+      if (ff === "รับบางส่วนแล้ว") {
+        return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, partial: true, msg: "รับของบางส่วนเรียบร้อยแล้ว สินค้าที่เหลือจะแจ้งให้ทราบเมื่อพร้อม" })));
+      }
       var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
       if (col("customer_confirmed_at") >= 0) ws.getRange(m + 1, col("customer_confirmed_at") + 1).setValue(now);
       if (col("fulfillment") >= 0) ws.getRange(m + 1, col("fulfillment") + 1).setValue("รับแล้ว");
@@ -1364,6 +1384,7 @@ function handleApi(params) {
     var orderId = params.order || "";
     if (!orderId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing order" })));
     var col = function(name) { return hdr.indexOf(name); };
+    var cancelReason = String(params.reason || "");
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
     for (var i = 1; i < rows.length; i++) {
       if (String(rows[i][col("order_id")]) !== orderId) continue;
@@ -1373,20 +1394,27 @@ function handleApi(params) {
       }
       var items = [];
       try { items = JSON.parse(String(rows[i][col("items_json")] || "[]")); } catch(_) {}
-      if (items.length > 0) {
-        restoreStock(ss, items);
-        restoreCatalogLimits(ss, items);
+      // คืนเฉพาะ item ที่ยังไม่ได้ส่งมอบลูกค้า (ป้องกัน double restore)
+      var itemsToRestore = items.filter(function(it) { return !it.handed_at; });
+      if (itemsToRestore.length > 0) {
+        restoreStock(ss, itemsToRestore);
+        restoreCatalogLimits(ss, itemsToRestore);
       }
       ws.getRange(i + 1, col("fulfillment") + 1).setValue("ยกเลิก");
       var uid = String(rows[i][col("line_user_id")] || "");
       if (uid) {
-        _linePush(uid,
-          "❌ ออเดอร์ #" + orderId + " ถูกยกเลิก\n\n" +
-          "ทีมงาน WAKA ได้รับออเดอร์แรกของคุณเรียบร้อยแล้วค่ะ\n" +
-          "ออเดอร์นี้จึงขอยกเลิกเพื่อให้สิทธิ์ลูกค้าท่านอื่น\n" +
-          "(สินค้ามีจำกัด)\n\n" +
-          "หากมีข้อสงสัยกรุณาติดต่อทีมงาน 🙏"
-        );
+        var cancelMsg;
+        if (cancelReason === "duplicate") {
+          cancelMsg = "❌ ออเดอร์ #" + orderId + " ถูกยกเลิก\n\n" +
+            "ทีมงาน WAKA ได้รับออเดอร์แรกของคุณเรียบร้อยแล้วค่ะ\n" +
+            "ออเดอร์นี้จึงขอยกเลิกเพื่อให้สิทธิ์ลูกค้าท่านอื่น\n" +
+            "(สินค้ามีจำกัด)\n\n" +
+            "หากมีข้อสงสัยกรุณาติดต่อทีมงาน 🙏";
+        } else {
+          var reasonLine = cancelReason ? "\nเหตุผล: " + cancelReason + "\n" : "";
+          cancelMsg = "❌ ออเดอร์ #" + orderId + " ถูกยกเลิก\n" + reasonLine + "\nหากมีข้อสงสัยหรือต้องการสั่งใหม่ กรุณาติดต่อทีมงาน 🙏";
+        }
+        _linePush(uid, cancelMsg);
       }
       _clearDashCache();
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
@@ -2355,7 +2383,7 @@ function handleHandoverOrder(data) {
     var oRows = ws.getDataRange().getValues();
     var oHdr = oRows[0];
     var oCol = function(name) { return oHdr.indexOf(name); };
-    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
+    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
 
     for (var i = 1; i < oRows.length; i++) {
       if (String(oRows[i][oCol("order_id")]) !== data.order_id) continue;
@@ -2363,9 +2391,24 @@ function handleHandoverOrder(data) {
       var items = [];
       try { items = JSON.parse(oRows[i][oCol("items_json")] || "[]"); } catch(e) {}
 
-      // ตัดสต็อกสาขา — batch write
+      // หา item ที่จะส่งมอบรอบนี้:
+      // ถ้ามี ready_at (partial flow) → เอาเฉพาะที่ ready_at set แต่ยังไม่ handed_at
+      // ถ้าไม่มี ready_at เลย (old order) → เอา item ทั้งหมดที่ยังไม่ handed_at
+      var hasReadyAt = items.some(function(it) { return !!it.ready_at; });
+      var itemsToHandover = items.filter(function(it) {
+        if (it.cancelled_at) return false;
+        if (it.handed_at) return false;
+        return hasReadyAt ? !!it.ready_at : true;
+      });
+
+      if (itemsToHandover.length === 0) {
+        lock.releaseLock();
+        return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่มีสินค้าที่พร้อมส่งมอบ" })));
+      }
+
+      // ตัดสต็อกสาขาเฉพาะ itemsToHandover — batch write
       var bsWs = ss.getSheetByName(TAB_STOCK_BRANCH);
-      if (bsWs && items.length > 0) {
+      if (bsWs) {
         var bsRange = bsWs.getDataRange();
         var bsRows = bsRange.getValues();
         var bsMap = {};
@@ -2373,8 +2416,8 @@ function handleHandoverOrder(data) {
           bsMap[String(bsRows[r][0]).trim() + "||" + String(bsRows[r][2]).trim()] = r;
         }
         var bsChanged = false;
-        for (var idx = 0; idx < items.length; idx++) {
-          var it = items[idx];
+        for (var idx = 0; idx < itemsToHandover.length; idx++) {
+          var it = itemsToHandover[idx];
           var bsKey = String(it.name).trim() + "||" + branch;
           var bsIdx = bsMap[bsKey];
           if (bsIdx === undefined) continue;
@@ -2388,19 +2431,189 @@ function handleHandoverOrder(data) {
         if (bsChanged) bsRange.setValues(bsRows);
       }
 
-      // อัปเดต fulfillment
-      if (oCol("fulfillment") >= 0) ws.getRange(i + 1, oCol("fulfillment") + 1).setValue("สาขายืนยัน");
-      if (oCol("staff_confirmed_at") >= 0) ws.getRange(i + 1, oCol("staff_confirmed_at") + 1).setValue(now);
+      // ตั้ง handed_at บน item ที่เพิ่งส่งมอบ
+      var handoverNames = [];
+      for (var idx = 0; idx < items.length; idx++) {
+        for (var jj = 0; jj < itemsToHandover.length; jj++) {
+          if (items[idx] === itemsToHandover[jj]) {
+            items[idx].handed_at = now;
+            handoverNames.push(items[idx].name + " x" + items[idx].qty + (items[idx].type === "box" ? " กล่อง" : " ซอง"));
+            break;
+          }
+        }
+      }
+      ws.getRange(i + 1, oCol("items_json") + 1).setValue(JSON.stringify(items));
 
-      // แจ้งลูกค้ากดยืนยันรับ
+      // กำหนด fulfillment ใหม่
+      var allDone = items.every(function(it) { return !!it.handed_at || !!it.cancelled_at; });
+      var newFf = allDone ? "สาขายืนยัน" : "รับบางส่วนแล้ว";
+      if (oCol("fulfillment") >= 0) ws.getRange(i + 1, oCol("fulfillment") + 1).setValue(newFf);
+      if (oCol("staff_confirmed_at") >= 0) ws.getRange(i + 1, oCol("staff_confirmed_at") + 1).setValue(now);
+      _clearDashCache();
+
+      // แจ้งลูกค้า
       var uid = oRows[i][oCol("line_user_id")] || "";
       if (uid) {
         var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + data.order_id;
-        _linePush(uid, "สาขาส่งมอบสินค้าแล้ว กรุณากดยืนยันรับของ\n\nออเดอร์: #" + data.order_id + "\n\nกดยืนยัน:\n" + trackUrl);
+        var pendingItems = items.filter(function(it) { return !it.handed_at && !it.cancelled_at; });
+        var msg;
+        if (allDone) {
+          msg = "สาขาส่งมอบสินค้าครบแล้ว กรุณากดยืนยันรับของ\n\nออเดอร์: #" + data.order_id + "\n\nกดยืนยัน:\n" + trackUrl;
+        } else {
+          msg = "📦 ส่งมอบสินค้าบางส่วนแล้ว\nออเดอร์: #" + data.order_id + "\n\n✅ รับแล้ว:\n" +
+            handoverNames.map(function(n) { return "- " + n; }).join("\n") +
+            "\n\n⏳ รอสินค้า:\n" + pendingItems.map(function(it) { return "- " + it.name + " x" + it.qty; }).join("\n") +
+            "\n\nสินค้าที่เหลือจะแจ้งให้ทราบเมื่อพร้อม";
+        }
+        _linePush(uid, msg);
       }
 
       lock.releaseLock();
-      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now })));
+      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now, fulfillment: newFf })));
+    }
+    lock.releaseLock();
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
+  } catch (err) {
+    try { lock.releaseLock(); } catch(_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+// ── แจ้งพร้อมรับบางส่วน ─────────────────────────────────────────────────────
+// data: { order_id, indices: [0,1,...] } — zero-based index ของ items ที่พร้อม
+function handlePartialReady(data) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var ws = ss.getSheetByName(TAB_ORDERS);
+    var oRows = ws.getDataRange().getValues();
+    var oHdr = oRows[0];
+    var oCol = function(name) { return oHdr.indexOf(name); };
+    var indices = data.indices || [];
+    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
+
+    for (var i = 1; i < oRows.length; i++) {
+      if (String(oRows[i][oCol("order_id")]) !== String(data.order_id)) continue;
+
+      var branch = oRows[i][oCol("branch")] || "";
+      var uid = oRows[i][oCol("line_user_id")] || "";
+      var items = [];
+      try { items = JSON.parse(oRows[i][oCol("items_json")] || "[]"); } catch(e) {}
+
+      // ตั้ง ready_at บน items ที่เลือก (ที่ยังไม่ handed_at และไม่ cancelled)
+      for (var ii = 0; ii < indices.length; ii++) {
+        var idx = indices[ii];
+        if (idx >= 0 && idx < items.length && !items[idx].handed_at && !items[idx].cancelled_at) {
+          items[idx].ready_at = now;
+        }
+      }
+
+      ws.getRange(i + 1, oCol("items_json") + 1).setValue(JSON.stringify(items));
+
+      // fulfillment ใหม่
+      var activeItems = items.filter(function(it) { return !it.cancelled_at; });
+      var allReady = activeItems.length > 0 && activeItems.every(function(it) { return !!it.ready_at || !!it.handed_at; });
+      var newFf = allReady ? "พร้อมรับ" : "บางส่วน";
+      ws.getRange(i + 1, oCol("fulfillment") + 1).setValue(newFf);
+      ws.getRange(i + 1, oCol("fulfilled_at") + 1).setValue(now);
+      _clearDashCache();
+
+      // LINE แจ้งลูกค้า
+      if (uid) {
+        var readyItems = items.filter(function(it) { return (!!it.ready_at || !!it.handed_at) && !it.cancelled_at; });
+        var pendingItems = items.filter(function(it) { return !it.ready_at && !it.handed_at && !it.cancelled_at; });
+        var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + data.order_id;
+        var msg = "📦 สินค้า" + (allReady ? "พร้อมรับแล้ว!" : "บางส่วนพร้อมรับแล้ว!") + "\nออเดอร์: #" + data.order_id + "\n";
+        msg += "\n✅ พร้อมรับ:\n" + readyItems.map(function(it) {
+          return "- " + it.name + " x" + it.qty + (it.type === "box" ? " กล่อง" : " ซอง");
+        }).join("\n");
+        if (pendingItems.length > 0) {
+          msg += "\n\n⏳ รอสินค้า:\n" + pendingItems.map(function(it) {
+            return "- " + it.name + " x" + it.qty + (it.type === "box" ? " กล่อง" : " ซอง");
+          }).join("\n");
+        }
+        msg += "\n\nกรุณามารับที่สาขา" + branch + " ได้เลยครับ\n" + trackUrl;
+        _linePush(uid, msg);
+      }
+
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, fulfillment: newFf })));
+    }
+    lock.releaseLock();
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
+  } catch (err) {
+    try { lock.releaseLock(); } catch(_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+// ── ยกเลิกบางชิ้นในออเดอร์ ──────────────────────────────────────────────────
+// data: { order_id, indices: [0,1,...], reason: "..." }
+function handlePartialCancelItems(data) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var ws = ss.getSheetByName(TAB_ORDERS);
+    var oRows = ws.getDataRange().getValues();
+    var oHdr = oRows[0];
+    var oCol = function(name) { return oHdr.indexOf(name); };
+    var indices = data.indices || [];
+    var reason = String(data.reason || "");
+    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
+
+    for (var i = 1; i < oRows.length; i++) {
+      if (String(oRows[i][oCol("order_id")]) !== String(data.order_id)) continue;
+
+      var uid = oRows[i][oCol("line_user_id")] || "";
+      var items = [];
+      try { items = JSON.parse(oRows[i][oCol("items_json")] || "[]"); } catch(e) {}
+
+      // mark items ที่ยังไม่ handed_at เป็น cancelled
+      var cancelledItems = [];
+      for (var ii = 0; ii < indices.length; ii++) {
+        var idx = indices[ii];
+        if (idx >= 0 && idx < items.length && !items[idx].handed_at && !items[idx].cancelled_at) {
+          items[idx].cancelled_at = now;
+          items[idx].cancel_reason = reason;
+          cancelledItems.push(items[idx]);
+        }
+      }
+      if (cancelledItems.length === 0) {
+        lock.releaseLock();
+        return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่มีรายการที่ยกเลิกได้" })));
+      }
+
+      // คืน stock + limits
+      restoreStock(ss, cancelledItems);
+      restoreCatalogLimits(ss, cancelledItems);
+
+      ws.getRange(i + 1, oCol("items_json") + 1).setValue(JSON.stringify(items));
+
+      // ถ้าทุก item cancelled → ปิด order
+      var allCancelled = items.every(function(it) { return !!it.cancelled_at || !!it.handed_at; });
+      var onlyHandedRemain = items.every(function(it) { return !!it.handed_at || !!it.cancelled_at; });
+      if (items.every(function(it) { return !!it.cancelled_at; })) {
+        ws.getRange(i + 1, oCol("fulfillment") + 1).setValue("ยกเลิก");
+      }
+      _clearDashCache();
+
+      // LINE แจ้งลูกค้า
+      if (uid) {
+        var cancelText = cancelledItems.map(function(it) {
+          return "- " + it.name + " x" + it.qty + (it.type === "box" ? " กล่อง" : " ซอง");
+        }).join("\n");
+        var reasonLine = reason ? "\nเหตุผล: " + reason : "";
+        _linePush(uid,
+          "❌ ยกเลิกสินค้าบางรายการ\nออเดอร์: #" + data.order_id + "\n\n" +
+          "รายการที่ยกเลิก:\n" + cancelText + reasonLine +
+          "\n\nหากมีข้อสงสัยกรุณาติดต่อทีมงาน 🙏"
+        );
+      }
+
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, cancelled: cancelledItems.length })));
     }
     lock.releaseLock();
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
