@@ -2187,10 +2187,7 @@ function handleCancelShipment(data) {
     for (var i = 1; i < shRows.length; i++) {
       if (String(shRows[i][colIdx("shipment_id")]) !== String(data.shipment_id)) continue;
       var status = String(shRows[i][colIdx("status")] || "");
-      if (status === "รับแล้ว") {
-        lock.releaseLock();
-        return _cors(ContentService.createTextOutput(JSON.stringify({ error: "สาขารับของแล้ว ไม่สามารถยกเลิกได้" })));
-      }
+      if (status === "รับแล้ว" || status === "ยกเลิก") continue;
       // คืนสต็อกกลาง
       var items = [];
       try { items = JSON.parse(String(shRows[i][colIdx("items_json")] || "[]")); } catch(_) {}
