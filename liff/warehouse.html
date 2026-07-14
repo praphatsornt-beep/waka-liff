@@ -486,6 +486,9 @@ function updateShipTotal(input) {
 }
 
 async function createShipment() {
+  const btn = document.querySelector('#shipmentForm .btn-primary');
+  if (btn && btn.disabled) return;
+
   const branch = document.getElementById('shipBranch').value;
   if (!branch) return alert('เลือกสาขาก่อน');
 
@@ -515,9 +518,7 @@ async function createShipment() {
   const totalItems = items.reduce((sum, it) => sum + it.qty_box + it.qty_pack + it.qty_box_extra + it.qty_pack_extra, 0);
   if (!confirm('ส่งไปสาขา ' + branch + ' รวม ' + totalItems + ' ชิ้น\nยืนยัน?')) return;
 
-  const btn = document.querySelector('#shipmentForm .btn');
-  btn.disabled = true;
-  btn.textContent = 'กำลังสร้าง...';
+  if (btn) { btn.disabled = true; btn.textContent = 'กำลังสร้าง...'; }
 
   try {
     const res = await fetch(GAS_URL, {
