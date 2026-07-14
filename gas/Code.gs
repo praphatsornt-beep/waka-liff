@@ -49,11 +49,20 @@ function _cors(output) {
 }
 
 // GET: โหลด catalog หรือ ลูกค้ากดยืนยันรับของ
+// Public (ไม่ต้อง _s): catalog, confirm, order_status, customer_confirm, wakagym_status
+// Staff only (ต้อง _s): ทุกอย่างอื่น
+var PUBLIC_API_DOS = ["order_status", "customer_confirm", "wakagym_status"];
+
 function doGet(e) {
   try {
     var action = (e && e.parameter && e.parameter.action) || "";
+    var doParam = e.parameter.do || "";
 
-    if (action !== "confirm" && SCRIPT_SECRET && (e.parameter._s || "") !== SCRIPT_SECRET) {
+    var isPublic = (action === "confirm") ||
+                   (action === "") ||
+                   (action === "api" && PUBLIC_API_DOS.indexOf(doParam) >= 0);
+
+    if (!isPublic && SCRIPT_SECRET && (e.parameter._s || "") !== SCRIPT_SECRET) {
       return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
     }
 
@@ -125,11 +134,18 @@ function handleCustomerConfirm(orderId, e) {
 }
 
 // POST: รับ order จาก LIFF หรือ internal actions
+// Public POST (ไม่ต้อง _s): LINE webhook, สั่งซื้อ (data.items), wakagymRegister
+var PUBLIC_ACTIONS_POST = ["wakagymRegister"];
+
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
 
-    if (!Array.isArray(data.events) && SCRIPT_SECRET && (e.parameter._s || "") !== SCRIPT_SECRET) {
+    var isPublicPost = Array.isArray(data.events) ||
+                       (data.items && !data._action) ||
+                       (data._action && PUBLIC_ACTIONS_POST.indexOf(data._action) >= 0);
+
+    if (!isPublicPost && SCRIPT_SECRET && (e.parameter._s || "") !== SCRIPT_SECRET) {
       return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
     }
 
