@@ -64,6 +64,16 @@
     .cat-add-row input { margin: 0; padding: 8px 10px; font-size: 13px; flex: 1; }
     .cat-add-row input.fee-input { width: 90px; flex: none; }
     .cat-add-btn { padding: 8px 12px; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; white-space: nowrap; }
+
+    .new-cat-row { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+    .new-cat-row input[type="text"],
+    .new-cat-row input[type="number"] { margin: 0; padding: 10px 12px; font-size: 13px; }
+    .new-cat-row input[type="text"] { flex: 1; }
+    .new-cat-row input[type="number"] { width: 90px; flex: none; }
+    .rm-cat-btn { padding: 8px 10px; border: 1.5px solid var(--red); color: var(--red); background: transparent; border-radius: 8px; font-size: 13px; cursor: pointer; flex-shrink: 0; }
+    .add-cat-form-btn { width: 100%; padding: 10px; background: transparent; color: var(--accent); border: 1.5px dashed var(--card-border); border-radius: 10px; font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer; margin-bottom: 12px; }
+    .add-cat-form-btn:hover { border-color: var(--accent); }
+    .form-divider { height: 1px; background: var(--card-border); margin: 4px 0 16px; }
   </style>
 </head>
 <body>
@@ -82,14 +92,23 @@
     <input type="text" id="evName" placeholder="เช่น WAKA Summer Cup 2026" />
     <label class="field-label">วันจัดงาน <span style="color:#d64545">*</span></label>
     <input type="date" id="evDate" />
-    <label class="field-label">ค่าสมัคร (บาท)</label>
-    <input type="number" id="evFee" placeholder="0" min="0" />
     <label class="field-label">จำนวนผู้สมัครสูงสุด <span class="optional">(0 = ไม่จำกัด)</span></label>
     <input type="number" id="evMax" placeholder="0" min="0" />
     <label class="field-label">วันปิดรับสมัคร <span class="optional">(ไม่บังคับ)</span></label>
     <input type="date" id="evClose" />
     <label class="field-label">กติกา / รายละเอียด <span class="optional">(แสดงในฟอร์มลูกค้า)</span></label>
     <textarea id="evRules" placeholder="รายละเอียดการแข่งขัน กติกา รางวัล ฯลฯ"></textarea>
+
+    <div class="form-divider"></div>
+    <div class="section-label">ประเภทการแข่งขัน <span class="optional" style="text-transform:none;letter-spacing:0">(เพิ่มได้หลายประเภท ต่างราคา)</span></div>
+    <div id="newCatRows"></div>
+    <button type="button" class="add-cat-form-btn" onclick="addNewCatRow()">+ เพิ่มประเภท</button>
+
+    <div id="evFeeWrap">
+      <label class="field-label">ค่าสมัคร (บาท) <span class="optional">(ใช้เมื่อไม่มีประเภท)</span></label>
+      <input type="number" id="evFee" placeholder="0" min="0" />
+    </div>
+
     <button class="btn-primary" id="createBtn" onclick="createEvent()">สร้างทัวร์นาเมนต์</button>
     <div id="createResult" style="margin-top:14px;display:none">
       <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px">ลิงค์ลงทะเบียน:</div>
@@ -110,6 +129,41 @@
 const WAKA_S = "wk26xK9mPqRt";
 const G = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec?_s=" + WAKA_S;
 let formOpen = false;
+var _catUid = 0;
+var _catIds = [];
+
+function addNewCatRow() {
+  var uid = _catUid++;
+  _catIds.push(uid);
+  var container = document.getElementById("newCatRows");
+  var row = document.createElement("div");
+  row.className = "new-cat-row";
+  row.id = "ncRow_" + uid;
+  row.innerHTML = '<input type="text" placeholder="ชื่อประเภท เช่น Standard" id="ncName_' + uid + '" />'
+    + '<input type="number" placeholder="ราคา" id="ncFee_' + uid + '" min="0" />'
+    + '<button type="button" class="rm-cat-btn" onclick="removeNewCatRow(' + uid + ')">✕</button>';
+  container.appendChild(row);
+  updateFeeVisibility();
+}
+
+function removeNewCatRow(uid) {
+  var row = document.getElementById("ncRow_" + uid);
+  if (row) row.remove();
+  _catIds = _catIds.filter(function(id) { return id !== uid; });
+  updateFeeVisibility();
+}
+
+function updateFeeVisibility() {
+  var wrap = document.getElementById("evFeeWrap");
+  if (wrap) wrap.style.display = _catIds.length > 0 ? "none" : "block";
+}
+
+function resetNewCatForm() {
+  _catIds = [];
+  _catUid = 0;
+  document.getElementById("newCatRows").innerHTML = "";
+  updateFeeVisibility();
+}
 
 function toggleForm() {
   formOpen = !formOpen;
@@ -194,28 +248,45 @@ async function createEvent() {
   var date = document.getElementById("evDate").value.trim();
   if (!name) { alert("กรุณากรอกชื่องาน"); return; }
   if (!date) { alert("กรุณาเลือกวันจัดงาน"); return; }
+
+  var cats = _catIds.map(function(uid) {
+    return {
+      name: (document.getElementById("ncName_" + uid) || {value:""}).value.trim(),
+      fee:  Number((document.getElementById("ncFee_"  + uid) || {value:"0"}).value) || 0
+    };
+  }).filter(function(c) { return c.name; });
+
   var btn = document.getElementById("createBtn");
-  btn.disabled = true; btn.textContent = "⏳ กำลังสร้าง... (รอ GAS)";
+  btn.disabled = true;
+  btn.textContent = "⏳ กำลังสร้าง... (รอ GAS)";
   var slowTimer2 = setTimeout(function() { if (btn.disabled) btn.textContent = "⏳ GAS กำลัง warmup... รอสักครู่"; }, 10000);
   try {
+    var entryFee = cats.length > 0 ? 0 : (document.getElementById("evFee").value || "0");
     var url = G + "&action=api&do=tournament_create_event"
       + "&name=" + encodeURIComponent(name)
       + "&date=" + encodeURIComponent(date)
-      + "&entry_fee=" + encodeURIComponent(document.getElementById("evFee").value || "0")
+      + "&entry_fee=" + encodeURIComponent(entryFee)
       + "&max_players=" + encodeURIComponent(document.getElementById("evMax").value || "0")
       + "&registration_close=" + encodeURIComponent(document.getElementById("evClose").value || "")
       + "&rules_text=" + encodeURIComponent(document.getElementById("evRules").value || "");
     var res = await fetch(url);
     clearTimeout(slowTimer2);
     var d = await res.json();
-    if (d.ok) {
-      document.getElementById("newEvLink").textContent = d.reg_link;
-      document.getElementById("newEvLink").dataset.link = d.reg_link;
-      document.getElementById("createResult").style.display = "block";
-      loadEvents();
-    } else {
-      alert(d.error || "เกิดข้อผิดพลาด");
+    if (!d.ok) { alert(d.error || "เกิดข้อผิดพลาด"); btn.disabled = false; btn.textContent = "สร้างทัวร์นาเมนต์"; return; }
+
+    for (var ci = 0; ci < cats.length; ci++) {
+      btn.textContent = "⏳ เพิ่มประเภท " + (ci + 1) + "/" + cats.length + "...";
+      await fetch(G + "&action=api&do=tournament_add_category"
+        + "&event=" + encodeURIComponent(d.event_id)
+        + "&name=" + encodeURIComponent(cats[ci].name)
+        + "&fee=" + cats[ci].fee);
     }
+
+    document.getElementById("newEvLink").textContent = d.reg_link;
+    document.getElementById("newEvLink").dataset.link = d.reg_link;
+    document.getElementById("createResult").style.display = "block";
+    resetNewCatForm();
+    loadEvents();
   } catch(e) {
     clearTimeout(slowTimer2);
     alert("เกิดข้อผิดพลาด: " + e.message);
