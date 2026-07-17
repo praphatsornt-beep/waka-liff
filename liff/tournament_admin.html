@@ -108,18 +108,19 @@ function toggleForm() {
 }
 
 async function loadEvents() {
-  document.getElementById("evList").innerHTML = '<div class="loading-inline">กำลังโหลด...</div>';
-  var ctrl = new AbortController();
-  var timer = setTimeout(function() { ctrl.abort(); }, 15000);
+  var el = document.getElementById("evList");
+  el.innerHTML = '<div class="loading-inline">กำลังโหลด...</div>';
+  var slowTimer = setTimeout(function() {
+    if (el.querySelector('.loading-inline')) el.innerHTML = '<div class="loading-inline">GAS กำลัง warmup... รอสักครู่ 🔄</div>';
+  }, 10000);
   try {
-    var res = await fetch(G + "&action=api&do=tournament_events&_t=" + Date.now(), { signal: ctrl.signal });
-    clearTimeout(timer);
+    var res = await fetch(G + "&action=api&do=tournament_events&_t=" + Date.now());
+    clearTimeout(slowTimer);
     var d = await res.json();
     renderEvents(d.events || []);
   } catch(e) {
-    clearTimeout(timer);
-    var msg = ctrl.signal.aborted ? "GAS ตอบช้า กรุณาลองใหม่" : ("โหลดไม่ได้: " + esc(e.message));
-    document.getElementById("evList").innerHTML = '<div class="empty">' + msg + '<br><br><button onclick="loadEvents()" style="padding:8px 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:13px;cursor:pointer">🔄 ลองใหม่</button></div>';
+    clearTimeout(slowTimer);
+    el.innerHTML = '<div class="empty">โหลดไม่ได้: ' + esc(e.message) + '<br><br><button onclick="loadEvents()" style="padding:8px 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:13px;cursor:pointer">🔄 ลองใหม่</button></div>';
   }
 }
 
@@ -174,9 +175,8 @@ async function createEvent() {
   if (!name) { alert("กรุณากรอกชื่องาน"); return; }
   if (!date) { alert("กรุณาเลือกวันจัดงาน"); return; }
   var btn = document.getElementById("createBtn");
-  btn.disabled = true; btn.textContent = "⏳ กำลังสร้าง... (รอ GAS สักครู่)";
-  var ctrl = new AbortController();
-  var timer = setTimeout(function() { ctrl.abort(); }, 20000);
+  btn.disabled = true; btn.textContent = "⏳ กำลังสร้าง... (รอ GAS)";
+  var slowTimer2 = setTimeout(function() { if (btn.disabled) btn.textContent = "⏳ GAS กำลัง warmup... รอสักครู่"; }, 10000);
   try {
     var url = G + "&action=api&do=tournament_create_event"
       + "&name=" + encodeURIComponent(name)
@@ -185,8 +185,8 @@ async function createEvent() {
       + "&max_players=" + encodeURIComponent(document.getElementById("evMax").value || "0")
       + "&registration_close=" + encodeURIComponent(document.getElementById("evClose").value || "")
       + "&rules_text=" + encodeURIComponent(document.getElementById("evRules").value || "");
-    var res = await fetch(url, { signal: ctrl.signal });
-    clearTimeout(timer);
+    var res = await fetch(url);
+    clearTimeout(slowTimer2);
     var d = await res.json();
     if (d.ok) {
       document.getElementById("newEvLink").textContent = d.reg_link;
@@ -197,8 +197,8 @@ async function createEvent() {
       alert(d.error || "เกิดข้อผิดพลาด");
     }
   } catch(e) {
-    clearTimeout(timer);
-    alert(ctrl.signal.aborted ? "GAS ตอบช้าเกินไป กรุณาลองกดสร้างใหม่อีกครั้ง" : ("เกิดข้อผิดพลาด: " + e.message));
+    clearTimeout(slowTimer2);
+    alert("เกิดข้อผิดพลาด: " + e.message);
   }
   btn.disabled = false; btn.textContent = "สร้างทัวร์นาเมนต์";
 }
