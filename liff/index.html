@@ -892,7 +892,7 @@
   })();
 
   // ── Tournament page routing — before init() so adminPinOverlay never fires ────
-  (function() {
+  var _skipInit = (function() {
     var p = new URLSearchParams(window.location.search);
     var page = p.get('page');
     var event = p.get('event');
@@ -901,7 +901,7 @@
     // Case 1: path-based liff.state (e.g. /treg.html?event=... from liff.login() return)
     if (!page && !event && liffState && liffState.charAt(0) === '/') {
       window.location.replace(liffState);
-      return;
+      return true;
     }
 
     // Case 2: query-based liff.state (?page=treg&event=...)
@@ -916,11 +916,14 @@
 
     if (page === 'treg' && event) {
       window.location.replace('/treg.html?event=' + encodeURIComponent(event));
+      return true;
     }
+    return false;
   })();
 
   // ── Init ──────────────────────────────────────────────────────────────────────
   async function init() {
+    if (_skipInit) return;
     // Access guard: require a specific filter — block direct URL access with no params
     const _pathSlug = _captured.slug || window.location.pathname.replace(/^\//, "").replace(/\.html$/, "");
     const _hasFilter = _captured.all || _captured.product || _captured.category ||
