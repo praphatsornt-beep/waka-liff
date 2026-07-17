@@ -111,7 +111,7 @@ async function init() {
   try { await liff.init({ liffId: LIFF_ID }); } catch(_) {}
 
   try {
-    var res = await fetch(GAS_URL + "&action=api&do=tournament_reg_status&id=" + encodeURIComponent(regId) + "&_t=" + Date.now());
+    var res = await fetch(GAS_URL + "?action=api&do=tournament_reg_status&id=" + encodeURIComponent(regId) + "&_t=" + Date.now());
     var d = await res.json();
     if (d.error) { showError(d.error === "not found" ? "ไม่พบการลงทะเบียนนี้" : d.error); return; }
     render(d);

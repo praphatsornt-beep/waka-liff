@@ -176,7 +176,7 @@ async function init() {
 
   try {
     var [evRes, cfgRes] = await Promise.all([
-      fetch(GAS_URL + "&action=api&do=tournament_status&event=" + encodeURIComponent(eventId) + "&line_user_id=" + encodeURIComponent(lineProfile.userId) + "&_t=" + Date.now()),
+      fetch(GAS_URL + "?action=api&do=tournament_status&event=" + encodeURIComponent(eventId) + "&line_user_id=" + encodeURIComponent(lineProfile.userId) + "&_t=" + Date.now()),
       fetch(GAS_URL)
     ]);
     var evData = await evRes.json();

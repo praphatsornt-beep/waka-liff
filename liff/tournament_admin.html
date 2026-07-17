@@ -212,7 +212,12 @@ function copyNewLink() {
 }
 
 function esc(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
-loadEvents();
+
+if (sessionStorage.getItem("waka_portal_auth") !== "1") {
+  location.replace("menu.html");
+} else {
+  loadEvents();
+}
 </script>
 </body>
 </html>
