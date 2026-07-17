@@ -219,7 +219,7 @@ function toggleSlip(regId) {
 
 async function updateSlip(regId, value) {
   var labels = { verified: "ยืนยัน", rejected: "ไม่ผ่าน" };
-  if (!confirm("เปลี่ยนสถานะสลิปเป็น "" + (labels[value] || value) + "" ?")) return;
+  if (!confirm('เปลี่ยนสถานะสลิปเป็น "' + (labels[value] || value) + '" ?')) return;
   try {
     var res = await fetch(G + "&action=api&do=tournament_update_reg&reg_id=" + encodeURIComponent(regId) + "&field=slip_status&value=" + encodeURIComponent(value));
     var d = await res.json();

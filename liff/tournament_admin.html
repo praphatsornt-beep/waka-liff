@@ -160,7 +160,7 @@ function copyLink(idx, encodedLink) {
 
 async function updateStatus(evId, status) {
   var labels = { open: "เปิดรับสมัคร", closed: "ปิดรับสมัคร", completed: "จบแล้ว" };
-  if (!confirm("เปลี่ยนสถานะเป็น "" + (labels[status] || status) + "" ?")) return;
+  if (!confirm('เปลี่ยนสถานะเป็น "' + (labels[status] || status) + '" ?')) return;
   try {
     var res = await fetch(G + "&action=api&do=tournament_update_event&event=" + encodeURIComponent(evId) + "&status=" + encodeURIComponent(status));
     var d = await res.json();
@@ -213,11 +213,7 @@ function copyNewLink() {
 
 function esc(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
 
-if (sessionStorage.getItem("waka_portal_auth") !== "1") {
-  location.replace("menu.html");
-} else {
-  loadEvents();
-}
+loadEvents();
 </script>
 </body>
 </html>
