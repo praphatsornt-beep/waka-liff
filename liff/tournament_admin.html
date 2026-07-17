@@ -54,6 +54,16 @@
     .toggle-form-btn:hover { border-color: var(--accent); }
     #evList .empty { text-align: center; padding: 32px; color: var(--text-secondary); font-size: 13px; }
     .loading-inline { text-align: center; padding: 20px; color: var(--text-secondary); font-size: 13px; }
+    .cats-toggle { padding: 5px 12px; border-radius: 8px; border: 1.5px solid var(--accent); color: var(--accent); font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; background: transparent; }
+    .cats-panel { display: none; border-top: 1px solid var(--card-border); margin-top: 10px; padding-top: 10px; }
+    .cat-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+    .cat-row .cat-nm { flex: 1; font-weight: 500; }
+    .cat-row .cat-pr { font-family: 'Space Grotesk',sans-serif; font-weight: 700; color: var(--accent); min-width: 60px; text-align: right; }
+    .cat-row .cat-del { padding: 3px 10px; border: 1.5px solid var(--red); color: var(--red); border-radius: 6px; font-size: 11px; font-weight: 600; font-family: inherit; cursor: pointer; background: transparent; }
+    .cat-add-row { display: flex; gap: 6px; margin-top: 8px; }
+    .cat-add-row input { margin: 0; padding: 8px 10px; font-size: 13px; flex: 1; }
+    .cat-add-row input.fee-input { width: 90px; flex: none; }
+    .cat-add-btn { padding: 8px 12px; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -146,7 +156,17 @@ function renderEvents(events) {
     if (ev.status !== "open") html += '<button class="btn-open" onclick="updateStatus(\'' + esc(ev.event_id) + '\',\'open\')">เปิดรับสมัคร</button>';
     if (ev.status === "open") html += '<button class="btn-close" onclick="updateStatus(\'' + esc(ev.event_id) + '\',\'closed\')">ปิดรับสมัคร</button>';
     if (ev.status !== "completed") html += '<button style="border-color:#999;color:#999" onclick="updateStatus(\'' + esc(ev.event_id) + '\',\'completed\')">จบแล้ว</button>';
+    html += '<button class="cats-toggle" onclick="toggleCats(\'' + esc(ev.event_id) + '\')">📋 หมวด</button>';
+    html += '</div>';
+    html += '<div class="cats-panel" id="catsPanel_' + esc(ev.event_id) + '">';
+    html += '<div style="font-size:11px;font-weight:600;color:var(--label);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">รายการแข่งขัน</div>';
+    html += '<div id="catList_' + esc(ev.event_id) + '"><span style="font-size:12px;color:var(--text-secondary)">กดเพื่อโหลด</span></div>';
+    html += '<div class="cat-add-row">';
+    html += '<input type="text" placeholder="ชื่อรายการ" id="catName_' + esc(ev.event_id) + '" />';
+    html += '<input type="number" placeholder="ค่าสมัคร" class="fee-input" id="catFee_' + esc(ev.event_id) + '" min="0" />';
+    html += '<button class="cat-add-btn" onclick="addCat(\'' + esc(ev.event_id) + '\')">+ เพิ่ม</button>';
     html += '</div></div>';
+    html += '</div>';
   }
   el.innerHTML = html;
 }
@@ -212,6 +232,80 @@ function copyNewLink() {
 }
 
 function esc(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+var catsLoaded = {};
+
+function toggleCats(evId) {
+  var panel = document.getElementById("catsPanel_" + evId);
+  if (!panel) return;
+  var isOpen = panel.style.display === "block";
+  panel.style.display = isOpen ? "none" : "block";
+  if (!isOpen && !catsLoaded[evId]) loadCats(evId);
+}
+
+async function loadCats(evId) {
+  var listEl = document.getElementById("catList_" + evId);
+  if (!listEl) return;
+  listEl.innerHTML = '<span style="font-size:12px;color:var(--text-secondary)">กำลังโหลด...</span>';
+  try {
+    var res = await fetch(G + "&action=api&do=tournament_categories&event=" + encodeURIComponent(evId) + "&_t=" + Date.now());
+    var d = await res.json();
+    catsLoaded[evId] = true;
+    renderCatList(evId, d.categories || []);
+  } catch(e) {
+    listEl.innerHTML = '<span style="font-size:12px;color:var(--red)">โหลดไม่ได้</span>';
+  }
+}
+
+function renderCatList(evId, cats) {
+  var listEl = document.getElementById("catList_" + evId);
+  if (!listEl) return;
+  if (!cats.length) { listEl.innerHTML = '<span style="font-size:12px;color:var(--text-secondary)">ยังไม่มีรายการ</span>'; return; }
+  var html = "";
+  cats.forEach(function(c) {
+    html += '<div class="cat-row">';
+    html += '<span class="cat-nm">' + esc(c.name) + '</span>';
+    html += '<span class="cat-pr">฿' + Number(c.entry_fee).toLocaleString() + '</span>';
+    html += '<button class="cat-del" onclick="deleteCat(\'' + esc(c.category_id) + '\',\'' + esc(evId) + '\')">ลบ</button>';
+    html += '</div>';
+  });
+  listEl.innerHTML = html;
+}
+
+async function addCat(evId) {
+  var nameEl = document.getElementById("catName_" + evId);
+  var feeEl = document.getElementById("catFee_" + evId);
+  var name = nameEl ? nameEl.value.trim() : "";
+  var fee = feeEl ? Number(feeEl.value) || 0 : 0;
+  if (!name) { alert("กรุณากรอกชื่อรายการ"); return; }
+  try {
+    var url = G + "&action=api&do=tournament_add_category"
+      + "&event=" + encodeURIComponent(evId)
+      + "&name=" + encodeURIComponent(name)
+      + "&fee=" + fee;
+    var res = await fetch(url);
+    var d = await res.json();
+    if (d.ok) {
+      if (nameEl) nameEl.value = "";
+      if (feeEl) feeEl.value = "";
+      catsLoaded[evId] = false;
+      loadCats(evId);
+    } else {
+      alert(d.error || "เกิดข้อผิดพลาด");
+    }
+  } catch(e) { alert("เกิดข้อผิดพลาด: " + e.message); }
+}
+
+async function deleteCat(catId, evId) {
+  if (!confirm("ลบรายการนี้?")) return;
+  try {
+    var url = G + "&action=api&do=tournament_delete_category&category_id=" + encodeURIComponent(catId);
+    var res = await fetch(url);
+    var d = await res.json();
+    if (d.ok) { catsLoaded[evId] = false; loadCats(evId); }
+    else alert(d.error || "เกิดข้อผิดพลาด");
+  } catch(e) { alert("เกิดข้อผิดพลาด: " + e.message); }
+}
 
 loadEvents();
 </script>

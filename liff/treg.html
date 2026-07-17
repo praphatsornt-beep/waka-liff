@@ -68,6 +68,11 @@
     .count-bar { font-size: 12px; color: var(--text-secondary); text-align: right; margin-bottom: 4px; }
     .count-bar b { color: var(--text-primary); }
     .optional-tag { font-size: 10px; color: var(--label); font-weight: 400; }
+    .cat-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1.5px solid var(--card-border); border-radius: var(--field-radius); margin-bottom: 8px; cursor: pointer; user-select: none; }
+    .cat-item.checked { border-color: var(--accent); background: #f0f0fa; }
+    .cat-chk { width: 18px; height: 18px; accent-color: var(--accent); flex-shrink: 0; pointer-events: none; }
+    .cat-name { flex: 1; font-weight: 500; font-size: 14px; }
+    .cat-fee { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 14px; color: var(--accent); }
   </style>
 </head>
 <body>
@@ -131,9 +136,15 @@
           </div>
         </div>
 
+        <div id="categorySection" style="display:none">
+          <div class="separator"></div>
+          <div class="section-label">เลือกรายการแข่งขัน <span style="color:var(--red)">*</span></div>
+          <div id="categoryList"></div>
+        </div>
+
         <div class="fee-summary" id="feeSummary">
           <div class="fee-amount" id="feeAmt">—</div>
-          <div class="fee-label">ค่าสมัครต่อคน</div>
+          <div class="fee-label" id="feeLabel">ค่าสมัครต่อคน</div>
         </div>
 
         <div id="countBar" class="count-bar"></div>
@@ -156,7 +167,7 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4H
 
 const params = new URLSearchParams(location.search);
 const eventId = params.get("event") || "";
-let lineProfile = {}, slipBase64 = null, paymentMethod = "transfer", eventInfo = null;
+let lineProfile = {}, slipBase64 = null, paymentMethod = "transfer", eventInfo = null, selectedCategories = [];
 
 async function init() {
   if (!eventId) { showError("ไม่พบรหัสทัวร์นาเมนต์ — ลิงค์ไม่ถูกต้อง"); return; }
@@ -188,7 +199,8 @@ async function init() {
     eventInfo = evData;
     document.getElementById("evName").textContent = "🏆 " + (evData.name || "WAKA Tournament");
     if (evData.date) document.getElementById("evDate").textContent = "📅 " + evData.date;
-    if (evData.entry_fee) document.getElementById("evFee").innerHTML = '<span class="ev-fee">ค่าสมัคร ' + Number(evData.entry_fee).toLocaleString() + ' บาท</span>';
+    var hasCats = evData.categories && evData.categories.length > 0;
+    if (!hasCats && evData.entry_fee) document.getElementById("evFee").innerHTML = '<span class="ev-fee">ค่าสมัคร ' + Number(evData.entry_fee).toLocaleString() + ' บาท</span>';
     if (evData.rules_text) {
       document.getElementById("rulesText").textContent = evData.rules_text;
       document.getElementById("rulesCard").style.display = "block";
@@ -216,7 +228,8 @@ async function init() {
       return;
     }
 
-    document.getElementById("feeAmt").textContent = (evData.entry_fee || 0).toLocaleString() + " .-";
+    renderCategories(evData.categories);
+    updateFee();
     updateCountBar(evData.current_count, evData.max_players);
     document.getElementById("regForm").style.display = "block";
   } catch(e) {
@@ -271,6 +284,50 @@ function resizeImage(file, ms, q, cb) {
   }; r.readAsDataURL(file);
 }
 
+function renderCategories(categories) {
+  if (!categories || categories.length === 0) return;
+  document.getElementById("categorySection").style.display = "block";
+  document.getElementById("feeLabel").textContent = "ยอดรวม";
+  var html = "";
+  categories.forEach(function(cat) {
+    html += '<div class="cat-item" id="cat_' + esc(cat.category_id) + '" onclick="toggleCat(\'' + cat.category_id.replace(/'/g,"") + '\')">' +
+      '<input type="checkbox" class="cat-chk" id="chk_' + esc(cat.category_id) + '" />' +
+      '<span class="cat-name">' + esc(cat.name) + '</span>' +
+      '<span class="cat-fee">฿' + Number(cat.entry_fee).toLocaleString() + '</span>' +
+      '</div>';
+  });
+  document.getElementById("categoryList").innerHTML = html;
+}
+
+function toggleCat(catId) {
+  var cats = eventInfo && eventInfo.categories ? eventInfo.categories : [];
+  var cat = cats.find(function(c) { return c.category_id === catId; });
+  if (!cat) return;
+  var idx = selectedCategories.findIndex(function(c) { return c.category_id === catId; });
+  if (idx >= 0) { selectedCategories.splice(idx, 1); }
+  else { selectedCategories.push({ category_id: cat.category_id, name: cat.name, fee: Number(cat.entry_fee) }); }
+  var el = document.getElementById("cat_" + catId);
+  var chk = document.getElementById("chk_" + catId);
+  var isChecked = selectedCategories.some(function(c) { return c.category_id === catId; });
+  if (el) el.classList.toggle("checked", isChecked);
+  if (chk) chk.checked = isChecked;
+  updateFee();
+}
+
+function updateFee() {
+  var hasCats = eventInfo && eventInfo.categories && eventInfo.categories.length > 0;
+  if (hasCats) {
+    if (selectedCategories.length === 0) {
+      document.getElementById("feeAmt").textContent = "—";
+    } else {
+      var total = selectedCategories.reduce(function(s, c) { return s + Number(c.fee); }, 0);
+      document.getElementById("feeAmt").textContent = total.toLocaleString() + " .-";
+    }
+  } else {
+    document.getElementById("feeAmt").textContent = (eventInfo ? (eventInfo.entry_fee || 0) : 0).toLocaleString() + " .-";
+  }
+}
+
 async function submitRegistration() {
   var realName = document.getElementById("realName").value.trim();
   var playerName = document.getElementById("playerName").value.trim();
@@ -280,6 +337,8 @@ async function submitRegistration() {
   if (!playerName) { alert("กรุณากรอกชื่อแข่ง"); return; }
   if (!phone) { alert("กรุณากรอกเบอร์โทร"); return; }
   if (paymentMethod === "transfer" && !document.getElementById("bankSelect").value) { alert("กรุณาเลือกธนาคาร"); return; }
+  var hasCats = eventInfo && eventInfo.categories && eventInfo.categories.length > 0;
+  if (hasCats && selectedCategories.length === 0) { alert("กรุณาเลือกอย่างน้อย 1 รายการที่ต้องการแข่ง"); return; }
 
   var btn = document.getElementById("submitBtn");
   btn.disabled = true; btn.textContent = "กำลังส่ง...";
@@ -294,6 +353,7 @@ async function submitRegistration() {
       paymentMethod: paymentMethod,
       bank: paymentMethod === "transfer" ? (document.getElementById("bankSelect").value || "") : "",
       slipBase64: paymentMethod === "transfer" ? (slipBase64 || null) : null,
+      selectedCategories: selectedCategories,
     })});
     var data = await res.json();
     if (data.success) {

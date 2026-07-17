@@ -21,8 +21,9 @@ const TAB_SHIPMENTS    = "shipments";
 const TAB_WAKAGYM_REG = "wakagym_reg";
 const TAB_PLAYER_STATS   = "player_stats";
 const TAB_WAKAGYM_EVENTS = "wakagym_events";
-const TAB_TOURNAMENT_EVENTS = "tournament_events";
-const TAB_TOURNAMENT_REG    = "tournament_reg";
+const TAB_TOURNAMENT_EVENTS      = "tournament_events";
+const TAB_TOURNAMENT_REG         = "tournament_reg";
+const TAB_TOURNAMENT_CATEGORIES  = "tournament_categories";
 
 const BRANCHES = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์"];
 
@@ -960,7 +961,8 @@ function handleTournamentRegister(data) {
     var regWs = _ensureTab(ss, TAB_TOURNAMENT_REG, [
       "reg_id", "timestamp", "event_id", "sequence_no", "line_user_id", "display_name",
       "real_name", "player_name", "phone", "facebook", "slip_url", "slip_status",
-      "payment_method", "bank", "amount_paid", "status", "checked_in_at", "note"
+      "payment_method", "bank", "amount_paid", "status", "checked_in_at", "note",
+      "selected_categories"
     ]);
     var regRows = regWs.getDataRange().getValues();
     var rHdr = regRows[0];
@@ -990,13 +992,24 @@ function handleTournamentRegister(data) {
     if (data.slipBase64) { slipUrl = saveSlipToDrive(data.slipBase64, regId); }
     var slipStatus = payMethod === "cash" ? "cash" : "pending";
 
+    // คำนวณยอดจาก selected_categories ถ้ามี ไม่งั้นใช้ entry_fee ของ event
+    var selectedCats = Array.isArray(data.selectedCategories) ? data.selectedCategories : [];
+    var amountPaid = entryFee;
+    if (selectedCats.length > 0) {
+      amountPaid = 0;
+      for (var sci = 0; sci < selectedCats.length; sci++) {
+        amountPaid += Number(selectedCats[sci].fee) || 0;
+      }
+    }
+    var selectedCatsJson = selectedCats.length > 0 ? JSON.stringify(selectedCats) : "";
+
     regWs.appendRow([
       regId, now, eventId, seqNo,
       data.lineUserId || "", data.displayName || "",
       String(data.realName || "").trim(), String(data.playerName || "").trim(),
       String(data.phone || "").trim(), String(data.facebook || "").trim(),
       slipUrl, slipStatus, payMethod, String(data.bank || "").trim(),
-      entryFee, "active", "", ""
+      amountPaid, "active", "", "", selectedCatsJson
     ]);
     lock.releaseLock();
 
@@ -2106,6 +2119,25 @@ function handleApi(params) {
       }
       var tsDateVal = tsEvRows[tsi][tsec("date")];
       var tsCloseVal = tsEvRows[tsi][tsec("registration_close")];
+      var tsCats = [];
+      var tsCatWs = ss.getSheetByName(TAB_TOURNAMENT_CATEGORIES);
+      if (tsCatWs) {
+        var tsCatRows = tsCatWs.getDataRange().getValues(); var tsCatHdr = tsCatRows[0];
+        var tscc = function(n) { return tsCatHdr.indexOf(n); };
+        for (var tci = 1; tci < tsCatRows.length; tci++) {
+          if (String(tsCatRows[tci][tscc("event_id")]) !== tsId) continue;
+          if (String(tsCatRows[tci][tscc("status")]) === "deleted") continue;
+          tsCats.push({
+            category_id: String(tsCatRows[tci][tscc("category_id")] || ""),
+            name: String(tsCatRows[tci][tscc("name")] || ""),
+            entry_fee: Number(tsCatRows[tci][tscc("entry_fee")]) || 0,
+            max_players: Number(tsCatRows[tci][tscc("max_players")]) || 0,
+            sort_order: Number(tsCatRows[tci][tscc("sort_order")]) || 0,
+            status: String(tsCatRows[tci][tscc("status")] || "open"),
+          });
+        }
+        tsCats.sort(function(a, b) { return a.sort_order - b.sort_order; });
+      }
       return _cors(ContentService.createTextOutput(JSON.stringify({
         event_id: tsId, name: String(tsEvRows[tsi][tsec("name")] || ""),
         date: tsDateVal instanceof Date ? Utilities.formatDate(tsDateVal, "Asia/Bangkok", "yyyy-MM-dd") : String(tsDateVal || ""),
@@ -2115,6 +2147,7 @@ function handleApi(params) {
         registration_close: tsCloseVal instanceof Date ? Utilities.formatDate(tsCloseVal, "Asia/Bangkok", "yyyy-MM-dd") : String(tsCloseVal || ""),
         status: String(tsEvRows[tsi][tsec("status")] || ""),
         current_count: tsCount, already_registered: !!tsUserReg, existing_reg_id: tsUserReg || null,
+        categories: tsCats,
       })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "event not found" })));
@@ -2346,6 +2379,59 @@ function handleApi(params) {
       }
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ players: tluFound.slice(0, 20) })));
+  }
+
+  if (action === "tournament_categories") {
+    var tcEvId = String(params.event || "").trim();
+    if (!tcEvId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing event" })));
+    var tcWs = ss.getSheetByName(TAB_TOURNAMENT_CATEGORIES);
+    if (!tcWs) return _cors(ContentService.createTextOutput(JSON.stringify({ categories: [] })));
+    var tcRows = tcWs.getDataRange().getValues(); var tcHdr = tcRows[0];
+    var tcc = function(n) { return tcHdr.indexOf(n); };
+    var cats = [];
+    for (var tci = 1; tci < tcRows.length; tci++) {
+      if (String(tcRows[tci][tcc("event_id")]) !== tcEvId) continue;
+      if (String(tcRows[tci][tcc("status")]) === "deleted") continue;
+      cats.push({
+        category_id: String(tcRows[tci][tcc("category_id")] || ""),
+        name: String(tcRows[tci][tcc("name")] || ""),
+        entry_fee: Number(tcRows[tci][tcc("entry_fee")]) || 0,
+        sort_order: Number(tcRows[tci][tcc("sort_order")]) || 0,
+        status: String(tcRows[tci][tcc("status")] || "open"),
+      });
+    }
+    cats.sort(function(a, b) { return a.sort_order - b.sort_order; });
+    return _cors(ContentService.createTextOutput(JSON.stringify({ categories: cats })));
+  }
+
+  if (action === "tournament_add_category") {
+    var tacEvId = String(params.event || "").trim();
+    var tacName = String(params.name || "").trim();
+    var tacFee = Number(params.fee) || 0;
+    if (!tacEvId || !tacName) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing params" })));
+    var tacWs = _ensureTab(ss, TAB_TOURNAMENT_CATEGORIES, [
+      "category_id", "event_id", "name", "entry_fee", "max_players", "sort_order", "status"
+    ]);
+    var tacRows = tacWs.getDataRange().getValues();
+    var tacExisting = tacRows.length - 1;
+    var tacId = "CAT" + Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyyMMddHHmmss");
+    tacWs.appendRow([tacId, tacEvId, tacName, tacFee, 0, tacExisting + 1, "open"]);
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, category_id: tacId })));
+  }
+
+  if (action === "tournament_delete_category") {
+    var tdcId = String(params.category_id || "").trim();
+    if (!tdcId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing category_id" })));
+    var tdcWs = ss.getSheetByName(TAB_TOURNAMENT_CATEGORIES);
+    if (!tdcWs) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no categories" })));
+    var tdcRows = tdcWs.getDataRange().getValues(); var tdcHdr = tdcRows[0];
+    var tdcc = function(n) { return tdcHdr.indexOf(n); };
+    for (var tdci = 1; tdci < tdcRows.length; tdci++) {
+      if (String(tdcRows[tdci][tdcc("category_id")]) !== tdcId) continue;
+      tdcWs.getRange(tdci + 1, tdcc("status") + 1).setValue("deleted");
+      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+    }
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "not found" })));
   }
 
   return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unknown action" })));
