@@ -2276,16 +2276,24 @@ function handleApi(params) {
 
   if (action === "tournament_update_event") {
     var tueId = String(params.event || "").trim();
-    var tueSt = String(params.status || "").trim();
-    if (!tueId || !tueSt) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing params" })));
-    if (["draft","open","closed","completed"].indexOf(tueSt) < 0) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "invalid status" })));
+    if (!tueId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing event" })));
     var tueWs = ss.getSheetByName(TAB_TOURNAMENT_EVENTS);
     if (!tueWs) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no events" })));
     var tueRows = tueWs.getDataRange().getValues(); var tueHdr = tueRows[0];
     var tuec = function(n) { return tueHdr.indexOf(n); };
+    var tueSt = String(params.status || "").trim();
+    if (tueSt && ["draft","open","closed","completed"].indexOf(tueSt) < 0)
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "invalid status" })));
     for (var tuei = 1; tuei < tueRows.length; tuei++) {
       if (String(tueRows[tuei][tuec("event_id")]) !== tueId) continue;
-      tueWs.getRange(tuei + 1, tuec("status") + 1).setValue(tueSt);
+      var tueR = tuei + 1;
+      if (tueSt) tueWs.getRange(tueR, tuec("status") + 1).setValue(tueSt);
+      if (params.name !== undefined) tueWs.getRange(tueR, tuec("name") + 1).setValue(String(params.name).trim());
+      if (params.date !== undefined) tueWs.getRange(tueR, tuec("date") + 1).setValue(String(params.date).trim());
+      if (params.entry_fee !== undefined) tueWs.getRange(tueR, tuec("entry_fee") + 1).setValue(Number(params.entry_fee) || 0);
+      if (params.max_players !== undefined) tueWs.getRange(tueR, tuec("max_players") + 1).setValue(Number(params.max_players) || 0);
+      if (params.rules_text !== undefined) tueWs.getRange(tueR, tuec("rules_text") + 1).setValue(String(params.rules_text).trim());
+      if (params.registration_close !== undefined) tueWs.getRange(tueR, tuec("registration_close") + 1).setValue(String(params.registration_close).trim());
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "not found" })));

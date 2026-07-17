@@ -74,6 +74,14 @@
     .add-cat-form-btn { width: 100%; padding: 10px; background: transparent; color: var(--accent); border: 1.5px dashed var(--card-border); border-radius: 10px; font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer; margin-bottom: 12px; }
     .add-cat-form-btn:hover { border-color: var(--accent); }
     .form-divider { height: 1px; background: var(--card-border); margin: 4px 0 16px; }
+    .edit-panel { display: none; border-top: 1px solid var(--card-border); margin-top: 10px; padding-top: 12px; }
+    .edit-panel input[type="text"], .edit-panel input[type="date"], .edit-panel input[type="number"], .edit-panel textarea { margin-bottom: 8px; }
+    .edit-panel textarea { height: 70px; }
+    .edit-panel-actions { display: flex; gap: 8px; margin-top: 4px; }
+    .btn-save-edit { flex: 1; padding: 8px; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer; }
+    .btn-save-edit:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-cancel-edit { padding: 8px 14px; border: 1.5px solid var(--card-border); color: var(--text-secondary); border-radius: 8px; font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer; background: transparent; }
+    .btn-edit { border-color: #888; color: #555; }
   </style>
 </head>
 <body>
@@ -191,6 +199,8 @@ async function loadEvents() {
 function renderEvents(events) {
   var el = document.getElementById("evList");
   if (!events.length) { el.innerHTML = '<div class="empty">ยังไม่มีทัวร์นาเมนต์</div>'; return; }
+  _eventsMap = {};
+  for (var mi = 0; mi < events.length; mi++) { _eventsMap[events[mi].event_id] = events[mi]; }
   var html = "";
   for (var i = 0; i < events.length; i++) {
     var ev = events[i];
@@ -211,6 +221,7 @@ function renderEvents(events) {
     if (ev.status === "open") html += '<button class="btn-close" onclick="updateStatus(\'' + esc(ev.event_id) + '\',\'closed\')">ปิดรับสมัคร</button>';
     if (ev.status !== "completed") html += '<button style="border-color:#999;color:#999" onclick="updateStatus(\'' + esc(ev.event_id) + '\',\'completed\')">จบแล้ว</button>';
     html += '<button class="cats-toggle" onclick="toggleCats(\'' + esc(ev.event_id) + '\')">📋 หมวด</button>';
+    html += '<button class="btn-edit" onclick="toggleEdit(\'' + esc(ev.event_id) + '\')">✏️ แก้ไข</button>';
     html += '</div>';
     html += '<div class="cats-panel" id="catsPanel_' + esc(ev.event_id) + '">';
     html += '<div style="font-size:11px;font-weight:600;color:var(--label);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">รายการแข่งขัน</div>';
@@ -220,6 +231,25 @@ function renderEvents(events) {
     html += '<input type="number" placeholder="ค่าสมัคร" class="fee-input" id="catFee_' + esc(ev.event_id) + '" min="0" />';
     html += '<button class="cat-add-btn" onclick="addCat(\'' + esc(ev.event_id) + '\')">+ เพิ่ม</button>';
     html += '</div></div>';
+    html += '<div class="edit-panel" id="editPanel_' + esc(ev.event_id) + '">';
+    html += '<div style="font-size:11px;font-weight:600;color:var(--label);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">แก้ไขข้อมูล</div>';
+    html += '<label class="field-label">ชื่องาน</label>';
+    html += '<input type="text" id="eName_' + esc(ev.event_id) + '" />';
+    html += '<label class="field-label">วันจัดงาน</label>';
+    html += '<input type="date" id="eDate_' + esc(ev.event_id) + '" />';
+    html += '<label class="field-label">จำนวนสูงสุด <span class="optional">(0 = ไม่จำกัด)</span></label>';
+    html += '<input type="number" id="eMax_' + esc(ev.event_id) + '" min="0" />';
+    html += '<label class="field-label">วันปิดรับสมัคร <span class="optional">(ไม่บังคับ)</span></label>';
+    html += '<input type="date" id="eClose_' + esc(ev.event_id) + '" />';
+    html += '<label class="field-label">ค่าสมัคร <span class="optional">(บาท — ใช้เมื่อไม่มีประเภท)</span></label>';
+    html += '<input type="number" id="eFee_' + esc(ev.event_id) + '" min="0" />';
+    html += '<label class="field-label">กติกา / รายละเอียด</label>';
+    html += '<textarea id="eRules_' + esc(ev.event_id) + '"></textarea>';
+    html += '<div class="edit-panel-actions">';
+    html += '<button class="btn-save-edit" id="eSaveBtn_' + esc(ev.event_id) + '" onclick="saveEdit(\'' + esc(ev.event_id) + '\')">💾 บันทึก</button>';
+    html += '<button class="btn-cancel-edit" onclick="toggleEdit(\'' + esc(ev.event_id) + '\')">ยกเลิก</button>';
+    html += '</div>';
+    html += '</div>';
     html += '</div>';
   }
   el.innerHTML = html;
@@ -305,6 +335,56 @@ function copyNewLink() {
 function esc(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
 
 var catsLoaded = {};
+var _eventsMap = {};
+
+function toggleEdit(evId) {
+  var panel = document.getElementById("editPanel_" + evId);
+  if (!panel) return;
+  var isOpen = panel.style.display === "block";
+  if (!isOpen) {
+    var ev = _eventsMap[evId];
+    if (ev) {
+      var setVal = function(id, val) { var el = document.getElementById(id); if (el) el.value = (val != null ? val : ""); };
+      setVal("eName_" + evId, ev.name);
+      setVal("eDate_" + evId, ev.date);
+      setVal("eMax_" + evId, ev.max_players || "0");
+      setVal("eClose_" + evId, ev.registration_close || "");
+      setVal("eFee_" + evId, ev.entry_fee || "0");
+      setVal("eRules_" + evId, ev.rules_text || "");
+    }
+  }
+  panel.style.display = isOpen ? "none" : "block";
+}
+
+async function saveEdit(evId) {
+  var getVal = function(id) { var el = document.getElementById(id); return el ? el.value.trim() : ""; };
+  var name = getVal("eName_" + evId);
+  var date = getVal("eDate_" + evId);
+  if (!name) { alert("กรุณากรอกชื่องาน"); return; }
+  if (!date) { alert("กรุณาเลือกวันจัดงาน"); return; }
+  var saveBtn = document.getElementById("eSaveBtn_" + evId);
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "⏳ กำลังบันทึก..."; }
+  try {
+    var res = await fetch(G + "&action=api&do=tournament_update_event"
+      + "&event=" + encodeURIComponent(evId)
+      + "&name=" + encodeURIComponent(name)
+      + "&date=" + encodeURIComponent(date)
+      + "&max_players=" + encodeURIComponent(getVal("eMax_" + evId) || "0")
+      + "&registration_close=" + encodeURIComponent(getVal("eClose_" + evId))
+      + "&entry_fee=" + encodeURIComponent(getVal("eFee_" + evId) || "0")
+      + "&rules_text=" + encodeURIComponent(getVal("eRules_" + evId)));
+    var d = await res.json();
+    if (d.ok) {
+      toggleEdit(evId);
+      loadEvents();
+    } else {
+      alert(d.error || "เกิดข้อผิดพลาด");
+    }
+  } catch(e) {
+    alert("เกิดข้อผิดพลาด: " + e.message);
+  }
+  if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "💾 บันทึก"; }
+}
 
 function toggleCats(evId) {
   var panel = document.getElementById("catsPanel_" + evId);
