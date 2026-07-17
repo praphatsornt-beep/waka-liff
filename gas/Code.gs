@@ -2103,13 +2103,15 @@ function handleApi(params) {
           if (tsUid && String(tsRegRows[tri][tsrc2("line_user_id")]) === tsUid) tsUserReg = String(tsRegRows[tri][tsrc2("reg_id")] || "");
         }
       }
+      var tsDateVal = tsEvRows[tsi][tsec("date")];
+      var tsCloseVal = tsEvRows[tsi][tsec("registration_close")];
       return _cors(ContentService.createTextOutput(JSON.stringify({
         event_id: tsId, name: String(tsEvRows[tsi][tsec("name")] || ""),
-        date: String(tsEvRows[tsi][tsec("date")] || ""),
+        date: tsDateVal instanceof Date ? Utilities.formatDate(tsDateVal, "Asia/Bangkok", "yyyy-MM-dd") : String(tsDateVal || ""),
         entry_fee: Number(tsEvRows[tsi][tsec("entry_fee")]) || 0,
         max_players: Number(tsEvRows[tsi][tsec("max_players")]) || 0,
         rules_text: String(tsEvRows[tsi][tsec("rules_text")] || ""),
-        registration_close: String(tsEvRows[tsi][tsec("registration_close")] || ""),
+        registration_close: tsCloseVal instanceof Date ? Utilities.formatDate(tsCloseVal, "Asia/Bangkok", "yyyy-MM-dd") : String(tsCloseVal || ""),
         status: String(tsEvRows[tsi][tsec("status")] || ""),
         current_count: tsCount, already_registered: !!tsUserReg, existing_reg_id: tsUserReg || null,
       })));
@@ -2165,13 +2167,15 @@ function handleApi(params) {
     var tevc = function(n) { return tevHdr.indexOf(n); };
     var tevList = [];
     for (var tevi = 1; tevi < tevRows.length; tevi++) {
+      var tevDate = tevRows[tevi][tevc("date")];
+      var tevClose = tevRows[tevi][tevc("registration_close")];
       tevList.push({
         event_id: String(tevRows[tevi][tevc("event_id")] || ""),
         name: String(tevRows[tevi][tevc("name")] || ""),
-        date: String(tevRows[tevi][tevc("date")] || ""),
+        date: tevDate instanceof Date ? Utilities.formatDate(tevDate, "Asia/Bangkok", "yyyy-MM-dd") : String(tevDate || ""),
         entry_fee: Number(tevRows[tevi][tevc("entry_fee")]) || 0,
         max_players: Number(tevRows[tevi][tevc("max_players")]) || 0,
-        registration_close: String(tevRows[tevi][tevc("registration_close")] || ""),
+        registration_close: tevClose instanceof Date ? Utilities.formatDate(tevClose, "Asia/Bangkok", "yyyy-MM-dd") : String(tevClose || ""),
         status: String(tevRows[tevi][tevc("status")] || ""),
         created_at: String(tevRows[tevi][tevc("created_at")] || ""),
       });
