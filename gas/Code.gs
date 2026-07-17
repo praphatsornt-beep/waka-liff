@@ -2137,7 +2137,8 @@ function handleApi(params) {
         for (var trej = 1; trej < trsEvRows.length; trej++) {
           if (String(trsEvRows[trej][trsec("event_id")]) === trsEvId) {
             trsEvName = String(trsEvRows[trej][trsec("name")] || "");
-            trsEvDate = String(trsEvRows[trej][trsec("date")] || ""); break;
+            var trsEvDateVal = trsEvRows[trej][trsec("date")];
+            trsEvDate = trsEvDateVal instanceof Date ? Utilities.formatDate(trsEvDateVal, "Asia/Bangkok", "yyyy-MM-dd") : String(trsEvDateVal || ""); break;
           }
         }
       }
@@ -2282,7 +2283,8 @@ function handleApi(params) {
           for (var turej = 1; turej < turEvRows.length; turej++) {
             if (String(turEvRows[turej][turec("event_id")]) === turEvId) {
               turEvName = String(turEvRows[turej][turec("name")] || "");
-              turEvDate = String(turEvRows[turej][turec("date")] || ""); break;
+              var turEvDateVal = turEvRows[turej][turec("date")];
+              turEvDate = turEvDateVal instanceof Date ? Utilities.formatDate(turEvDateVal, "Asia/Bangkok", "yyyy-MM-dd") : String(turEvDateVal || ""); break;
             }
           }
         }
