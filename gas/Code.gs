@@ -4,8 +4,8 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 function warmup() {
-  // keepalive — run via time-based trigger every 5 min to prevent cold start
-  SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty("SHEET_ID"));
+  // keepalive ping only — avoid heavy operations that risk timeout
+  Logger.log("ping " + new Date().toISOString());
 }
 
 const PROPS         = PropertiesService.getScriptProperties();
@@ -21,6 +21,8 @@ const TAB_SHIPMENTS    = "shipments";
 const TAB_WAKAGYM_REG = "wakagym_reg";
 const TAB_PLAYER_STATS   = "player_stats";
 const TAB_WAKAGYM_EVENTS = "wakagym_events";
+const TAB_TOURNAMENT_EVENTS = "tournament_events";
+const TAB_TOURNAMENT_REG    = "tournament_reg";
 
 const BRANCHES = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์"];
 
@@ -51,7 +53,8 @@ function _cors(output) {
 // GET: โหลด catalog หรือ ลูกค้ากดยืนยันรับของ
 // Public (ไม่ต้อง _s): catalog, confirm, order_status, customer_confirm, wakagym_status
 // Staff only (ต้อง _s): ทุกอย่างอื่น
-var PUBLIC_API_DOS = ["order_status", "customer_confirm", "wakagym_status"];
+var PUBLIC_API_DOS = ["order_status", "customer_confirm", "wakagym_status",
+                     "tournament_status", "tournament_reg_status"];
 
 function doGet(e) {
   try {
@@ -135,7 +138,7 @@ function handleCustomerConfirm(orderId, e) {
 
 // POST: รับ order จาก LIFF หรือ internal actions
 // Public POST (ไม่ต้อง _s): LINE webhook, สั่งซื้อ (data.items), wakagymRegister
-var PUBLIC_ACTIONS_POST = ["wakagymRegister"];
+var PUBLIC_ACTIONS_POST = ["wakagymRegister", "tournamentRegister"];
 
 function doPost(e) {
   try {
@@ -207,6 +210,10 @@ function doPost(e) {
 
     if (data._action === "wakagymRegister") {
       return handleWakagymRegister(data);
+    }
+
+    if (data._action === "tournamentRegister") {
+      return handleTournamentRegister(data);
     }
 
     if (data.action === "api") {
@@ -754,6 +761,9 @@ function _ensureTab(ss, tabName, headers) {
   if (!ws) {
     ws = ss.insertSheet(tabName);
     ws.appendRow(headers);
+  } else if (ws.getLastRow() === 0 || String(ws.getRange(1, 1).getValue()).trim() === "") {
+    ws.insertRowBefore(1);
+    ws.getRange(1, 1, 1, headers.length).setValues([headers]);
   }
   return ws;
 }
@@ -912,6 +922,111 @@ function handleWakagymRegister(data) {
 
     return _cors(ContentService.createTextOutput(JSON.stringify({
       success: true, groupId: groupId, entryFee: entryFee, tier: tier, results: results
+    })));
+  } catch (err) {
+    try { lock.releaseLock(); } catch (_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+// ── Tournament Registration ─────────────────────────────────────────────────
+function handleTournamentRegister(data) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
+
+    var evWs = ss.getSheetByName(TAB_TOURNAMENT_EVENTS);
+    if (!evWs) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no tournament events" }))); }
+    var evRows = evWs.getDataRange().getValues();
+    var evHdr = evRows[0];
+    var ec = function(n) { return evHdr.indexOf(n); };
+
+    var eventId = String(data.eventId || "").trim();
+    var eventRow = null;
+    for (var ei = 1; ei < evRows.length; ei++) {
+      if (String(evRows[ei][ec("event_id")]) === eventId) { eventRow = evRows[ei]; break; }
+    }
+    if (!eventRow) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "event not found" }))); }
+    if (String(eventRow[ec("status")]) !== "open") { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "registration closed" }))); }
+
+    var eventName = String(eventRow[ec("name")] || "");
+    var eventDate = String(eventRow[ec("date")] || "");
+    var entryFee = Number(eventRow[ec("entry_fee")]) || 0;
+    var maxPlayers = Number(eventRow[ec("max_players")]) || 0;
+
+    var regWs = _ensureTab(ss, TAB_TOURNAMENT_REG, [
+      "reg_id", "timestamp", "event_id", "sequence_no", "line_user_id", "display_name",
+      "real_name", "player_name", "phone", "facebook", "slip_url", "slip_status",
+      "payment_method", "bank", "amount_paid", "status", "checked_in_at", "note"
+    ]);
+    var regRows = regWs.getDataRange().getValues();
+    var rHdr = regRows[0];
+    var rc = function(n) { return rHdr.indexOf(n); };
+
+    var currentCount = 0;
+    for (var ri = 1; ri < regRows.length; ri++) {
+      if (String(regRows[ri][rc("event_id")]) !== eventId || String(regRows[ri][rc("status")]) === "cancelled") continue;
+      currentCount++;
+      if (data.lineUserId && String(regRows[ri][rc("line_user_id")]) === data.lineUserId) {
+        var existId = String(regRows[ri][rc("reg_id")] || "");
+        lock.releaseLock();
+        return _cors(ContentService.createTextOutput(JSON.stringify({ error: "already_registered", reg_id: existId })));
+      }
+    }
+    if (maxPlayers > 0 && currentCount >= maxPlayers) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "event_full" })));
+    }
+
+    var seqNo = currentCount + 1;
+    var dateStr = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyyMMdd");
+    var regId = "TR-" + dateStr + "-" + (seqNo < 10 ? "00" : seqNo < 100 ? "0" : "") + seqNo;
+
+    var payMethod = data.paymentMethod || "transfer";
+    var slipUrl = "";
+    if (data.slipBase64) { slipUrl = saveSlipToDrive(data.slipBase64, regId); }
+    var slipStatus = payMethod === "cash" ? "cash" : "pending";
+
+    regWs.appendRow([
+      regId, now, eventId, seqNo,
+      data.lineUserId || "", data.displayName || "",
+      String(data.realName || "").trim(), String(data.playerName || "").trim(),
+      String(data.phone || "").trim(), String(data.facebook || "").trim(),
+      slipUrl, slipStatus, payMethod, String(data.bank || "").trim(),
+      entryFee, "active", "", ""
+    ]);
+    lock.releaseLock();
+
+    var statusUrl = "https://waka-liff.vercel.app/treg_status.html?id=" + encodeURIComponent(regId);
+    var cfgWs = ss.getSheetByName(TAB_CONFIG);
+
+    if (data.lineUserId && data.lineUserId !== "dev_user") {
+      var custMsg = "🏆 ลงทะเบียนสำเร็จ!\n"
+        + "ทัวร์นาเมนต์: " + eventName + "\n"
+        + "ลำดับที่: " + seqNo + "\n"
+        + "ชื่อแข่ง: " + String(data.playerName || "");
+      if (payMethod !== "cash") custMsg += "\n📋 สถานะสลิป: รอตรวจ";
+      custMsg += "\n\n🔗 ดูสถานะ + QR:\n" + statusUrl;
+      _linePush(data.lineUserId, custMsg);
+    }
+
+    var groupStaff = _getConfigValue(cfgWs, "group_staff");
+    if (groupStaff) {
+      var payText = payMethod === "cash" ? "💵 เงินสด" : "📱 " + (data.bank || "โอนเงิน");
+      var staffMsg = "🏆 สมัครแข่ง #" + seqNo + " — " + eventName + "\n"
+        + "ชื่อแข่ง: " + String(data.playerName || "") + " | จริง: " + String(data.realName || "") + "\n"
+        + "โทร: " + String(data.phone || "");
+      if (data.facebook) staffMsg += " | FB: " + data.facebook;
+      staffMsg += "\n" + payText + "\nรหัส: " + regId;
+      _linePush(groupStaff, staffMsg);
+    }
+
+    return _cors(ContentService.createTextOutput(JSON.stringify({
+      success: true, reg_id: regId, sequence_no: seqNo,
+      event_name: eventName, event_date: eventDate,
+      player_name: String(data.playerName || ""), status_url: statusUrl,
     })));
   } catch (err) {
     try { lock.releaseLock(); } catch (_) {}
@@ -1394,7 +1509,7 @@ function handleApi(params) {
         if (slip === "ยืนยัน") revenueToday += Number(rows[i][col("total")]) || 0;
       }
       if (["รอตรวจ","รอตรวจเพิ่ม","ยอดไม่ตรง","สลิปซ้ำ","บัญชีไม่ตรง","สงสัยปลอม"].indexOf(slip) >= 0) pendingCount++;
-      if (recentOrders.length < 10) {
+      if (recentOrders.length < 200) {
         recentOrders.push({
           order_id: String(rows[i][col("order_id")] || ""),
           real_name: String(rows[i][col("real_name")] || ""),
@@ -1964,6 +2079,266 @@ function handleApi(params) {
       }
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "not found" })));
+  }
+
+  // ── TOURNAMENT API ─────────────────────────────────────────────────────────
+
+  if (action === "tournament_status") {
+    var tsId = String(params.event || "").trim();
+    if (!tsId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing event" })));
+    var tsEvWs = ss.getSheetByName(TAB_TOURNAMENT_EVENTS);
+    if (!tsEvWs) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no events" })));
+    var tsEvRows = tsEvWs.getDataRange().getValues();
+    var tsEvHdr = tsEvRows[0]; var tsec = function(n) { return tsEvHdr.indexOf(n); };
+    for (var tsi = 1; tsi < tsEvRows.length; tsi++) {
+      if (String(tsEvRows[tsi][tsec("event_id")]) !== tsId) continue;
+      var tsRegWs = ss.getSheetByName(TAB_TOURNAMENT_REG);
+      var tsCount = 0; var tsUserReg = null; var tsUid = params.line_user_id || "";
+      if (tsRegWs) {
+        var tsRegRows = tsRegWs.getDataRange().getValues(); var tsRHdr = tsRegRows[0];
+        var tsrc2 = function(n) { return tsRHdr.indexOf(n); };
+        for (var tri = 1; tri < tsRegRows.length; tri++) {
+          if (String(tsRegRows[tri][tsrc2("event_id")]) !== tsId || String(tsRegRows[tri][tsrc2("status")]) === "cancelled") continue;
+          tsCount++;
+          if (tsUid && String(tsRegRows[tri][tsrc2("line_user_id")]) === tsUid) tsUserReg = String(tsRegRows[tri][tsrc2("reg_id")] || "");
+        }
+      }
+      return _cors(ContentService.createTextOutput(JSON.stringify({
+        event_id: tsId, name: String(tsEvRows[tsi][tsec("name")] || ""),
+        date: String(tsEvRows[tsi][tsec("date")] || ""),
+        entry_fee: Number(tsEvRows[tsi][tsec("entry_fee")]) || 0,
+        max_players: Number(tsEvRows[tsi][tsec("max_players")]) || 0,
+        rules_text: String(tsEvRows[tsi][tsec("rules_text")] || ""),
+        registration_close: String(tsEvRows[tsi][tsec("registration_close")] || ""),
+        status: String(tsEvRows[tsi][tsec("status")] || ""),
+        current_count: tsCount, already_registered: !!tsUserReg, existing_reg_id: tsUserReg || null,
+      })));
+    }
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "event not found" })));
+  }
+
+  if (action === "tournament_reg_status") {
+    var trsId = String(params.id || "").trim();
+    if (!trsId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing id" })));
+    var trsWs = ss.getSheetByName(TAB_TOURNAMENT_REG);
+    if (!trsWs) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no data" })));
+    var trsRows = trsWs.getDataRange().getValues(); var trsHdr = trsRows[0];
+    var trsrc = function(n) { return trsHdr.indexOf(n); };
+    for (var trsi = 1; trsi < trsRows.length; trsi++) {
+      if (String(trsRows[trsi][trsrc("reg_id")]) !== trsId) continue;
+      var trsEvId = String(trsRows[trsi][trsrc("event_id")] || "");
+      var trsEvName = "", trsEvDate = "";
+      var trsEvWs = ss.getSheetByName(TAB_TOURNAMENT_EVENTS);
+      if (trsEvWs) {
+        var trsEvRows = trsEvWs.getDataRange().getValues(); var trsEvHdr = trsEvRows[0];
+        var trsec = function(n) { return trsEvHdr.indexOf(n); };
+        for (var trej = 1; trej < trsEvRows.length; trej++) {
+          if (String(trsEvRows[trej][trsec("event_id")]) === trsEvId) {
+            trsEvName = String(trsEvRows[trej][trsec("name")] || "");
+            trsEvDate = String(trsEvRows[trej][trsec("date")] || ""); break;
+          }
+        }
+      }
+      return _cors(ContentService.createTextOutput(JSON.stringify({
+        reg_id: trsId, event_id: trsEvId, event_name: trsEvName, event_date: trsEvDate,
+        sequence_no: Number(trsRows[trsi][trsrc("sequence_no")]) || 0,
+        player_name: String(trsRows[trsi][trsrc("player_name")] || ""),
+        real_name: String(trsRows[trsi][trsrc("real_name")] || ""),
+        display_name: String(trsRows[trsi][trsrc("display_name")] || ""),
+        phone: String(trsRows[trsi][trsrc("phone")] || ""),
+        facebook: String(trsRows[trsi][trsrc("facebook")] || ""),
+        slip_status: String(trsRows[trsi][trsrc("slip_status")] || ""),
+        slip_url: String(trsRows[trsi][trsrc("slip_url")] || ""),
+        payment_method: String(trsRows[trsi][trsrc("payment_method")] || ""),
+        status: String(trsRows[trsi][trsrc("status")] || ""),
+        checked_in_at: String(trsRows[trsi][trsrc("checked_in_at")] || ""),
+        timestamp: String(trsRows[trsi][trsrc("timestamp")] || ""),
+      })));
+    }
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "not found" })));
+  }
+
+  if (action === "tournament_events") {
+    var tevWs = ss.getSheetByName(TAB_TOURNAMENT_EVENTS);
+    if (!tevWs) return _cors(ContentService.createTextOutput(JSON.stringify({ events: [] })));
+    var tevRows = tevWs.getDataRange().getValues(); var tevHdr = tevRows[0];
+    var tevc = function(n) { return tevHdr.indexOf(n); };
+    var tevList = [];
+    for (var tevi = 1; tevi < tevRows.length; tevi++) {
+      tevList.push({
+        event_id: String(tevRows[tevi][tevc("event_id")] || ""),
+        name: String(tevRows[tevi][tevc("name")] || ""),
+        date: String(tevRows[tevi][tevc("date")] || ""),
+        entry_fee: Number(tevRows[tevi][tevc("entry_fee")]) || 0,
+        max_players: Number(tevRows[tevi][tevc("max_players")]) || 0,
+        registration_close: String(tevRows[tevi][tevc("registration_close")] || ""),
+        status: String(tevRows[tevi][tevc("status")] || ""),
+        created_at: String(tevRows[tevi][tevc("created_at")] || ""),
+      });
+    }
+    tevList.reverse();
+    return _cors(ContentService.createTextOutput(JSON.stringify({ events: tevList })));
+  }
+
+  if (action === "tournament_list") {
+    var tlEvId = String(params.event || "").trim();
+    var tlWs = ss.getSheetByName(TAB_TOURNAMENT_REG);
+    if (!tlWs) return _cors(ContentService.createTextOutput(JSON.stringify({ players: [] })));
+    var tlRows = tlWs.getDataRange().getValues(); var tlHdr = tlRows[0];
+    var tlrc = function(n) { return tlHdr.indexOf(n); };
+    var tlList = [];
+    for (var tli = 1; tli < tlRows.length; tli++) {
+      if (tlEvId && String(tlRows[tli][tlrc("event_id")]) !== tlEvId) continue;
+      tlList.push({
+        reg_id: String(tlRows[tli][tlrc("reg_id")] || ""),
+        event_id: String(tlRows[tli][tlrc("event_id")] || ""),
+        sequence_no: Number(tlRows[tli][tlrc("sequence_no")]) || 0,
+        display_name: String(tlRows[tli][tlrc("display_name")] || ""),
+        real_name: String(tlRows[tli][tlrc("real_name")] || ""),
+        player_name: String(tlRows[tli][tlrc("player_name")] || ""),
+        phone: String(tlRows[tli][tlrc("phone")] || ""),
+        facebook: String(tlRows[tli][tlrc("facebook")] || ""),
+        slip_status: String(tlRows[tli][tlrc("slip_status")] || ""),
+        slip_url: String(tlRows[tli][tlrc("slip_url")] || ""),
+        payment_method: String(tlRows[tli][tlrc("payment_method")] || ""),
+        bank: String(tlRows[tli][tlrc("bank")] || ""),
+        status: String(tlRows[tli][tlrc("status")] || ""),
+        checked_in_at: String(tlRows[tli][tlrc("checked_in_at")] || ""),
+        timestamp: String(tlRows[tli][tlrc("timestamp")] || ""),
+        note: String(tlRows[tli][tlrc("note")] || ""),
+      });
+    }
+    return _cors(ContentService.createTextOutput(JSON.stringify({ players: tlList })));
+  }
+
+  if (action === "tournament_create_event") {
+    var tceName = String(params.name || "").trim();
+    var tceDate = String(params.date || "").trim();
+    if (!tceName || !tceDate) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing name or date" })));
+    var tceWs = _ensureTab(ss, TAB_TOURNAMENT_EVENTS, [
+      "event_id", "name", "date", "entry_fee", "max_players", "rules_text",
+      "registration_close", "status", "created_at"
+    ]);
+    var tceDateStr = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyyMMdd");
+    var tceExRows = tceWs.getDataRange().getValues(); var tceCount = 0;
+    for (var tcei = 1; tcei < tceExRows.length; tcei++) {
+      if (String(tceExRows[tcei][0]).indexOf("EVT" + tceDateStr) === 0) tceCount++;
+    }
+    var tceId = "EVT" + tceDateStr + "-" + (tceCount + 1);
+    var tceNow = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
+    tceWs.appendRow([tceId, tceName, tceDate, Number(params.entry_fee) || 0,
+      Number(params.max_players) || 0, String(params.rules_text || "").trim(),
+      String(params.registration_close || "").trim(), "open", tceNow]);
+    return _cors(ContentService.createTextOutput(JSON.stringify({
+      ok: true, event_id: tceId,
+      reg_link: "https://waka-liff.vercel.app/treg.html?event=" + tceId,
+    })));
+  }
+
+  if (action === "tournament_update_event") {
+    var tueId = String(params.event || "").trim();
+    var tueSt = String(params.status || "").trim();
+    if (!tueId || !tueSt) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing params" })));
+    if (["draft","open","closed","completed"].indexOf(tueSt) < 0) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "invalid status" })));
+    var tueWs = ss.getSheetByName(TAB_TOURNAMENT_EVENTS);
+    if (!tueWs) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no events" })));
+    var tueRows = tueWs.getDataRange().getValues(); var tueHdr = tueRows[0];
+    var tuec = function(n) { return tueHdr.indexOf(n); };
+    for (var tuei = 1; tuei < tueRows.length; tuei++) {
+      if (String(tueRows[tuei][tuec("event_id")]) !== tueId) continue;
+      tueWs.getRange(tuei + 1, tuec("status") + 1).setValue(tueSt);
+      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+    }
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "not found" })));
+  }
+
+  if (action === "tournament_update_reg") {
+    var turId = String(params.reg_id || "").trim();
+    var turField = String(params.field || "").trim();
+    var turValue = String(params.value || "").trim();
+    if (!turId || !turField) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing params" })));
+    if (["slip_status","status","note","checked_in_at"].indexOf(turField) < 0) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "invalid field" })));
+    var turWs = ss.getSheetByName(TAB_TOURNAMENT_REG);
+    if (!turWs) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no data" })));
+    var turRows = turWs.getDataRange().getValues(); var turHdr = turRows[0];
+    var turc = function(n) { return turHdr.indexOf(n); };
+    for (var turi = 1; turi < turRows.length; turi++) {
+      if (String(turRows[turi][turc("reg_id")]) !== turId) continue;
+      turWs.getRange(turi + 1, turc(turField) + 1).setValue(turValue);
+      if (turField === "slip_status" && turValue === "verified") {
+        var turUid = String(turRows[turi][turc("line_user_id")] || "");
+        var turPName = String(turRows[turi][turc("player_name")] || "");
+        var turSeq = Number(turRows[turi][turc("sequence_no")]) || 0;
+        var turEvId = String(turRows[turi][turc("event_id")] || "");
+        var turEvName = "", turEvDate = "";
+        var turEvWs = ss.getSheetByName(TAB_TOURNAMENT_EVENTS);
+        if (turEvWs) {
+          var turEvRows = turEvWs.getDataRange().getValues(); var turEvHdr = turEvRows[0];
+          var turec = function(n) { return turEvHdr.indexOf(n); };
+          for (var turej = 1; turej < turEvRows.length; turej++) {
+            if (String(turEvRows[turej][turec("event_id")]) === turEvId) {
+              turEvName = String(turEvRows[turej][turec("name")] || "");
+              turEvDate = String(turEvRows[turej][turec("date")] || ""); break;
+            }
+          }
+        }
+        if (turUid && turUid !== "dev_user") {
+          var turStatusUrl = "https://waka-liff.vercel.app/treg_status.html?id=" + encodeURIComponent(turId);
+          var turMsg = "✅ ยืนยันการชำระเงินแล้ว!\n"
+            + "ทัวร์นาเมนต์: " + turEvName + (turEvDate ? " — " + turEvDate : "") + "\n"
+            + "ลำดับที่: " + turSeq + " | ชื่อแข่ง: " + turPName
+            + "\n\n🔗 QR สำหรับวันงาน:\n" + turStatusUrl;
+          _linePush(turUid, turMsg);
+        }
+      }
+      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+    }
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "not found" })));
+  }
+
+  if (action === "tournament_export") {
+    var texEvId = String(params.event || "").trim();
+    var texWs = ss.getSheetByName(TAB_TOURNAMENT_REG);
+    var csvCols = ["reg_id","sequence_no","player_name","real_name","phone","facebook","payment_method","bank","slip_status","status","timestamp"];
+    var csv = "﻿" + csvCols.join(",") + "\n";
+    if (texWs) {
+      var texRows = texWs.getDataRange().getValues(); var texHdr = texRows[0];
+      var texrc = function(n) { return texHdr.indexOf(n); };
+      for (var texi = 1; texi < texRows.length; texi++) {
+        if (texEvId && String(texRows[texi][texrc("event_id")]) !== texEvId) continue;
+        var csvRow = csvCols.map(function(c) { return '"' + String(texRows[texi][texrc(c)] || "").replace(/"/g, '""') + '"'; });
+        csv += csvRow.join(",") + "\n";
+      }
+    }
+    return ContentService.createTextOutput(csv).setMimeType(ContentService.MimeType.CSV);
+  }
+
+  if (action === "tournament_lookup") {
+    var tluQ = String(params.q || params.id || "").trim().toLowerCase();
+    if (!tluQ) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing query" })));
+    var tluWs = ss.getSheetByName(TAB_TOURNAMENT_REG);
+    if (!tluWs) return _cors(ContentService.createTextOutput(JSON.stringify({ players: [] })));
+    var tluRows = tluWs.getDataRange().getValues(); var tluHdr = tluRows[0];
+    var tlurc = function(n) { return tluHdr.indexOf(n); };
+    var tluFound = [];
+    for (var tlui = 1; tlui < tluRows.length; tlui++) {
+      if (String(tluRows[tlui][tlurc("reg_id")] || "").toLowerCase().indexOf(tluQ) >= 0
+          || String(tluRows[tlui][tlurc("player_name")] || "").toLowerCase().indexOf(tluQ) >= 0
+          || String(tluRows[tlui][tlurc("real_name")] || "").toLowerCase().indexOf(tluQ) >= 0) {
+        tluFound.push({
+          reg_id: String(tluRows[tlui][tlurc("reg_id")] || ""),
+          sequence_no: Number(tluRows[tlui][tlurc("sequence_no")]) || 0,
+          player_name: String(tluRows[tlui][tlurc("player_name")] || ""),
+          real_name: String(tluRows[tlui][tlurc("real_name")] || ""),
+          phone: String(tluRows[tlui][tlurc("phone")] || ""),
+          event_id: String(tluRows[tlui][tlurc("event_id")] || ""),
+          slip_status: String(tluRows[tlui][tlurc("slip_status")] || ""),
+          status: String(tluRows[tlui][tlurc("status")] || ""),
+          checked_in_at: String(tluRows[tlui][tlurc("checked_in_at")] || ""),
+        });
+      }
+    }
+    return _cors(ContentService.createTextOutput(JSON.stringify({ players: tluFound.slice(0, 20) })));
   }
 
   return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unknown action" })));

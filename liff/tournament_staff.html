@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WAKA — ผู้สมัครทัวร์</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #e7e5df; --card-bg: #fff; --card-shadow: 0 24px 60px rgba(40,38,34,.18);
+      --card-border: #ddd9d2; --accent: #111740; --text-primary: #1a1a1a; --text-secondary: #666;
+      --green: #06c755; --orange: #d97706; --red: #d64545; --label: #a8a8a8;
+      --input-bg: #f5f5f5; --field-radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Anuphan','Space Grotesk',sans-serif; background: var(--bg); color: var(--text-primary); font-size: 14px; min-height: 100vh; }
+    .wrapper { max-width: 540px; margin: 0 auto; padding: 16px 14px 60px; }
+    .top-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding-top: 6px; }
+    .top-bar h1 { font-size: 17px; font-weight: 700; flex: 1; }
+    .back-link { font-size: 13px; color: var(--text-secondary); text-decoration: none; }
+    .card { background: var(--card-bg); border-radius: 14px; box-shadow: var(--card-shadow); border: 1px solid var(--card-border); padding: 16px; margin-bottom: 12px; }
+    select, input[type="text"] {
+      width: 100%; padding: 11px 13px; border: 1px solid var(--card-border);
+      border-radius: var(--field-radius); background: var(--input-bg);
+      font-size: 14px; font-family: inherit;
+    }
+    select:focus, input:focus { outline: none; border-color: var(--accent); }
+    .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .toolbar select { flex: 1; min-width: 180px; }
+    .btn { padding: 10px 16px; border-radius: var(--field-radius); border: none; font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer; }
+    .btn-export { background: var(--accent); color: #fff; }
+    .btn-refresh { background: var(--input-bg); color: var(--text-primary); border: 1px solid var(--card-border); }
+
+    .search-bar { position: relative; margin-top: 10px; }
+    .search-bar input { padding-left: 34px; }
+    .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--label); font-size: 15px; }
+
+    .stats-row { display: flex; gap: 10px; margin-bottom: 10px; }
+    .stat-chip { flex: 1; text-align: center; background: var(--input-bg); border-radius: 10px; padding: 10px 6px; }
+    .stat-chip .sv { font-family: 'Space Grotesk',sans-serif; font-size: 22px; font-weight: 700; color: var(--accent); }
+    .stat-chip .sl { font-size: 10px; color: var(--text-secondary); margin-top: 2px; }
+
+    .player-row { border-radius: 10px; background: var(--input-bg); padding: 12px 14px; margin-bottom: 8px; }
+    .player-row .pr-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+    .player-row .pr-seq { font-family: 'Space Grotesk',sans-serif; font-size: 18px; font-weight: 700; color: var(--accent); min-width: 28px; }
+    .player-row .pr-name { font-weight: 600; font-size: 14px; flex: 1; }
+    .player-row .pr-real { font-size: 12px; color: var(--text-secondary); }
+    .player-row .pr-meta { font-size: 11px; color: var(--text-secondary); margin-bottom: 8px; }
+    .pr-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+
+    .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .badge.pending { background: #fff8e1; color: var(--orange); border: 1px solid #ffe082; }
+    .badge.verified { background: #f0fbf4; color: var(--green); border: 1px solid #a5d6a7; }
+    .badge.rejected { background: #fef2f2; color: var(--red); border: 1px solid #fca5a5; }
+    .badge.cash { background: #f5f5f5; color: #555; border: 1px solid #ddd; }
+
+    .action-btn { padding: 5px 12px; border-radius: 8px; border: 1.5px solid; font-size: 11px; font-weight: 600; font-family: inherit; cursor: pointer; background: transparent; }
+    .action-btn.verify { border-color: var(--green); color: var(--green); }
+    .action-btn.reject { border-color: var(--red); color: var(--red); }
+    .action-btn.slip-view { border-color: var(--accent); color: var(--accent); }
+
+    .slip-img-wrap { margin-top: 10px; display: none; }
+    .slip-img-wrap img { max-width: 100%; border-radius: 8px; }
+
+    .empty { text-align: center; padding: 40px 20px; color: var(--text-secondary); font-size: 13px; }
+    .loading { text-align: center; padding: 30px; color: var(--text-secondary); }
+    .spinner { border: 2px solid #ddd9d2; border-top-color: var(--accent); border-radius: 50%; width: 24px; height: 24px; animation: spin .8s linear infinite; display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .filter-tabs { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+    .ftab { padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1.5px solid var(--card-border); background: var(--input-bg); cursor: pointer; }
+    .ftab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  </style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="top-bar">
+    <a class="back-link" href="menu.html">← เมนู</a>
+    <h1>🏆 ผู้สมัครทัวร์</h1>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <select id="evSelect" onchange="loadPlayers()">
+        <option value="">กำลังโหลด...</option>
+      </select>
+      <button class="btn btn-refresh" onclick="loadPlayers()">🔄</button>
+      <button class="btn btn-export" onclick="exportCSV()">⬇ CSV</button>
+    </div>
+    <div class="search-bar">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="searchInput" placeholder="ค้นหาชื่อ / รหัส..." oninput="filterPlayers()" />
+    </div>
+    <div class="filter-tabs">
+      <div class="ftab active" data-f="all" onclick="setFilter('all')">ทั้งหมด</div>
+      <div class="ftab" data-f="pending" onclick="setFilter('pending')">⏳ รอตรวจ</div>
+      <div class="ftab" data-f="verified" onclick="setFilter('verified')">✅ ยืนยัน</div>
+      <div class="ftab" data-f="cash" onclick="setFilter('cash')">💵 เงินสด</div>
+    </div>
+  </div>
+
+  <div id="statsRow" class="stats-row" style="display:none">
+    <div class="stat-chip"><div class="sv" id="statTotal">0</div><div class="sl">ทั้งหมด</div></div>
+    <div class="stat-chip"><div class="sv" id="statPending">0</div><div class="sl">รอตรวจ</div></div>
+    <div class="stat-chip"><div class="sv" id="statVerified">0</div><div class="sl">ยืนยัน</div></div>
+    <div class="stat-chip"><div class="sv" id="statCash">0</div><div class="sl">เงินสด</div></div>
+  </div>
+
+  <div id="playerList"><div class="loading"><span class="spinner"></span></div></div>
+</div>
+
+<script>
+const WAKA_S = "wk26xK9mPqRt";
+const G = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec?_s=" + WAKA_S;
+
+let allPlayers = [], currentFilter = "all";
+
+async function init() {
+  try {
+    var res = await fetch(G + "&action=api&do=tournament_events&_t=" + Date.now());
+    var d = await res.json();
+    var events = d.events || [];
+    var sel = document.getElementById("evSelect");
+    if (!events.length) { sel.innerHTML = '<option value="">ยังไม่มีทัวร์นาเมนต์</option>'; return; }
+    sel.innerHTML = events.map(function(e) {
+      return '<option value="' + esc(e.event_id) + '">' + esc(e.name) + ' (' + esc(e.date || "") + ')' + (e.status !== "open" ? " [" + e.status + "]" : "") + '</option>';
+    }).join("");
+    loadPlayers();
+  } catch(e) {
+    document.getElementById("playerList").innerHTML = '<div class="empty">โหลดไม่ได้: ' + esc(e.message) + '</div>';
+  }
+}
+
+async function loadPlayers() {
+  var evId = document.getElementById("evSelect").value;
+  if (!evId) return;
+  document.getElementById("playerList").innerHTML = '<div class="loading"><span class="spinner"></span></div>';
+  try {
+    var res = await fetch(G + "&action=api&do=tournament_list&event=" + encodeURIComponent(evId) + "&_t=" + Date.now());
+    var d = await res.json();
+    allPlayers = (d.players || []).filter(function(p) { return p.status !== "cancelled"; });
+    allPlayers.sort(function(a, b) { return (a.sequence_no || 0) - (b.sequence_no || 0); });
+    updateStats();
+    filterPlayers();
+    document.getElementById("statsRow").style.display = "flex";
+  } catch(e) {
+    document.getElementById("playerList").innerHTML = '<div class="empty">โหลดไม่ได้: ' + esc(e.message) + '</div>';
+  }
+}
+
+function updateStats() {
+  document.getElementById("statTotal").textContent = allPlayers.length;
+  document.getElementById("statPending").textContent = allPlayers.filter(function(p) { return p.slip_status === "pending"; }).length;
+  document.getElementById("statVerified").textContent = allPlayers.filter(function(p) { return p.slip_status === "verified"; }).length;
+  document.getElementById("statCash").textContent = allPlayers.filter(function(p) { return p.slip_status === "cash"; }).length;
+}
+
+function setFilter(f) {
+  currentFilter = f;
+  document.querySelectorAll(".ftab").forEach(function(el) { el.classList.toggle("active", el.dataset.f === f); });
+  filterPlayers();
+}
+
+function filterPlayers() {
+  var q = document.getElementById("searchInput").value.toLowerCase();
+  var filtered = allPlayers.filter(function(p) {
+    var matchFilter = currentFilter === "all" || p.slip_status === currentFilter;
+    var matchQ = !q || (p.player_name || "").toLowerCase().indexOf(q) >= 0
+      || (p.real_name || "").toLowerCase().indexOf(q) >= 0
+      || (p.reg_id || "").toLowerCase().indexOf(q) >= 0
+      || (p.phone || "").indexOf(q) >= 0;
+    return matchFilter && matchQ;
+  });
+  renderPlayers(filtered);
+}
+
+function renderPlayers(players) {
+  var el = document.getElementById("playerList");
+  if (!players.length) { el.innerHTML = '<div class="empty">ไม่พบข้อมูล</div>'; return; }
+  var html = "";
+  for (var i = 0; i < players.length; i++) {
+    var p = players[i];
+    var ss = p.slip_status || "pending";
+    var bClass = { pending: "pending", verified: "verified", rejected: "rejected", cash: "cash" }[ss] || "pending";
+    var bLabel = { pending: "⏳ รอตรวจ", verified: "✅ ยืนยัน", rejected: "❌ ไม่ผ่าน", cash: "💵 เงินสด" }[ss] || ss;
+    var pm = p.payment_method === "cash" ? "💵 เงินสด" : "📱 " + (p.bank || "โอน");
+    var regIdSafe = (p.reg_id || "").replace(/'/g, "\\'");
+
+    html += '<div class="player-row" id="pr_' + esc(p.reg_id) + '">';
+    html += '<div class="pr-head">';
+    html += '<div class="pr-seq">' + (p.sequence_no || "—") + '</div>';
+    html += '<div style="flex:1"><div class="pr-name">' + esc(p.player_name || "—") + '</div>';
+    html += '<div class="pr-real">' + esc(p.real_name || "") + ' | ' + esc(p.phone || "") + (p.facebook ? ' | ' + esc(p.facebook) : '') + '</div></div>';
+    html += '<span class="badge ' + bClass + '">' + bLabel + '</span>';
+    html += '</div>';
+    html += '<div class="pr-meta">' + pm + ' · ' + esc(p.timestamp ? p.timestamp.substring(0, 16).replace("T", " ") : "") + '</div>';
+    html += '<div class="pr-actions">';
+    if (ss === "pending") {
+      html += '<button class="action-btn verify" onclick="updateSlip(\'' + regIdSafe + '\',\'verified\')">✅ ยืนยัน</button>';
+      html += '<button class="action-btn reject" onclick="updateSlip(\'' + regIdSafe + '\',\'rejected\')">❌ ไม่ผ่าน</button>';
+    }
+    if (ss !== "cash" && p.slip_url) {
+      html += '<button class="action-btn slip-view" onclick="toggleSlip(\'' + esc(p.reg_id) + '\')">🧾 ดูสลิป</button>';
+    }
+    html += '</div>';
+    if (p.slip_url) {
+      html += '<div class="slip-img-wrap" id="slip_' + esc(p.reg_id) + '"><img src="' + esc(p.slip_url) + '" loading="lazy" /></div>';
+    }
+    html += '</div>';
+  }
+  el.innerHTML = html;
+}
+
+function toggleSlip(regId) {
+  var el = document.getElementById("slip_" + regId);
+  if (!el) return;
+  el.style.display = el.style.display === "block" ? "none" : "block";
+}
+
+async function updateSlip(regId, value) {
+  var labels = { verified: "ยืนยัน", rejected: "ไม่ผ่าน" };
+  if (!confirm("เปลี่ยนสถานะสลิปเป็น "" + (labels[value] || value) + "" ?")) return;
+  try {
+    var res = await fetch(G + "&action=api&do=tournament_update_reg&reg_id=" + encodeURIComponent(regId) + "&field=slip_status&value=" + encodeURIComponent(value));
+    var d = await res.json();
+    if (d.ok) {
+      for (var i = 0; i < allPlayers.length; i++) {
+        if (allPlayers[i].reg_id === regId) { allPlayers[i].slip_status = value; break; }
+      }
+      updateStats();
+      filterPlayers();
+    } else {
+      alert(d.error || "เกิดข้อผิดพลาด");
+    }
+  } catch(e) { alert("เกิดข้อผิดพลาด: " + e.message); }
+}
+
+function exportCSV() {
+  var evId = document.getElementById("evSelect").value;
+  if (!evId) { alert("กรุณาเลือกทัวร์นาเมนต์ก่อน"); return; }
+  var url = G + "&action=api&do=tournament_export&event=" + encodeURIComponent(evId);
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = "tournament_" + evId + ".csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function esc(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+// Auth guard — must pass through menu.html PIN first
+if (sessionStorage.getItem("waka_portal_auth") !== "1" && sessionStorage.getItem("waka_tstaff_auth") !== "1") {
+  location.replace("menu.html");
+} else {
+  init();
+}
+</script>
+</body>
+</html>

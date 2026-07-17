@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WAKA — ลงทะเบียนทัวร์นาเมนต์</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://static.line-scdn.net/liff/edge/versions/2.22.3/sdk.js"></script>
+  <style>
+    :root {
+      --bg: #e7e5df; --card-bg: #fff;
+      --card-shadow: 0 24px 60px rgba(40,38,34,.18);
+      --card-border: #ddd9d2; --accent: #111740; --accent-hover: #222;
+      --label: #a8a8a8; --input-bg: #f5f5f5; --field-radius: 14px;
+      --red: #d64545; --white: #fff; --pill-border: #e3e3e3;
+      --dashed: #d2d2d2; --text-primary: #1a1a1a; --text-secondary: #666;
+      --green: #06c755; --orange: #d97706;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Anuphan','Space Grotesk',sans-serif; background: var(--bg); color: var(--text-primary); font-size: 14px; min-height: 100vh; }
+    #loadingState { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
+    .spinner { border: 2px solid #ddd9d2; border-top-color: var(--accent); border-radius: 50%; width: 32px; height: 32px; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-txt { font-size: 12px; color: var(--label); margin-top: 12px; }
+    .wrapper { max-width: 420px; margin: 0 auto; padding: 0 16px 40px; }
+    .header-bar { text-align: center; padding: 20px 0 16px; }
+    .header-bar h1 { font-family: 'Space Grotesk',sans-serif; font-size: 20px; font-weight: 700; }
+    .header-bar .ev-date { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+    .ev-fee { display: inline-block; background: var(--accent); color: #fff; padding: 4px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-top: 8px; }
+    .card { background: var(--card-bg); border-radius: 14px; box-shadow: var(--card-shadow); border: 1px solid var(--card-border); padding: 20px; margin-bottom: 14px; }
+    .section-label { font-family: 'Space Grotesk',sans-serif; font-size: 11px; font-weight: 600; color: var(--label); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+    .separator { border: none; border-top: 1px solid var(--card-border); margin: 18px 0; }
+    .field-label { display: block; font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 6px; }
+    .field-label .req { color: var(--red); }
+    input[type="text"], input[type="tel"], textarea, select {
+      width: 100%; padding: 13px 15px; border: 1px solid var(--card-border);
+      border-radius: var(--field-radius); background: var(--input-bg);
+      font-size: 14px; font-family: inherit; margin-bottom: 14px;
+    }
+    textarea { resize: none; height: 70px; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    .profile-card { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .profile-card img { width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--card-border); }
+    .profile-card .name { font-weight: 600; font-size: 15px; }
+    .pay-group { display: flex; gap: 10px; margin-bottom: 14px; }
+    .pay-btn { flex: 1; padding: 12px 8px; border: 2px solid var(--card-border); border-radius: var(--field-radius); background: var(--white); text-align: center; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 600; }
+    .pay-btn.selected { border-color: var(--accent); background: #f0f0fa; }
+    .bank-card { background: var(--input-bg); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; }
+    .bank-detail { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+    .bank-account-num { font-family: 'Space Grotesk',sans-serif; font-size: 16px; font-weight: 700; letter-spacing: .06em; }
+    .copy-btn { font-family: 'Space Grotesk',sans-serif; font-size: 11px; font-weight: 600; color: var(--accent); background: var(--white); border: 1px solid var(--pill-border); border-radius: 20px; padding: 4px 12px; cursor: pointer; }
+    .slip-box { border: 1.5px dashed var(--dashed); border-radius: 14px; padding: 22px; text-align: center; cursor: pointer; color: var(--label); margin-bottom: 16px; }
+    .slip-box:hover { border-color: var(--accent); }
+    .slip-box input { display: none; }
+    #slipPreview { max-width: 100%; border-radius: 10px; margin-top: 12px; display: none; }
+    .fee-summary { background: var(--input-bg); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; text-align: center; }
+    .fee-amount { font-family: 'Space Grotesk',sans-serif; font-size: 26px; font-weight: 700; color: var(--accent); }
+    .fee-label { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+    .confirm-btn { width: 100%; padding: 16px; background: var(--accent); color: var(--white); border: none; border-radius: var(--field-radius); font-size: 16px; font-weight: 600; font-family: inherit; cursor: pointer; }
+    .confirm-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .rules-box { background: var(--input-bg); border-radius: 12px; padding: 14px 16px; font-size: 13px; color: var(--text-secondary); line-height: 1.7; white-space: pre-wrap; }
+    .closed-box { text-align: center; padding: 40px 20px; }
+    .closed-box .icon { font-size: 48px; margin-bottom: 12px; }
+    .closed-box h2 { font-size: 18px; margin-bottom: 6px; }
+    .closed-box p { font-size: 13px; color: var(--text-secondary); }
+    .count-bar { font-size: 12px; color: var(--text-secondary); text-align: right; margin-bottom: 4px; }
+    .count-bar b { color: var(--text-primary); }
+    .optional-tag { font-size: 10px; color: var(--label); font-weight: 400; }
+  </style>
+</head>
+<body>
+<div id="loadingState"><div class="spinner"></div><div class="loading-txt">กำลังโหลด...</div></div>
+
+<div id="mainContent" style="display:none">
+  <div class="wrapper">
+    <div class="header-bar">
+      <h1 id="evName">🏆 WAKA Tournament</h1>
+      <div class="ev-date" id="evDate"></div>
+      <div id="evFee"></div>
+    </div>
+
+    <!-- Closed -->
+    <div id="closedView" style="display:none">
+      <div class="card"><div class="closed-box">
+        <div class="icon">🔒</div>
+        <h2>ปิดรับสมัครแล้ว</h2>
+        <p id="closedReason">ขอบคุณทุกท่านที่สนใจเข้าร่วม</p>
+      </div></div>
+    </div>
+
+    <!-- Form -->
+    <div id="regForm" style="display:none">
+      <div class="card">
+        <div class="profile-card">
+          <img id="profileImg" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='44'%3E%3Crect fill='%23ddd' width='44' height='44' rx='22'/%3E%3C/svg%3E" />
+          <div><div class="name" id="profileName">—</div><div style="font-size:11px;color:var(--label)">บัญชี LINE</div></div>
+        </div>
+        <div class="separator" style="margin-top:0"></div>
+
+        <div class="section-label">ข้อมูลผู้สมัคร</div>
+        <label class="field-label">ชื่อจริง <span class="req">*</span></label>
+        <input type="text" id="realName" placeholder="ชื่อ-นามสกุล" />
+        <label class="field-label">ชื่อแข่ง / Nickname <span class="req">*</span></label>
+        <input type="text" id="playerName" placeholder="ชื่อที่ใช้ในการแข่ง" />
+        <label class="field-label">เบอร์โทร <span class="req">*</span></label>
+        <input type="tel" id="phone" placeholder="0xx-xxx-xxxx" maxlength="10" />
+        <label class="field-label">Facebook <span class="optional-tag">(ไม่บังคับ)</span></label>
+        <input type="text" id="facebook" placeholder="facebook.com/yourname หรือ ชื่อ FB" />
+
+        <div class="separator"></div>
+        <div class="section-label">วิธีจ่ายเงิน</div>
+        <div class="pay-group">
+          <div class="pay-btn selected" id="payTransfer" onclick="selectPay('transfer')">📱 โอนเงิน</div>
+          <div class="pay-btn" id="payCash" onclick="selectPay('cash')">💵 เงินสด</div>
+        </div>
+        <div id="transferSection">
+          <label class="field-label">โอนผ่านธนาคาร <span class="req">*</span></label>
+          <select id="bankSelect">
+            <option value="">-- เลือกธนาคาร --</option>
+            <option value="แม่มณี">แม่มณี</option>
+            <option value="SCB">SCB</option>
+            <option value="KBANK">KBANK</option>
+          </select>
+          <div class="bank-card" id="bankInfo"><div class="bank-detail">กำลังโหลด...</div></div>
+          <div class="slip-box" onclick="document.getElementById('slipInput').click()">
+            <input type="file" id="slipInput" accept="image/*" onchange="previewSlip(this)" />
+            <div id="slipPlaceholder"><span style="font-size:26px;display:block;margin-bottom:6px">📸</span><span style="font-size:13px">กดเพื่อแนบสลิป</span></div>
+            <img id="slipPreview" />
+          </div>
+        </div>
+
+        <div class="fee-summary" id="feeSummary">
+          <div class="fee-amount" id="feeAmt">—</div>
+          <div class="fee-label">ค่าสมัครต่อคน</div>
+        </div>
+
+        <div id="countBar" class="count-bar"></div>
+        <button class="confirm-btn" id="submitBtn" onclick="submitRegistration()">ลงทะเบียน</button>
+      </div>
+
+      <div id="rulesCard" style="display:none">
+        <div class="card">
+          <div class="section-label">กติกา / รายละเอียด</div>
+          <div class="rules-box" id="rulesText"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const LIFF_ID = "2010457385-UpJLXxJ0";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec";
+
+const params = new URLSearchParams(location.search);
+const eventId = params.get("event") || "";
+let lineProfile = {}, slipBase64 = null, paymentMethod = "transfer", eventInfo = null;
+
+async function init() {
+  if (!eventId) { showError("ไม่พบรหัสทัวร์นาเมนต์ — ลิงค์ไม่ถูกต้อง"); return; }
+  try {
+    await liff.init({ liffId: LIFF_ID });
+    if (!liff.isLoggedIn()) { liff.login({ redirectUri: window.location.href }); return; }
+    lineProfile = await liff.getProfile();
+  } catch(e) {
+    showError("กรุณาเปิดลิงค์นี้ผ่าน LINE เท่านั้น");
+    return;
+  }
+  document.getElementById("profileName").textContent = lineProfile.displayName || "—";
+  if (lineProfile.pictureUrl) document.getElementById("profileImg").src = lineProfile.pictureUrl;
+
+  document.getElementById("loadingState").style.display = "none";
+  document.getElementById("mainContent").style.display = "block";
+
+  try {
+    var [evRes, cfgRes] = await Promise.all([
+      fetch(GAS_URL + "&action=api&do=tournament_status&event=" + encodeURIComponent(eventId) + "&line_user_id=" + encodeURIComponent(lineProfile.userId) + "&_t=" + Date.now()),
+      fetch(GAS_URL)
+    ]);
+    var evData = await evRes.json();
+    var cfgData = await cfgRes.json();
+
+    if (evData.error === "event not found") { showError("ไม่พบทัวร์นาเมนต์นี้"); return; }
+    if (evData.error) { showError(evData.error); return; }
+
+    eventInfo = evData;
+    document.getElementById("evName").textContent = "🏆 " + (evData.name || "WAKA Tournament");
+    if (evData.date) document.getElementById("evDate").textContent = "📅 " + evData.date;
+    if (evData.entry_fee) document.getElementById("evFee").innerHTML = '<span class="ev-fee">ค่าสมัคร ' + Number(evData.entry_fee).toLocaleString() + ' บาท</span>';
+    if (evData.rules_text) {
+      document.getElementById("rulesText").textContent = evData.rules_text;
+      document.getElementById("rulesCard").style.display = "block";
+    }
+
+    var cfg = (cfgData.config || {});
+    renderBankInfo(cfg);
+
+    // Already registered
+    if (evData.already_registered && evData.existing_reg_id) {
+      window.location.href = "treg_status.html?id=" + encodeURIComponent(evData.existing_reg_id);
+      return;
+    }
+
+    // Closed / full
+    if (evData.status !== "open") {
+      document.getElementById("closedView").style.display = "block";
+      var reason = evData.status === "completed" ? "การแข่งขันจบแล้ว" : evData.status === "draft" ? "ยังไม่เปิดรับสมัคร" : "ปิดรับสมัครแล้ว";
+      document.getElementById("closedReason").textContent = reason;
+      return;
+    }
+    if (evData.max_players > 0 && evData.current_count >= evData.max_players) {
+      document.getElementById("closedView").style.display = "block";
+      document.getElementById("closedReason").textContent = "ผู้สมัครครบจำนวนแล้ว (" + evData.current_count + "/" + evData.max_players + " คน)";
+      return;
+    }
+
+    document.getElementById("feeAmt").textContent = (evData.entry_fee || 0).toLocaleString() + " .-";
+    updateCountBar(evData.current_count, evData.max_players);
+    document.getElementById("regForm").style.display = "block";
+  } catch(e) {
+    showError("โหลดข้อมูลไม่ได้: " + e.message);
+  }
+}
+
+function updateCountBar(cur, max) {
+  var el = document.getElementById("countBar");
+  if (!max) { el.textContent = "ผู้สมัครแล้ว: " + cur + " คน"; }
+  else { el.innerHTML = "ผู้สมัครแล้ว: <b>" + cur + "/" + max + " คน</b>"; }
+}
+
+function renderBankInfo(cfg) {
+  var acct = cfg.bank_account || "", name = cfg.bank_account_name || "";
+  if (!acct) { document.getElementById("bankInfo").innerHTML = '<div class="bank-detail">PromptPay / โอนเงิน</div>'; return; }
+  document.getElementById("bankInfo").innerHTML =
+    '<div class="bank-detail">' + esc(name) + '</div>' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-top:4px">' +
+    '<span class="bank-account-num">' + esc(acct) + '</span>' +
+    '<button class="copy-btn" onclick="event.stopPropagation();navigator.clipboard.writeText(\'' + esc(acct) + '\')">COPY</button></div>';
+}
+
+function selectPay(m) {
+  paymentMethod = m;
+  document.getElementById("payTransfer").classList.toggle("selected", m === "transfer");
+  document.getElementById("payCash").classList.toggle("selected", m === "cash");
+  document.getElementById("transferSection").style.display = m === "transfer" ? "block" : "none";
+}
+
+function previewSlip(input) {
+  var file = input.files[0]; if (!file) return;
+  resizeImage(file, 800, 0.9, function(d) {
+    document.getElementById("slipPreview").src = d;
+    document.getElementById("slipPreview").style.display = "block";
+    document.getElementById("slipPlaceholder").style.display = "none";
+    slipBase64 = d.split(",")[1];
+  });
+}
+function resizeImage(file, ms, q, cb) {
+  var r = new FileReader(); r.onload = function(e) {
+    var img = new Image(); img.onload = function() {
+      var w = img.width, h = img.height;
+      if (w > ms || h > ms) { if (w > h) { h = Math.round(h*ms/w); w = ms; } else { w = Math.round(w*ms/h); h = ms; } }
+      var c = document.createElement("canvas"); c.width = w; c.height = h;
+      var ctx = c.getContext("2d"); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(img, 0, 0, w, h);
+      var result = c.toDataURL("image/jpeg", q);
+      if (result.length > 500000) result = c.toDataURL("image/jpeg", 0.7);
+      cb(result);
+    }; img.src = e.target.result;
+  }; r.readAsDataURL(file);
+}
+
+async function submitRegistration() {
+  var realName = document.getElementById("realName").value.trim();
+  var playerName = document.getElementById("playerName").value.trim();
+  var phone = document.getElementById("phone").value.trim();
+  var facebook = document.getElementById("facebook").value.trim();
+  if (!realName) { alert("กรุณากรอกชื่อจริง"); return; }
+  if (!playerName) { alert("กรุณากรอกชื่อแข่ง"); return; }
+  if (!phone) { alert("กรุณากรอกเบอร์โทร"); return; }
+  if (paymentMethod === "transfer" && !document.getElementById("bankSelect").value) { alert("กรุณาเลือกธนาคาร"); return; }
+
+  var btn = document.getElementById("submitBtn");
+  btn.disabled = true; btn.textContent = "กำลังส่ง...";
+  try {
+    var res = await fetch(GAS_URL, { method: "POST", body: JSON.stringify({
+      _action: "tournamentRegister",
+      eventId: eventId,
+      lineUserId: lineProfile.userId,
+      displayName: lineProfile.displayName,
+      realName: realName, playerName: playerName,
+      phone: phone, facebook: facebook,
+      paymentMethod: paymentMethod,
+      bank: paymentMethod === "transfer" ? (document.getElementById("bankSelect").value || "") : "",
+      slipBase64: paymentMethod === "transfer" ? (slipBase64 || null) : null,
+    })});
+    var data = await res.json();
+    if (data.success) {
+      window.location.href = "treg_status.html?id=" + encodeURIComponent(data.reg_id);
+    } else if (data.error === "already_registered") {
+      window.location.href = "treg_status.html?id=" + encodeURIComponent(data.reg_id);
+    } else if (data.error === "event_full") {
+      alert("ผู้สมัครครบแล้ว ไม่สามารถลงทะเบียนได้");
+    } else if (data.error === "registration closed") {
+      alert("ปิดรับสมัครแล้ว");
+    } else {
+      alert(data.error || "เกิดข้อผิดพลาด กรุณาลองใหม่");
+      btn.disabled = false; btn.textContent = "ลงทะเบียน";
+    }
+  } catch(e) {
+    alert("ส่งไม่ได้ ตรวจสอบ Internet แล้วลองใหม่");
+    btn.disabled = false; btn.textContent = "ลงทะเบียน";
+  }
+}
+
+function showError(msg) {
+  document.getElementById("loadingState").style.display = "none";
+  document.getElementById("mainContent").style.display = "block";
+  document.querySelector(".wrapper").innerHTML = '<div style="text-align:center;padding:60px 20px"><div style="font-size:40px;margin-bottom:12px">⚠️</div><div style="color:#d64545;font-size:14px">' + esc(msg) + '</div></div>';
+}
+function esc(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+init();
+</script>
+</body>
+</html>

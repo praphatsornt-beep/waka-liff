@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WAKA — สถานะการลงทะเบียน</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://static.line-scdn.net/liff/edge/versions/2.22.3/sdk.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+  <style>
+    :root {
+      --bg: #e7e5df; --card-bg: #fff;
+      --card-shadow: 0 24px 60px rgba(40,38,34,.18);
+      --card-border: #ddd9d2; --accent: #111740;
+      --text-primary: #1a1a1a; --text-secondary: #666;
+      --green: #06c755; --orange: #d97706; --red: #d64545;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Anuphan','Space Grotesk',sans-serif; background: var(--bg); color: var(--text-primary); font-size: 14px; min-height: 100vh; }
+    #loadingState { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
+    .spinner { border: 2px solid #ddd9d2; border-top-color: var(--accent); border-radius: 50%; width: 32px; height: 32px; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-txt { font-size: 12px; color: #a8a8a8; margin-top: 12px; }
+    .wrapper { max-width: 420px; margin: 0 auto; padding: 0 16px 40px; }
+    .header-bar { text-align: center; padding: 20px 0 16px; }
+    .header-bar h1 { font-size: 18px; font-weight: 700; }
+    .header-bar .ev-sub { font-size: 12px; color: var(--text-secondary); margin-top: 3px; }
+    .card { background: var(--card-bg); border-radius: 14px; box-shadow: var(--card-shadow); border: 1px solid var(--card-border); padding: 20px; margin-bottom: 14px; }
+
+    .seq-badge { display: flex; align-items: center; justify-content: center; margin: 16px auto; width: 80px; height: 80px; border-radius: 50%; background: var(--accent); color: #fff; }
+    .seq-badge .seq-num { font-family: 'Space Grotesk',sans-serif; font-size: 30px; font-weight: 700; }
+    .seq-label { text-align: center; font-size: 11px; color: var(--text-secondary); margin-top: 4px; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px; }
+
+    .info-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 9px 0; border-bottom: 1px solid var(--card-border); font-size: 13px; gap: 12px; }
+    .info-row:last-child { border-bottom: none; }
+    .info-row .ik { color: var(--text-secondary); flex-shrink: 0; }
+    .info-row .iv { font-weight: 500; text-align: right; }
+
+    .slip-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+    .slip-badge.pending { background: #fff8e1; color: var(--orange); border: 1px solid #ffe082; }
+    .slip-badge.verified { background: #f0fbf4; color: var(--green); border: 1px solid #a5d6a7; }
+    .slip-badge.rejected { background: #fef2f2; color: var(--red); border: 1px solid #fca5a5; }
+    .slip-badge.cash { background: #f5f5f5; color: #555; border: 1px solid #ddd; }
+
+    .qr-section { text-align: center; padding: 20px 0 8px; }
+    .qr-section .qr-hint { font-size: 12px; color: var(--text-secondary); margin-top: 10px; }
+    .qr-section .qr-hint b { color: var(--text-primary); }
+    .qr-section img { border-radius: 8px; }
+
+    .reg-id-display { font-family: 'Space Grotesk',sans-serif; font-size: 13px; font-weight: 600; color: var(--accent); text-align: center; margin-top: 8px; }
+
+    .close-btn { width: 100%; padding: 14px; background: transparent; color: var(--accent); border: 1.5px solid var(--accent); border-radius: 14px; font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer; }
+
+    .verified-banner { text-align: center; padding: 16px; background: #f0fbf4; border-radius: 12px; margin-bottom: 14px; }
+    .verified-banner h3 { color: var(--green); margin-bottom: 4px; font-size: 15px; }
+    .verified-banner p { color: var(--text-secondary); font-size: 12px; }
+
+    .hint-box { background: #fffbeb; border-radius: 12px; padding: 12px 16px; font-size: 12px; color: #92400e; line-height: 1.6; margin-top: 12px; }
+  </style>
+</head>
+<body>
+<div id="loadingState"><div class="spinner"></div><div class="loading-txt">กำลังโหลด...</div></div>
+
+<div id="mainContent" style="display:none">
+  <div class="wrapper">
+    <div class="header-bar">
+      <h1 id="evName">🏆 WAKA Tournament</h1>
+      <div class="ev-sub" id="evDate"></div>
+    </div>
+
+    <div class="card" id="statusCard">
+      <!-- seq badge -->
+      <div class="seq-badge"><div class="seq-num" id="seqNum">—</div></div>
+      <div class="seq-label">ลำดับที่สมัคร</div>
+
+      <div class="info-row"><span class="ik">ชื่อแข่ง</span><span class="iv" id="playerName">—</span></div>
+      <div class="info-row"><span class="ik">ชื่อจริง</span><span class="iv" id="realName">—</span></div>
+      <div class="info-row"><span class="ik">เบอร์โทร</span><span class="iv" id="phone">—</span></div>
+      <div id="fbRow" class="info-row" style="display:none"><span class="ik">Facebook</span><span class="iv" id="facebook">—</span></div>
+      <div class="info-row"><span class="ik">วิธีชำระ</span><span class="iv" id="payMethod">—</span></div>
+      <div class="info-row"><span class="ik">สถานะสลิป</span><span class="iv" id="slipStatus">—</span></div>
+    </div>
+
+    <div id="verifiedBanner" style="display:none" class="verified-banner">
+      <h3>✅ ยืนยันการชำระเงินแล้ว!</h3>
+      <p>นำ QR ด้านล่างยื่นให้ Staff วันงาน</p>
+    </div>
+
+    <div class="card">
+      <div class="qr-section">
+        <div id="qrCode"></div>
+        <div class="reg-id-display" id="regIdDisplay"></div>
+        <div class="qr-hint">ยื่น QR ให้ Staff วันงาน<br><b>อย่า screenshot ตัดขอบออก</b></div>
+      </div>
+      <div class="hint-box" id="pendingHint" style="display:none">⏳ รอ Staff ตรวจสลิป — จะได้รับแจ้งทาง LINE เมื่อยืนยันแล้ว</div>
+    </div>
+
+    <button class="close-btn" onclick="handleClose()">ปิดหน้าต่าง</button>
+  </div>
+</div>
+
+<script>
+const LIFF_ID = "2010457385-UpJLXxJ0";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec";
+const params = new URLSearchParams(location.search);
+const regId = params.get("id") || "";
+
+async function init() {
+  if (!regId) { showError("ไม่พบรหัสการลงทะเบียน"); return; }
+
+  try { await liff.init({ liffId: LIFF_ID }); } catch(_) {}
+
+  try {
+    var res = await fetch(GAS_URL + "&action=api&do=tournament_reg_status&id=" + encodeURIComponent(regId) + "&_t=" + Date.now());
+    var d = await res.json();
+    if (d.error) { showError(d.error === "not found" ? "ไม่พบการลงทะเบียนนี้" : d.error); return; }
+    render(d);
+  } catch(e) {
+    showError("โหลดไม่ได้: " + e.message);
+  }
+}
+
+function render(d) {
+  document.getElementById("loadingState").style.display = "none";
+  document.getElementById("mainContent").style.display = "block";
+
+  document.getElementById("evName").textContent = "🏆 " + (d.event_name || "WAKA Tournament");
+  if (d.event_date) document.getElementById("evDate").textContent = "📅 " + d.event_date;
+  document.getElementById("seqNum").textContent = d.sequence_no || "—";
+  document.getElementById("playerName").textContent = d.player_name || "—";
+  document.getElementById("realName").textContent = d.real_name || "—";
+  document.getElementById("phone").textContent = d.phone || "—";
+  if (d.facebook) {
+    document.getElementById("facebook").textContent = d.facebook;
+    document.getElementById("fbRow").style.display = "flex";
+  }
+
+  var pmMap = { transfer: "📱 โอนเงิน", cash: "💵 เงินสด" };
+  document.getElementById("payMethod").textContent = pmMap[d.payment_method] || d.payment_method || "—";
+
+  var ss = d.slip_status || "";
+  var slipHtml = "";
+  if (ss === "verified") slipHtml = '<span class="slip-badge verified">✅ ยืนยันแล้ว</span>';
+  else if (ss === "rejected") slipHtml = '<span class="slip-badge rejected">❌ ไม่ผ่าน</span>';
+  else if (ss === "cash") slipHtml = '<span class="slip-badge cash">💵 เงินสด</span>';
+  else slipHtml = '<span class="slip-badge pending">⏳ รอตรวจ</span>';
+  document.getElementById("slipStatus").innerHTML = slipHtml;
+
+  if (ss === "verified" || ss === "cash") {
+    document.getElementById("verifiedBanner").style.display = "block";
+  } else if (ss === "pending") {
+    document.getElementById("pendingHint").style.display = "block";
+  }
+
+  document.getElementById("regIdDisplay").textContent = d.reg_id || regId;
+  makeQR("qrCode", d.reg_id || regId);
+}
+
+function makeQR(id, text) {
+  var q = qrcode(0, "M"); q.addData(text); q.make();
+  document.getElementById(id).innerHTML = q.createImgTag(6, 16);
+}
+
+function handleClose() {
+  try { if (liff.isInClient()) { liff.closeWindow(); return; } } catch(_) {}
+  window.close();
+}
+
+function showError(msg) {
+  document.getElementById("loadingState").style.display = "none";
+  document.getElementById("mainContent").style.display = "block";
+  document.querySelector(".wrapper").innerHTML = '<div style="text-align:center;padding:60px 20px"><div style="font-size:40px;margin-bottom:12px">⚠️</div><div style="color:#d64545;font-size:14px">' + esc(msg) + '</div></div>';
+}
+function esc(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+init();
+</script>
+</body>
+</html>

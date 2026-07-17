@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WAKA — จัดการทัวร์นาเมนต์</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #e7e5df; --card-bg: #fff; --card-shadow: 0 24px 60px rgba(40,38,34,.18);
+      --card-border: #ddd9d2; --accent: #111740; --text-primary: #1a1a1a; --text-secondary: #666;
+      --green: #06c755; --orange: #d97706; --red: #d64545; --label: #a8a8a8;
+      --input-bg: #f5f5f5; --field-radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Anuphan','Space Grotesk',sans-serif; background: var(--bg); color: var(--text-primary); font-size: 14px; min-height: 100vh; }
+    .wrapper { max-width: 460px; margin: 0 auto; padding: 16px 16px 48px; }
+    .top-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding-top: 8px; }
+    .top-bar h1 { font-size: 18px; font-weight: 700; flex: 1; }
+    .back-link { font-size: 13px; color: var(--text-secondary); text-decoration: none; }
+    .card { background: var(--card-bg); border-radius: 14px; box-shadow: var(--card-shadow); border: 1px solid var(--card-border); padding: 20px; margin-bottom: 14px; }
+    .section-label { font-family: 'Space Grotesk',sans-serif; font-size: 11px; font-weight: 600; color: var(--label); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; }
+    .field-label { display: block; font-size: 12px; font-weight: 500; color: var(--text-secondary); margin-bottom: 6px; }
+    .optional { font-size: 10px; color: var(--label); font-weight: 400; }
+    input[type="text"], input[type="date"], input[type="number"], textarea, select {
+      width: 100%; padding: 12px 14px; border: 1px solid var(--card-border);
+      border-radius: var(--field-radius); background: var(--input-bg);
+      font-size: 14px; font-family: inherit; margin-bottom: 12px;
+    }
+    textarea { resize: none; height: 80px; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    .btn-primary { width: 100%; padding: 14px; background: var(--accent); color: #fff; border: none; border-radius: var(--field-radius); font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer; }
+    .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+
+    .ev-card { background: var(--input-bg); border-radius: 10px; padding: 14px; margin-bottom: 10px; }
+    .ev-card .ev-name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+    .ev-card .ev-meta { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
+    .ev-card .ev-link { font-family: 'Space Grotesk',sans-serif; font-size: 11px; color: var(--accent); word-break: break-all; background: #fff; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--card-border); display: block; margin-bottom: 8px; }
+    .ev-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .ev-actions button { padding: 6px 14px; border-radius: 8px; border: 1.5px solid; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; background: transparent; }
+    .btn-copy { border-color: var(--accent); color: var(--accent); }
+    .btn-open { border-color: var(--green); color: var(--green); }
+    .btn-close { border-color: var(--orange); color: var(--orange); }
+
+    .status-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .status-badge.open { background: #f0fbf4; color: var(--green); border: 1px solid #a5d6a7; }
+    .status-badge.closed { background: #fff8e1; color: var(--orange); border: 1px solid #ffe082; }
+    .status-badge.draft { background: #f5f5f5; color: #666; border: 1px solid #ddd; }
+    .status-badge.completed { background: #f0f0fa; color: #444; border: 1px solid #c5c5e0; }
+
+    .copy-success { display: none; font-size: 11px; color: var(--green); padding: 2px 6px; }
+    #newEvForm { display: none; }
+    .toggle-form-btn { width: 100%; padding: 12px; background: transparent; color: var(--accent); border: 1.5px dashed var(--card-border); border-radius: var(--field-radius); font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; margin-bottom: 14px; }
+    .toggle-form-btn:hover { border-color: var(--accent); }
+    #evList .empty { text-align: center; padding: 32px; color: var(--text-secondary); font-size: 13px; }
+    .loading-inline { text-align: center; padding: 20px; color: var(--text-secondary); font-size: 13px; }
+  </style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="top-bar">
+    <a class="back-link" href="menu.html">← เมนู</a>
+    <h1>🏆 จัดการทัวร์</h1>
+  </div>
+
+  <!-- Create form toggle -->
+  <button class="toggle-form-btn" onclick="toggleForm()">+ สร้างทัวร์นาเมนต์ใหม่</button>
+
+  <div class="card" id="newEvForm">
+    <div class="section-label">ข้อมูลทัวร์นาเมนต์</div>
+    <label class="field-label">ชื่องาน <span style="color:#d64545">*</span></label>
+    <input type="text" id="evName" placeholder="เช่น WAKA Summer Cup 2026" />
+    <label class="field-label">วันจัดงาน <span style="color:#d64545">*</span></label>
+    <input type="date" id="evDate" />
+    <label class="field-label">ค่าสมัคร (บาท)</label>
+    <input type="number" id="evFee" placeholder="0" min="0" />
+    <label class="field-label">จำนวนผู้สมัครสูงสุด <span class="optional">(0 = ไม่จำกัด)</span></label>
+    <input type="number" id="evMax" placeholder="0" min="0" />
+    <label class="field-label">วันปิดรับสมัคร <span class="optional">(ไม่บังคับ)</span></label>
+    <input type="date" id="evClose" />
+    <label class="field-label">กติกา / รายละเอียด <span class="optional">(แสดงในฟอร์มลูกค้า)</span></label>
+    <textarea id="evRules" placeholder="รายละเอียดการแข่งขัน กติกา รางวัล ฯลฯ"></textarea>
+    <button class="btn-primary" id="createBtn" onclick="createEvent()">สร้างทัวร์นาเมนต์</button>
+    <div id="createResult" style="margin-top:14px;display:none">
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px">ลิงค์ลงทะเบียน:</div>
+      <div id="newEvLink" class="ev-link" style="background:var(--input-bg);border-radius:8px;padding:10px;word-break:break-all;font-size:12px;color:var(--accent);border:1px solid var(--card-border)"></div>
+      <button class="btn-primary" style="margin-top:8px" onclick="copyNewLink()">📋 คัดลอกลิงค์</button>
+      <div id="copiedNew" class="copy-success" style="text-align:center;margin-top:6px">✅ คัดลอกแล้ว!</div>
+    </div>
+  </div>
+
+  <!-- Event list -->
+  <div class="card">
+    <div class="section-label">ทัวร์นาเมนต์ทั้งหมด</div>
+    <div id="evList" class="loading-inline">กำลังโหลด...</div>
+  </div>
+</div>
+
+<script>
+const WAKA_S = "wk26xK9mPqRt";
+const G = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec?_s=" + WAKA_S;
+let formOpen = false;
+
+function toggleForm() {
+  formOpen = !formOpen;
+  document.getElementById("newEvForm").style.display = formOpen ? "block" : "none";
+  document.querySelector(".toggle-form-btn").textContent = formOpen ? "✕ ยกเลิก" : "+ สร้างทัวร์นาเมนต์ใหม่";
+}
+
+async function loadEvents() {
+  try {
+    var res = await fetch(G + "&action=api&do=tournament_events&_t=" + Date.now());
+    var d = await res.json();
+    renderEvents(d.events || []);
+  } catch(e) {
+    document.getElementById("evList").innerHTML = '<div class="empty">โหลดไม่ได้: ' + esc(e.message) + '</div>';
+  }
+}
+
+function renderEvents(events) {
+  var el = document.getElementById("evList");
+  if (!events.length) { el.innerHTML = '<div class="empty">ยังไม่มีทัวร์นาเมนต์</div>'; return; }
+  var html = "";
+  for (var i = 0; i < events.length; i++) {
+    var ev = events[i];
+    var link = "https://waka-liff.vercel.app/treg.html?event=" + encodeURIComponent(ev.event_id);
+    var stClass = { open: "open", closed: "closed", draft: "draft", completed: "completed" }[ev.status] || "draft";
+    var stLabel = { open: "🟢 เปิดรับสมัคร", closed: "🟡 ปิดรับสมัคร", draft: "⚫ Draft", completed: "✅ จบแล้ว" }[ev.status] || ev.status;
+    html += '<div class="ev-card">';
+    html += '<div class="ev-name">' + esc(ev.name) + '</div>';
+    html += '<div class="ev-meta">📅 ' + esc(ev.date || "—") + (ev.entry_fee ? " · 💰 " + Number(ev.entry_fee).toLocaleString() + " บาท" : "") + (ev.max_players ? " · 👤 max " + ev.max_players : "") + '</div>';
+    html += '<span class="status-badge ' + stClass + '">' + stLabel + '</span>';
+    html += '<div style="margin-top:10px">';
+    html += '<div class="ev-link" id="link_' + i + '">' + link + '</div>';
+    html += '</div>';
+    html += '<div class="ev-actions">';
+    html += '<button class="btn-copy" onclick="copyLink(' + i + ',\'' + encodeURIComponent(link) + '\')">📋 คัดลอกลิงค์</button>';
+    html += '<span class="copy-success" id="cs_' + i + '">✅ คัดลอกแล้ว!</span>';
+    if (ev.status !== "open") html += '<button class="btn-open" onclick="updateStatus(\'' + esc(ev.event_id) + '\',\'open\')">เปิดรับสมัคร</button>';
+    if (ev.status === "open") html += '<button class="btn-close" onclick="updateStatus(\'' + esc(ev.event_id) + '\',\'closed\')">ปิดรับสมัคร</button>';
+    if (ev.status !== "completed") html += '<button style="border-color:#999;color:#999" onclick="updateStatus(\'' + esc(ev.event_id) + '\',\'completed\')">จบแล้ว</button>';
+    html += '</div></div>';
+  }
+  el.innerHTML = html;
+}
+
+function copyLink(idx, encodedLink) {
+  navigator.clipboard.writeText(decodeURIComponent(encodedLink)).then(function() {
+    var cs = document.getElementById("cs_" + idx);
+    if (cs) { cs.style.display = "inline"; setTimeout(function() { cs.style.display = "none"; }, 2000); }
+  });
+}
+
+async function updateStatus(evId, status) {
+  var labels = { open: "เปิดรับสมัคร", closed: "ปิดรับสมัคร", completed: "จบแล้ว" };
+  if (!confirm("เปลี่ยนสถานะเป็น "" + (labels[status] || status) + "" ?")) return;
+  try {
+    var res = await fetch(G + "&action=api&do=tournament_update_event&event=" + encodeURIComponent(evId) + "&status=" + encodeURIComponent(status));
+    var d = await res.json();
+    if (d.ok) loadEvents();
+    else alert(d.error || "เกิดข้อผิดพลาด");
+  } catch(e) { alert("เกิดข้อผิดพลาด: " + e.message); }
+}
+
+async function createEvent() {
+  var name = document.getElementById("evName").value.trim();
+  var date = document.getElementById("evDate").value.trim();
+  if (!name) { alert("กรุณากรอกชื่องาน"); return; }
+  if (!date) { alert("กรุณาเลือกวันจัดงาน"); return; }
+  var btn = document.getElementById("createBtn");
+  btn.disabled = true; btn.textContent = "กำลังสร้าง...";
+  try {
+    var url = G + "&action=api&do=tournament_create_event"
+      + "&name=" + encodeURIComponent(name)
+      + "&date=" + encodeURIComponent(date)
+      + "&entry_fee=" + encodeURIComponent(document.getElementById("evFee").value || "0")
+      + "&max_players=" + encodeURIComponent(document.getElementById("evMax").value || "0")
+      + "&registration_close=" + encodeURIComponent(document.getElementById("evClose").value || "")
+      + "&rules_text=" + encodeURIComponent(document.getElementById("evRules").value || "");
+    var res = await fetch(url);
+    var d = await res.json();
+    if (d.ok) {
+      document.getElementById("newEvLink").textContent = d.reg_link;
+      document.getElementById("newEvLink").dataset.link = d.reg_link;
+      document.getElementById("createResult").style.display = "block";
+      loadEvents();
+    } else {
+      alert(d.error || "เกิดข้อผิดพลาด");
+    }
+  } catch(e) { alert("เกิดข้อผิดพลาด: " + e.message); }
+  btn.disabled = false; btn.textContent = "สร้างทัวร์นาเมนต์";
+}
+
+function copyNewLink() {
+  var link = document.getElementById("newEvLink").dataset.link || document.getElementById("newEvLink").textContent;
+  navigator.clipboard.writeText(link).then(function() {
+    var el = document.getElementById("copiedNew");
+    el.style.display = "block"; setTimeout(function() { el.style.display = "none"; }, 2000);
+  });
+}
+
+function esc(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+loadEvents();
+</script>
+</body>
+</html>
