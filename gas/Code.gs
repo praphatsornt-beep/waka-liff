@@ -983,9 +983,14 @@ function handleTournamentRegister(data) {
       return _cors(ContentService.createTextOutput(JSON.stringify({ error: "event_full" })));
     }
 
-    var seqNo = currentCount + 1;
     var dateStr = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyyMMdd");
-    var regId = "TR-" + dateStr + "-" + (seqNo < 10 ? "00" : seqNo < 100 ? "0" : "") + seqNo;
+    var todayPrefix = "TR-" + dateStr + "-";
+    var todayCount = 0;
+    for (var ri2 = 1; ri2 < regRows.length; ri2++) {
+      if (String(regRows[ri2][rc("reg_id")] || "").indexOf(todayPrefix) === 0) todayCount++;
+    }
+    var seqNo = currentCount + 1;
+    var regId = todayPrefix + (todayCount + 1 < 10 ? "00" : todayCount + 1 < 100 ? "0" : "") + (todayCount + 1);
 
     var payMethod = data.paymentMethod || "transfer";
     var slipUrl = "";
