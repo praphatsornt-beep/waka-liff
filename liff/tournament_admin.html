@@ -108,12 +108,18 @@ function toggleForm() {
 }
 
 async function loadEvents() {
+  document.getElementById("evList").innerHTML = '<div class="loading-inline">กำลังโหลด...</div>';
+  var ctrl = new AbortController();
+  var timer = setTimeout(function() { ctrl.abort(); }, 15000);
   try {
-    var res = await fetch(G + "&action=api&do=tournament_events&_t=" + Date.now());
+    var res = await fetch(G + "&action=api&do=tournament_events&_t=" + Date.now(), { signal: ctrl.signal });
+    clearTimeout(timer);
     var d = await res.json();
     renderEvents(d.events || []);
   } catch(e) {
-    document.getElementById("evList").innerHTML = '<div class="empty">โหลดไม่ได้: ' + esc(e.message) + '</div>';
+    clearTimeout(timer);
+    var msg = ctrl.signal.aborted ? "GAS ตอบช้า กรุณาลองใหม่" : ("โหลดไม่ได้: " + esc(e.message));
+    document.getElementById("evList").innerHTML = '<div class="empty">' + msg + '<br><br><button onclick="loadEvents()" style="padding:8px 20px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-family:inherit;font-size:13px;cursor:pointer">🔄 ลองใหม่</button></div>';
   }
 }
 
@@ -168,7 +174,9 @@ async function createEvent() {
   if (!name) { alert("กรุณากรอกชื่องาน"); return; }
   if (!date) { alert("กรุณาเลือกวันจัดงาน"); return; }
   var btn = document.getElementById("createBtn");
-  btn.disabled = true; btn.textContent = "กำลังสร้าง...";
+  btn.disabled = true; btn.textContent = "⏳ กำลังสร้าง... (รอ GAS สักครู่)";
+  var ctrl = new AbortController();
+  var timer = setTimeout(function() { ctrl.abort(); }, 20000);
   try {
     var url = G + "&action=api&do=tournament_create_event"
       + "&name=" + encodeURIComponent(name)
@@ -177,7 +185,8 @@ async function createEvent() {
       + "&max_players=" + encodeURIComponent(document.getElementById("evMax").value || "0")
       + "&registration_close=" + encodeURIComponent(document.getElementById("evClose").value || "")
       + "&rules_text=" + encodeURIComponent(document.getElementById("evRules").value || "");
-    var res = await fetch(url);
+    var res = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(timer);
     var d = await res.json();
     if (d.ok) {
       document.getElementById("newEvLink").textContent = d.reg_link;
@@ -187,7 +196,10 @@ async function createEvent() {
     } else {
       alert(d.error || "เกิดข้อผิดพลาด");
     }
-  } catch(e) { alert("เกิดข้อผิดพลาด: " + e.message); }
+  } catch(e) {
+    clearTimeout(timer);
+    alert(ctrl.signal.aborted ? "GAS ตอบช้าเกินไป กรุณาลองกดสร้างใหม่อีกครั้ง" : ("เกิดข้อผิดพลาด: " + e.message));
+  }
   btn.disabled = false; btn.textContent = "สร้างทัวร์นาเมนต์";
 }
 
