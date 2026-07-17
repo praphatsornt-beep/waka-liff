@@ -703,6 +703,9 @@
         <input type="tel" id="phone" placeholder="0xx-xxx-xxxx" maxlength="10" oninput="validatePhoneInput()" />
         <div class="field-error" id="phoneError">กรุณากรอกเบอร์โทร 10 หลัก เริ่มต้นด้วย 0</div>
 
+        <label class="field-label">อีเมล <span style="font-size:11px;color:#aaa;font-weight:400">(ไม่บังคับ)</span></label>
+        <input type="email" id="email" placeholder="example@email.com" />
+
         <!-- Separator -->
         <div class="separator" style="margin-top:24px"></div>
 
@@ -1425,6 +1428,7 @@
 
     const realName = document.getElementById("realName").value.trim();
     const phone    = document.getElementById("phone").value.trim();
+    const email    = document.getElementById("email").value.trim();
     const address  = getBranch() === "จัดส่ง" ? getFullAddress() : "";
 
     if (!realName) { alert("กรุณากรอกชื่อ-นามสกุลจริง"); return; }
@@ -1453,6 +1457,7 @@
       branch:   getBranch(),
       realName,
       phone,
+      email:    email || "",
       address:  address || "",
       slipBase64: slipBase64 || null,
     };
@@ -1559,6 +1564,7 @@
     document.getElementById("phone").value = "";
     document.getElementById("phone").classList.remove("input-error");
     document.getElementById("phoneError").style.display = "none";
+    document.getElementById("email").value = "";
     document.getElementById("addrLine").value = "";
     document.getElementById("addrProv").value = "";
     document.getElementById("addrAmp").innerHTML = '<option value="">-- เลือกอำเภอ --</option>';
