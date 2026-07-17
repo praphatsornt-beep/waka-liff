@@ -897,6 +897,14 @@
     var page = p.get('page');
     var event = p.get('event');
     var liffState = p.get('liff.state') || '';
+
+    // Case 1: path-based liff.state (e.g. /treg.html?event=... from liff.login() return)
+    if (!page && !event && liffState && liffState.charAt(0) === '/') {
+      window.location.replace(liffState);
+      return;
+    }
+
+    // Case 2: query-based liff.state (?page=treg&event=...)
     if ((!page || !event) && liffState) {
       var qi = liffState.indexOf('?');
       if (qi >= 0) {
@@ -905,6 +913,7 @@
         event = event || sp.get('event');
       }
     }
+
     if (page === 'treg' && event) {
       window.location.replace('/treg.html?event=' + encodeURIComponent(event));
     }
