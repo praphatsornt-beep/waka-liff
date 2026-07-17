@@ -109,7 +109,7 @@
       <input type="number" id="evFee" placeholder="0" min="0" />
     </div>
 
-    <button class="btn-primary" id="createBtn" onclick="createEvent()">สร้างทัวร์นาเมนต์</button>
+    <button class="btn-primary" id="createBtn" onclick="submitCreateEvent()">สร้างทัวร์นาเมนต์</button>
     <div id="createResult" style="margin-top:14px;display:none">
       <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px">ลิงค์ลงทะเบียน:</div>
       <div id="newEvLink" class="ev-link" style="background:var(--input-bg);border-radius:8px;padding:10px;word-break:break-all;font-size:12px;color:var(--accent);border:1px solid var(--card-border)"></div>
@@ -243,7 +243,7 @@ async function updateStatus(evId, status) {
   } catch(e) { alert("เกิดข้อผิดพลาด: " + e.message); }
 }
 
-async function createEvent() {
+async function submitCreateEvent() {
   var name = document.getElementById("evName").value.trim();
   var date = document.getElementById("evDate").value.trim();
   if (!name) { alert("กรุณากรอกชื่องาน"); return; }
