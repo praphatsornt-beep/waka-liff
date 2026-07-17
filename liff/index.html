@@ -891,6 +891,25 @@
     return { product: prod || null, category: cat || null, slug: slug || null, all: all };
   })();
 
+  // ── Tournament page routing — before init() so adminPinOverlay never fires ────
+  (function() {
+    var p = new URLSearchParams(window.location.search);
+    var page = p.get('page');
+    var event = p.get('event');
+    var liffState = p.get('liff.state') || '';
+    if ((!page || !event) && liffState) {
+      var qi = liffState.indexOf('?');
+      if (qi >= 0) {
+        var sp = new URLSearchParams(liffState.slice(qi + 1));
+        page  = page  || sp.get('page');
+        event = event || sp.get('event');
+      }
+    }
+    if (page === 'treg' && event) {
+      window.location.replace('/treg.html?event=' + encodeURIComponent(event));
+    }
+  })();
+
   // ── Init ──────────────────────────────────────────────────────────────────────
   async function init() {
     // Access guard: require a specific filter — block direct URL access with no params

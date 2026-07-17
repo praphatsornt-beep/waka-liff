@@ -130,7 +130,7 @@ function renderEvents(events) {
   var html = "";
   for (var i = 0; i < events.length; i++) {
     var ev = events[i];
-    var link = "https://liff.line.me/2010457385-UpJLXxJ0?liff.state=" + encodeURIComponent("/treg.html?event=" + ev.event_id);
+    var link = "https://liff.line.me/2010457385-UpJLXxJ0?liff.state=" + encodeURIComponent("?page=treg&event=" + ev.event_id);
     var stClass = { open: "open", closed: "closed", draft: "draft", completed: "completed" }[ev.status] || "draft";
     var stLabel = { open: "🟢 เปิดรับสมัคร", closed: "🟡 ปิดรับสมัคร", draft: "⚫ Draft", completed: "✅ จบแล้ว" }[ev.status] || ev.status;
     html += '<div class="ev-card">';
