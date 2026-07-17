@@ -899,7 +899,14 @@
                        (_pathSlug && _pathSlug !== "index" && _pathSlug !== "");
     // Allow path-based liff.state (e.g. /treg.html?event=...) — LIFF SDK handles redirect after liff.init()
     const _rawLs = new URLSearchParams(window.location.search).get('liff.state') || '';
-    const _isLiffPath = _rawLs.charAt(0) === '/';
+    let _isLiffPath = _rawLs.charAt(0) === '/';
+    let _unwrappedPath = null;
+    if (!_isLiffPath && _rawLs.charAt(0) === '?') {
+      // Double-wrapped: Chrome browser OAuth causes liff.state to be encoded twice
+      // e.g. _rawLs = "?liff.state=%2Ftreg.html%3Fevent%3D..."
+      const _inner = new URLSearchParams(_rawLs.slice(1)).get('liff.state') || '';
+      if (_inner.charAt(0) === '/') { _isLiffPath = true; _unwrappedPath = _inner; }
+    }
     if (!_hasFilter && !_isLiffPath) {
       document.getElementById("loadingState").style.display = "none";
       const ov = document.getElementById("adminPinOverlay");
@@ -907,6 +914,8 @@
       setTimeout(() => document.getElementById("adminPinInput").focus(), 100);
       return;
     }
+
+    if (_unwrappedPath) { window.location.replace(_unwrappedPath); return; }
 
     try {
       await liff.init({ liffId: LIFF_ID });
