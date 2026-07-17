@@ -920,9 +920,17 @@
     try {
       await liff.init({ liffId: LIFF_ID });
       if (!liff.isLoggedIn()) { liff.login({ redirectUri: window.location.href }); return; }
+      // Path-based liff.state — navigate directly, never show product page
+      if (_isLiffPath) {
+        if (window.location.pathname + window.location.search !== _rawLs) {
+          window.location.replace(_rawLs);
+        }
+        return;
+      }
       lineProfile = await liff.getProfile();
     } catch (e) {
       console.error("LIFF init error:", e);
+      if (_isLiffPath) { window.location.replace(_rawLs); return; }
       lineProfile = { userId: "dev_user", displayName: "Dev" };
     }
 
