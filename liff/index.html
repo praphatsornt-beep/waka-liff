@@ -917,6 +917,16 @@
 
     if (_unwrappedPath) { window.location.replace(_unwrappedPath); return; }
 
+    // Path-based liff.state pointing to another page — redirect there directly,
+    // let that page handle its own LIFF init and auth (no flash of this page)
+    if (_isLiffPath) {
+      const _lsPage = _rawLs.split('?')[0];
+      if (_lsPage !== '/' && _lsPage !== '/index.html' && _lsPage !== '/index') {
+        window.location.replace(_rawLs);
+        return;
+      }
+    }
+
     try {
       await liff.init({ liffId: LIFF_ID });
       if (!liff.isLoggedIn()) { liff.login({ redirectUri: window.location.href }); return; }
