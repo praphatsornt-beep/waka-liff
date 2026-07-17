@@ -635,14 +635,14 @@ function writeOrder(ss, d) {
     ws = ss.insertSheet(TAB_ORDERS);
     ws.appendRow([
       "order_id","timestamp","line_user_id","display_name",
-      "items_json","total","branch","real_name","phone","email","address",
+      "items_json","total","branch","real_name","phone","address","email",
       "slip_status","slip_url","slip_amount","slip_txn_id","notes",
       "fulfillment","fulfilled_at","staff_confirmed_at","customer_confirmed_at",
     ]);
   }
   ws.appendRow([
     d.orderId, d.timestamp, d.lineUserId, _sanitize(d.displayName),
-    d.itemsJson, d.total, d.branch, _sanitize(d.realName), _sanitize(d.phone), _sanitize(d.email), _sanitize(d.address),
+    d.itemsJson, d.total, d.branch, _sanitize(d.realName), _sanitize(d.phone), _sanitize(d.address), _sanitize(d.email),
     d.slipStatus, d.slipUrl, d.slipAmount, d.slipTxnId, d.notes,
   ]);
   _clearDashCache();
