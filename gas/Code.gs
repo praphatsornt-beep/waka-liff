@@ -2287,13 +2287,14 @@ function handleApi(params) {
     for (var tuei = 1; tuei < tueRows.length; tuei++) {
       if (String(tueRows[tuei][tuec("event_id")]) !== tueId) continue;
       var tueR = tuei + 1;
-      if (tueSt) tueWs.getRange(tueR, tuec("status") + 1).setValue(tueSt);
-      if (params.name !== undefined) tueWs.getRange(tueR, tuec("name") + 1).setValue(String(params.name).trim());
-      if (params.date !== undefined) tueWs.getRange(tueR, tuec("date") + 1).setValue(String(params.date).trim());
-      if (params.entry_fee !== undefined) tueWs.getRange(tueR, tuec("entry_fee") + 1).setValue(Number(params.entry_fee) || 0);
-      if (params.max_players !== undefined) tueWs.getRange(tueR, tuec("max_players") + 1).setValue(Number(params.max_players) || 0);
-      if (params.rules_text !== undefined) tueWs.getRange(tueR, tuec("rules_text") + 1).setValue(String(params.rules_text).trim());
-      if (params.registration_close !== undefined) tueWs.getRange(tueR, tuec("registration_close") + 1).setValue(String(params.registration_close).trim());
+      var tueSet = function(col, val) { if (col >= 0) tueWs.getRange(tueR, col + 1).setValue(val); };
+      if (tueSt) tueSet(tuec("status"), tueSt);
+      if (params.name !== undefined) tueSet(tuec("name"), String(params.name).trim());
+      if (params.date !== undefined) tueSet(tuec("date"), String(params.date).trim());
+      if (params.entry_fee !== undefined) tueSet(tuec("entry_fee"), Number(params.entry_fee) || 0);
+      if (params.max_players !== undefined) tueSet(tuec("max_players"), Number(params.max_players) || 0);
+      if (params.rules_text !== undefined) tueSet(tuec("rules_text"), String(params.rules_text).trim());
+      if (params.registration_close !== undefined) tueSet(tuec("registration_close"), String(params.registration_close).trim());
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "not found" })));
