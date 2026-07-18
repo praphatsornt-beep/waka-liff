@@ -224,6 +224,14 @@
         <button class="sub-tab" onclick="orderFilter('delivery',this)">🚚 จัดส่ง</button>
         <button class="sub-tab" onclick="orderFilter('other',this)">อื่นๆ</button>
       </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <select class="branch-sel" id="orderBranchFilter" style="margin:0" onchange="branchFilterChange(this.value)">
+          <option value="">ทุกสาขา</option>
+        </select>
+        <select class="branch-sel" id="orderProductFilter" style="margin:0" onchange="productFilterChange(this.value)">
+          <option value="">ทุกสินค้า</option>
+        </select>
+      </div>
       <div id="recentOrders"><div class="loading">กำลังโหลด...</div></div>
     </div>
 
@@ -578,6 +586,8 @@ function switchTab(t) {
 // ══════════════════════════════════════════════════════════
 let _allOrders = [];
 let _orderFilter = 'all';
+let _branchFilter = '';
+let _productFilter = '';
 
 function orderFilter(f, btn) {
   _orderFilter = f;
@@ -587,12 +597,32 @@ function orderFilter(f, btn) {
   renderOrders();
 }
 
+function branchFilterChange(v) { _branchFilter = v; renderOrders(); }
+function productFilterChange(v) { _productFilter = v; renderOrders(); }
+
+function populateOrderFilterOptions() {
+  const branches = [...new Set(_allOrders.map(o => o.branch).filter(Boolean))].sort();
+  const products = [...new Set(_allOrders.flatMap(o => {
+    try { return JSON.parse(o.items_json || '[]').map(i => i.name); } catch(_) { return []; }
+  }).filter(Boolean))].sort();
+
+  const bSel = gid('orderBranchFilter'), pSel = gid('orderProductFilter');
+  bSel.innerHTML = '<option value="">ทุกสาขา</option>' + branches.map(b => `<option value="${esc(b)}">${esc(b)}</option>`).join('');
+  pSel.innerHTML = '<option value="">ทุกสินค้า</option>' + products.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+  bSel.value = _branchFilter; pSel.value = _productFilter;
+}
+
 function renderOrders() {
   const el = gid('recentOrders');
   let list = _allOrders;
   if (_orderFilter === 'wait') list = list.filter(o => ['รอตรวจ','รอตรวจเพิ่ม'].includes(o.slip_status));
   else if (_orderFilter === 'ok') list = list.filter(o => o.slip_status === 'ยืนยัน');
   else if (_orderFilter === 'other') list = list.filter(o => !['รอตรวจ','รอตรวจเพิ่ม','ยืนยัน'].includes(o.slip_status));
+  if (_branchFilter) list = list.filter(o => o.branch === _branchFilter);
+  if (_productFilter) list = list.filter(o => {
+    let items = []; try { items = JSON.parse(o.items_json || '[]'); } catch(_) {}
+    return items.some(i => i.name === _productFilter);
+  });
   if (list.length === 0) { el.innerHTML = '<div class="empty">ไม่มีออเดอร์</div>'; return; }
   el.innerHTML = list.map(o => {
     const sc = o.slip_status==='ยืนยัน'?'s-ok':['รอตรวจ','รอตรวจเพิ่ม'].includes(o.slip_status)?'s-wait':'s-done';
@@ -737,6 +767,7 @@ async function loadDashboard() {
   try {
     const r = await fetch(G+'&action=api&do=dashboard'); const d = await r.json();
     _allOrders = d.recent_orders || [];
+    populateOrderFilterOptions();
     renderOrders();
   } catch(e) { gid('recentOrders').innerHTML='<div class="empty">โหลดไม่ได้</div>'; }
 }
