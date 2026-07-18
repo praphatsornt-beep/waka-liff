@@ -1,6 +1,8 @@
 ﻿credentials.json
 credentials.json.json
 token.json
+service_account.json
+service_account.json.json
 .env
 .tmp/
 __pycache__/

@@ -129,13 +129,13 @@ def send_line_notify(order_id: str, line_user_id: str, msg_type: str):
 
 def confirm_slip_via_gas(order_id: str):
     import requests
-    try:
-        requests.post(GAS_URL, json={
-            "_action": "confirmSlip",
-            "order_id": order_id,
-        }, timeout=15)
-    except Exception:
-        pass
+    resp = requests.post(GAS_URL, json={
+        "_action": "confirmSlip",
+        "order_id": order_id,
+    }, timeout=30)
+    result = resp.json()
+    if not result.get("ok"):
+        raise Exception(result.get("error", "GAS ตอบผิดพลาด"))
 
 
 def parse_items(items_json: str) -> list:
@@ -198,6 +198,19 @@ with t2:
         st.cache_data.clear()
         st.rerun()
 
+# ── Load ──────────────────────────────────────────────────────────────────────
+df = load_orders()
+if df.empty:
+    st.info("ยังไม่มีออเดอร์")
+    st.stop()
+
+all_products = sorted({
+    i.get("name", "")
+    for items_json in df.get("items_json", [])
+    for i in parse_items(items_json)
+    if i.get("name")
+})
+
 # ── Sidebar filters ───────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("กรอง")
@@ -205,14 +218,9 @@ with st.sidebar:
         "ช่วงวันที่",
         value=(date.today() - timedelta(days=7), date.today()),
     )
-    branch_filter = st.multiselect("สาขา / จัดส่ง", BRANCHES, default=BRANCHES)
-    status_filter = st.multiselect("สถานะสลิป", ALL_STATUS, default=ALL_STATUS)
-
-# ── Load ──────────────────────────────────────────────────────────────────────
-df = load_orders()
-if df.empty:
-    st.info("ยังไม่มีออเดอร์")
-    st.stop()
+    branch_filter  = st.multiselect("สาขา / จัดส่ง", BRANCHES, default=BRANCHES)
+    status_filter  = st.multiselect("สถานะสลิป", ALL_STATUS, default=ALL_STATUS)
+    product_filter = st.multiselect("สินค้า", all_products, default=[])
 
 # ── Filter ────────────────────────────────────────────────────────────────────
 filtered = df.copy()
@@ -222,6 +230,11 @@ if branch_filter:
     filtered = filtered[filtered["branch"].isin(branch_filter)]
 if status_filter:
     filtered = filtered[filtered["slip_status"].isin(status_filter)]
+if product_filter:
+    wanted = set(product_filter)
+    filtered = filtered[filtered["items_json"].apply(
+        lambda ij: any(i.get("name") in wanted for i in parse_items(ij))
+    )]
 if search:
     s = search.lower()
     mask = (
