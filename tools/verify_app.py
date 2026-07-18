@@ -294,7 +294,7 @@ def home():
 
 st.set_page_config(page_title="WAKA", page_icon="🏠", layout="wide", initial_sidebar_state="expanded")
 apply_theme()
-st.logo(str(ASSETS_DIR / "waka_logo.png"), icon_image=str(ASSETS_DIR / "waka_icon.png"))
+st.logo(str(ASSETS_DIR / "waka_logo.png"), icon_image=str(ASSETS_DIR / "waka_icon.png"), size="large")
 
 home_pg = st.Page(home, title="หน้าแรก", icon="🏠", url_path="", default=True)
 orders_pg = st.Page("pages/orders.py", title="ออเดอร์", icon="🛒", url_path="orders")
