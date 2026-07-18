@@ -587,6 +587,20 @@
 </div>
 <div id="errorState"></div>
 
+<div id="inAppBrowserOverlay" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:400;align-items:center;justify-content:center;padding:24px;">
+  <div style="background:#fff;border-radius:14px;box-shadow:0 24px 60px rgba(40,38,34,.18);border:1px solid var(--card-border);padding:28px 24px;max-width:360px;width:100%;text-align:center;">
+    <div style="font-size:32px;margin-bottom:8px">🌐</div>
+    <h2 style="margin-bottom:6px;font-size:17px">เปิดในเบราว์เซอร์เพื่อสั่งซื้อ</h2>
+    <p style="color:var(--text-secondary);margin-bottom:16px;font-size:13px;line-height:1.6">
+      ลิงก์นี้เปิดผ่านเบราว์เซอร์ในแอป Facebook/Messenger ซึ่งเข้าสู่ระบบ LINE ไม่ได้<br><br>
+      <b>iPhone:</b> แตะ ⋯ มุมขวาบน แล้วเลือก "เปิดใน Safari"<br>
+      <b>Android:</b> แตะ ⋮ มุมขวาบน แล้วเลือก "เปิดใน Chrome"
+    </p>
+    <button onclick="copyCurrentLink(this)"
+      style="width:100%;padding:14px;background:var(--accent);color:#fff;border:none;border-radius:var(--field-radius);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">คัดลอกลิงก์</button>
+  </div>
+</div>
+
 <div id="adminPinOverlay" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:300;align-items:center;justify-content:center;">
   <div style="background:#fff;border-radius:14px;box-shadow:0 24px 60px rgba(40,38,34,.18);border:1px solid var(--card-border);padding:32px;width:320px;text-align:center;">
     <div style="font-size:32px;margin-bottom:8px">🔐</div>
@@ -891,6 +905,20 @@
     return { product: prod || null, category: cat || null, slug: slug || null, all: all };
   })();
 
+  function copyCurrentLink(btn) {
+    const url = window.location.href;
+    const done = () => { btn.textContent = "คัดลอกแล้ว ✓"; setTimeout(() => btn.textContent = "คัดลอกลิงก์", 2000); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(done).catch(done);
+    } else {
+      const ta = document.createElement("textarea");
+      ta.value = url; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); } catch (_) {}
+      document.body.removeChild(ta);
+      done();
+    }
+  }
+
   // ── Init ──────────────────────────────────────────────────────────────────────
   async function init() {
     // Access guard: require a specific filter — block direct URL access with no params
@@ -912,6 +940,14 @@
       const ov = document.getElementById("adminPinOverlay");
       ov.style.display = "flex";
       setTimeout(() => document.getElementById("adminPinInput").focus(), 100);
+      return;
+    }
+
+    // ลิงก์สั่งซื้อต้อง login ผ่าน LINE — ถ้าเปิดจาก in-app browser ของ Facebook/Messenger/Instagram
+    // การ redirect ของ liff.login() จะถูกบล็อกหรือวนลูป ต้องให้ผู้ใช้เปิดในเบราว์เซอร์จริงก่อน
+    if (/FBAN|FBAV|FB_IAB|Instagram/i.test(navigator.userAgent || "")) {
+      document.getElementById("loadingState").style.display = "none";
+      document.getElementById("inAppBrowserOverlay").style.display = "flex";
       return;
     }
 
