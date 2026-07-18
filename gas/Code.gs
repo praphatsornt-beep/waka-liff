@@ -2275,7 +2275,7 @@ function handleApi(params) {
       String(params.registration_close || "").trim(), "open", tceNow]);
     return _cors(ContentService.createTextOutput(JSON.stringify({
       ok: true, event_id: tceId,
-      reg_link: "https://liff.line.me/2010457385-UpJLXxJ0?liff.state=" + encodeURIComponent("/treg.html?event=" + tceId),
+      reg_link: "https://liff.line.me/2010457385-JHbMDl5I?event=" + tceId,
     })));
   }
 
