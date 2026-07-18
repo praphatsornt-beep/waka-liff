@@ -14,8 +14,8 @@ import requests
 import streamlit as st
 
 from theme import (
-    apply_theme, SURFACE, BORDER, TEXT2, TEXT3, ACCENT_LIGHT, ACCENT_TEXT,
-    DIVIDER, DIVIDER2, PENDING_TEXT, SUCCESS_TEXT,
+    apply_theme, page_header, flat, SURFACE, BORDER, TEXT2, TEXT3, ACCENT_LIGHT,
+    ACCENT_TEXT, DIVIDER, DIVIDER2, PENDING_TEXT, SUCCESS_TEXT,
 )
 
 WAKA_S  = "wk26xK9mPqRt"
@@ -131,12 +131,6 @@ def recent_activity(recent_orders: list, limit: int = 5):
     return out
 
 
-def _flat(html: str) -> str:
-    """Strip leading whitespace from each line so Python's source indentation
-    doesn't get read back as a markdown indented-code-block."""
-    return "\n".join(line.strip() for line in html.strip().splitlines())
-
-
 def action_card(label: str, count, link: str) -> str:
     shown = "—" if count is None else count
     return f"""
@@ -184,11 +178,7 @@ def home():
     now = datetime.now(TH_TZ)
     subtitle = f"{THAI_DAYS[now.weekday()]}ที่ {now.day} {THAI_MONTHS[now.month - 1]} {now.year + 543}"
 
-    st.markdown(
-        f"""<div style="font-family:'Prompt',sans-serif;font-weight:700;font-size:26px">ภาพรวมวันนี้ · ทุกสาขา</div>
-        <div style="color:{TEXT2};font-size:13.5px;margin-top:2px;margin-bottom:18px">{subtitle}</div>""",
-        unsafe_allow_html=True,
-    )
+    page_header("ภาพรวมวันนี้ · ทุกสาขา", subtitle)
 
     if st.button("🔄 โหลดใหม่"):
         st.cache_data.clear()
@@ -263,9 +253,9 @@ def home():
         if not rows_html:
             rows_html = f'<div style="font-size:13px;color:{TEXT3}">ยังไม่มียอดขายวันนี้</div>'
         st.markdown(
-            _flat(f"""<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:14px;padding:18px 20px">
+            flat(f"""<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:14px;padding:18px 20px">
             <div style="font-weight:600;font-size:14.5px;margin-bottom:14px">ยอดขายแยกตามสาขา</div>
-            {_flat(rows_html)}
+            {flat(rows_html)}
             </div>"""),
             unsafe_allow_html=True,
         )
@@ -284,9 +274,9 @@ def home():
         if not rows_html:
             rows_html = f'<div style="padding:13px 22px;font-size:13px;color:{TEXT3}">ยังไม่มีกิจกรรม</div>'
         st.markdown(
-            _flat(f"""<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:14px;padding:6px 0">
+            flat(f"""<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:14px;padding:6px 0">
             <div style="padding:16px 22px 12px;font-weight:600;font-size:14.5px;border-bottom:1px solid {DIVIDER}">กิจกรรมล่าสุด</div>
-            {_flat(rows_html)}
+            {flat(rows_html)}
             </div>"""),
             unsafe_allow_html=True,
         )
@@ -297,9 +287,9 @@ apply_theme()
 st.logo(str(ASSETS_DIR / "waka_logo.png"), icon_image=str(ASSETS_DIR / "waka_icon.png"), size="large")
 
 home_pg = st.Page(home, title="หน้าแรก", icon="🏠", url_path="", default=True)
-orders_pg = st.Page("pages/orders.py", title="ออเดอร์", icon="🛒", url_path="orders")
-tournament_pg = st.Page("pages/tournament.py", title="ทัวร์นาเมนต์", icon="🏆", url_path="tournament")
-wakagym_pg = st.Page("pages/wakagym.py", title="WAKA GYM", icon="🏋️", url_path="wakagym")
+orders_pg = st.Page("screens/orders.py", title="ออเดอร์", icon="🛒", url_path="orders")
+tournament_pg = st.Page("screens/tournament.py", title="ทัวร์นาเมนต์", icon="🏆", url_path="tournament")
+wakagym_pg = st.Page("screens/wakagym.py", title="WAKA GYM", icon="🏋️", url_path="wakagym")
 
 pg = st.navigation({"เมนูหลัก": [home_pg, orders_pg, tournament_pg, wakagym_pg]})
 pg.run()

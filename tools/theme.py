@@ -42,6 +42,8 @@ h1, h2, h3, h4,
 
 .stApp {{ background: {BG}; color: {TEXT}; }}
 
+[data-testid="stMain"] .block-container {{ padding-top: 2.2rem !important; }}
+
 [data-testid="stSidebar"] {{ background: {SIDEBAR_BG}; width: 200px !important; min-width: 200px !important; }}
 [data-testid="stSidebar"] * {{ color: {SIDEBAR_TEXT} !important; }}
 [data-testid="stSidebarNav"] span {{ font-size: 15px !important; }}
@@ -96,3 +98,31 @@ def badge(text: str, kind: str = "pending") -> str:
         f'<span style="background:{bg};color:{color};font-size:11px;font-weight:700;'
         f'padding:3px 10px;border-radius:20px;white-space:nowrap">{text}</span>'
     )
+
+
+def flat(html: str) -> str:
+    """Strip leading whitespace from each line so Python's source indentation
+    doesn't get read back as a markdown indented-code-block by st.markdown."""
+    return "\n".join(line.strip() for line in html.strip().splitlines())
+
+
+def page_header(title: str, subtitle: str = "") -> None:
+    """Same title/subtitle treatment on every page: 26px Prompt bold title,
+    13.5px muted subtitle underneath — matches the design mockup exactly."""
+    sub_html = f'<div style="color:{TEXT2};font-size:13.5px;margin-top:2px">{subtitle}</div>' if subtitle else ""
+    st.markdown(
+        flat(f"""<div style="margin-bottom:18px">
+        <div style="font-family:'Prompt',sans-serif;font-weight:700;font-size:26px">{title}</div>
+        {sub_html}
+        </div>"""),
+        unsafe_allow_html=True,
+    )
+
+
+def kpi_card(label: str, value, value_color: str = TEXT) -> str:
+    """Plain KPI card: label above a big value, no icon/footer — matches the
+    4-card row at the top of the orders/tournament/gym mockup pages."""
+    return flat(f"""<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:12px;padding:16px 18px">
+    <div style="font-size:13px;color:{TEXT2}">{label}</div>
+    <div style="font-family:'Prompt',sans-serif;font-size:24px;font-weight:700;margin-top:4px;color:{value_color}">{value}</div>
+    </div>""")

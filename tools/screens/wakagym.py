@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from theme import apply_theme, badge
+from theme import apply_theme, badge, page_header
 
 try:
     import gspread
@@ -124,7 +124,7 @@ st.markdown("""<style>
     .stProgress>div>div { border-radius: 6px; }
 </style>""", unsafe_allow_html=True)
 
-st.markdown("## 🏆 WAKA GYM")
+page_header("WAKA GYM", "เช็คอิน บันทึกผลแข่ง สถิติสะสม และตรวจสลิป")
 
 t1, t2 = st.columns([3, 1])
 with t1:

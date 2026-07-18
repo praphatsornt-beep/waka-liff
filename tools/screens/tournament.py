@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from theme import apply_theme, badge
+from theme import apply_theme, badge, page_header
 
 try:
     from streamlit_qrcode_scanner import qrcode_scanner as _qr_scanner
@@ -40,7 +40,7 @@ def gas_get(do: str, **params) -> dict:
 
 # ── Page config ───────────────────────────────────────────────────────────────
 apply_theme()
-st.markdown("## 🏆 ทัวร์นาเมนต์")
+page_header("ทัวร์นาเมนต์", "สร้าง จัดการ และติดตามผู้สมัครแข่งขัน")
 
 if st.button("🔄 โหลดใหม่"):
     st.cache_data.clear()
