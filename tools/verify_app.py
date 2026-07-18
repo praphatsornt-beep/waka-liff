@@ -93,7 +93,7 @@ def home():
     st.caption("ดูรายละเอียดเพิ่มเติมได้ที่แท็บด้านซ้าย: ออเดอร์ / ทัวร์นาเมนต์ / WAKA GYM")
 
 
-st.set_page_config(page_title="WAKA", page_icon="🏠", layout="wide")
+st.set_page_config(page_title="WAKA", page_icon="🏠", layout="wide", initial_sidebar_state="expanded")
 apply_theme()
 st.logo(str(ASSETS_DIR / "waka_logo.png"), icon_image=str(ASSETS_DIR / "waka_icon.png"))
 
