@@ -121,13 +121,7 @@
           <div class="pay-btn" id="payCash" onclick="selectPay('cash')">💵 เงินสด</div>
         </div>
         <div id="transferSection">
-          <label class="field-label">โอนผ่านธนาคาร <span class="req">*</span></label>
-          <select id="bankSelect">
-            <option value="">-- เลือกธนาคาร --</option>
-            <option value="แม่มณี">แม่มณี</option>
-            <option value="SCB">SCB</option>
-            <option value="KBANK">KBANK</option>
-          </select>
+          <label class="field-label">โอนเงิน <span class="req">*</span></label>
           <div class="bank-card" id="bankInfo"><div class="bank-detail">กำลังโหลด...</div></div>
           <div class="slip-box" onclick="document.getElementById('slipInput').click()">
             <input type="file" id="slipInput" accept="image/*" onchange="previewSlip(this)" />
@@ -336,7 +330,6 @@ async function submitRegistration() {
   if (!realName) { alert("กรุณากรอกชื่อจริง"); return; }
   if (!playerName) { alert("กรุณากรอกชื่อแข่ง"); return; }
   if (!phone) { alert("กรุณากรอกเบอร์โทร"); return; }
-  if (paymentMethod === "transfer" && !document.getElementById("bankSelect").value) { alert("กรุณาเลือกธนาคาร"); return; }
   var hasCats = eventInfo && eventInfo.categories && eventInfo.categories.length > 0;
   if (hasCats && selectedCategories.length === 0) { alert("กรุณาเลือกอย่างน้อย 1 รายการที่ต้องการแข่ง"); return; }
 
@@ -351,7 +344,7 @@ async function submitRegistration() {
       realName: realName, playerName: playerName,
       phone: phone, facebook: facebook,
       paymentMethod: paymentMethod,
-      bank: paymentMethod === "transfer" ? (document.getElementById("bankSelect").value || "") : "",
+      bank: "",
       slipBase64: paymentMethod === "transfer" ? (slipBase64 || null) : null,
       selectedCategories: selectedCategories,
     })});
