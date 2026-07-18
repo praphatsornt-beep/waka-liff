@@ -89,8 +89,7 @@ Staff กดลิงค์ใน Line (ไม่ต้องเปิด Stream
 |------|----------|--------------|
 | `gas/Code.gs` | GAS backend | Copy วางใน GAS editor |
 | `liff/index.html` | LIFF frontend ลูกค้า | Vercel (auto deploy จาก GitHub) |
-| `tools/pages/orders.py` | Admin dashboard | Streamlit |
-| `tools/verify_app.py` | Streamlit main app | Streamlit |
+| `tools/pages/orders.py` | Admin dashboard (main entry) | Streamlit |
 
 ---
 
