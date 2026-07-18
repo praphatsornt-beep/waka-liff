@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from theme import apply_theme
+from theme import apply_theme, badge
 
 try:
     from streamlit_qrcode_scanner import qrcode_scanner as _qr_scanner
@@ -228,7 +228,11 @@ with tab_players:
         name_line = f"#{p.get('sequence_no','')} · {p.get('player_name') or '—'} ({p.get('real_name','—')})"
         c1.write(name_line)
         c2.write(f"📞 {p.get('phone','—')}")
-        c3.write(SLIP_LABEL.get(p.get("slip_status",""), p.get("slip_status","—")))
+        slip_kind = "success" if p.get("slip_status") in ("cash", "verified") else "pending"
+        c3.markdown(
+            badge(SLIP_LABEL.get(p.get("slip_status",""), p.get("slip_status","—")), slip_kind),
+            unsafe_allow_html=True,
+        )
         with c4:
             b1, b2 = st.columns(2)
             if p.get("slip_status") == "pending" and b1.button("✅ ยืนยัน", key=f"verify_{p['reg_id']}"):

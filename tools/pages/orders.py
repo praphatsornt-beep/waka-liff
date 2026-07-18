@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from theme import apply_theme
+from theme import apply_theme, badge
 
 try:
     import gspread
@@ -170,6 +170,13 @@ def status_color(s: str) -> str:
 def needs_attention(s: str) -> bool:
     return s in ("รอตรวจ", "ยอดไม่ตรง", "สลิปซ้ำ", "บัญชีไม่ตรง", "สงสัยปลอม")
 
+def status_kind(s: str) -> str:
+    if s == "ยืนยัน":
+        return "success"
+    if s in ("ยอดไม่ตรง", "สลิปซ้ำ", "บัญชีไม่ตรง", "สงสัยปลอม", "ยกเลิก"):
+        return "danger"
+    return "pending"
+
 def fulfill_icon(s: str) -> str:
     if s == "รับแล้ว":            return "✅"
     if s == "สาขายืนยัน":        return "🤝"
@@ -184,12 +191,9 @@ st.set_page_config(page_title="Orders", page_icon="🛒", layout="wide")
 apply_theme()
 
 st.markdown("""<style>
-    [data-testid="stExpander"] { border: 1px solid #e0e0e0; border-radius: 12px; margin-bottom: 8px; }
-    [data-testid="stMetric"] { background: #f8f9fa; padding: 12px; border-radius: 10px; }
+    [data-testid="stExpander"] { margin-bottom: 8px; }
     [data-testid="stMetricValue"] { font-size: 1.3rem; }
-    .stButton>button { border-radius: 10px; }
     div[data-testid="stImage"] img { border-radius: 10px; }
-    h1, h2, h3 { font-weight: 700 !important; }
 </style>""", unsafe_allow_html=True)
 
 # ── Top bar ──────────────────────────────────────────────────────────────────
@@ -260,13 +264,13 @@ no_slip   = filtered[filtered["slip_status"] == "ไม่มีสลิป"]
 
 kpi_text = (
     f"📋 **{len(filtered)}** ทั้งหมด &nbsp;|&nbsp; "
-    f"🟢 **{len(confirmed)}** ยืนยัน &nbsp;|&nbsp; "
-    f"🟡 **{len(pending)}** รอตรวจ &nbsp;|&nbsp; "
-    f"🔴 **{len(problems)}** ปัญหา &nbsp;|&nbsp; "
+    f"{badge(f'{len(confirmed)} ยืนยัน', 'success')} &nbsp; "
+    f"{badge(f'{len(pending)} รอตรวจ', 'pending')} &nbsp; "
+    f"{badge(f'{len(problems)} ปัญหา', 'danger')} &nbsp; "
     f"⚪ **{len(no_slip)}** ไม่มีสลิป &nbsp;|&nbsp; "
     f"💰 **฿{confirmed['total'].sum():,.0f}**"
 )
-st.markdown(kpi_text)
+st.markdown(kpi_text, unsafe_allow_html=True)
 
 # ── Order cards ───────────────────────────────────────────────────────────────
 if filtered.empty:
@@ -289,7 +293,8 @@ for _, row in filtered.iterrows():
         st.markdown(
             f"👤 **{row.get('real_name','—')}** ({row.get('display_name','—')}) · "
             f"📱 {row.get('phone','—')} · {branch_str} · "
-            f"{ff_icon} {ff_status}"
+            f"{ff_icon} {ff_status} &nbsp; {badge(cur_status, status_kind(cur_status))}",
+            unsafe_allow_html=True,
         )
         if is_del and row.get("address"):
             st.caption(f"📍 {row.get('address')}")

@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from theme import apply_theme
+from theme import apply_theme, badge
 
 try:
     import gspread
@@ -119,13 +119,10 @@ st.set_page_config(page_title="WAKA GYM", page_icon="🏆", layout="wide")
 apply_theme()
 
 st.markdown("""<style>
-    [data-testid="stExpander"] { border: 1px solid #e0e0e0; border-radius: 12px; margin-bottom: 8px; }
-    [data-testid="stMetric"] { background: #f8f9fa; padding: 12px; border-radius: 10px; }
+    [data-testid="stExpander"] { margin-bottom: 8px; }
     [data-testid="stMetricValue"] { font-size: 1.3rem; }
-    .stButton>button { border-radius: 10px; }
     div[data-testid="stImage"] img { border-radius: 10px; }
     .stProgress>div>div { border-radius: 6px; }
-    h1, h2, h3 { font-weight: 700 !important; }
 </style>""", unsafe_allow_html=True)
 
 st.markdown("## 🏆 WAKA GYM")
@@ -173,13 +170,13 @@ with tab_today:
 
             kpi = (
                 f"📋 **{len(today_df)}** คน &nbsp;|&nbsp; "
-                f"✅ **{len(verified)}** ยืนยัน &nbsp;|&nbsp; "
-                f"🟡 **{len(pending)}** รอตรวจ &nbsp;|&nbsp; "
+                f"{badge(f'{len(verified)} ยืนยัน', 'success')} &nbsp; "
+                f"{badge(f'{len(pending)} รอตรวจ', 'pending')} &nbsp; "
                 f"🪙 **{int(total_tokens)}** token &nbsp;|&nbsp; "
                 f"🎁 **{int(total_promo)}** promo &nbsp;|&nbsp; "
                 f"💵 **{len(cash_count)}** เงินสด"
             )
-            st.markdown(kpi)
+            st.markdown(kpi, unsafe_allow_html=True)
 
             names_list = []
             for _, r in today_df.iterrows():
@@ -229,7 +226,12 @@ with tab_today:
                             reward_line += f" · 🪙 {tokens} token"
                         if promo:
                             reward_line += f" · 🎁 {promo} promo"
-                        st.markdown(f"🏷️ {name_display}\n\n📱 {row.get('phone', '—')} · {pay_icon}{reward_line}")
+                        slip_kind = "success" if slip_st in ("verified", "cash") else ("danger" if slip_st == "rejected" else "pending")
+                        st.markdown(
+                            f"🏷️ {name_display} &nbsp; {badge(slip_st, slip_kind)}\n\n"
+                            f"📱 {row.get('phone', '—')} · {pay_icon}{reward_line}",
+                            unsafe_allow_html=True,
+                        )
                         if row.get("note"):
                             st.caption(f"📝 {row.get('note')}")
 
