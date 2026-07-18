@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """WAKA Tournament — Event & registrant management (mirrors liff/tournament_admin.html)"""
 
+import sys
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
 import requests
@@ -9,6 +11,9 @@ import pandas as pd
 from dotenv import load_dotenv
 
 load_dotenv()
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from theme import apply_theme
 
 try:
     from streamlit_qrcode_scanner import qrcode_scanner as _qr_scanner
@@ -35,6 +40,7 @@ def gas_get(do: str, **params) -> dict:
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Tournament", page_icon="🏆", layout="wide")
+apply_theme()
 st.markdown("## 🏆 ทัวร์นาเมนต์")
 
 if st.button("🔄 โหลดใหม่"):

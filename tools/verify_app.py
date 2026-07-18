@@ -11,6 +11,8 @@ from datetime import datetime, timezone, timedelta
 import requests
 import streamlit as st
 
+from theme import apply_theme
+
 WAKA_S  = "wk26xK9mPqRt"
 GAS_URL = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
 TH_TZ = timezone(timedelta(hours=7))
@@ -24,6 +26,7 @@ def gas_get(do: str, **params) -> dict:
 
 
 st.set_page_config(page_title="WAKA", page_icon="🏠", layout="wide")
+apply_theme()
 st.markdown("## 🏠 ภาพรวม WAKA")
 
 if st.button("🔄 โหลดใหม่"):

@@ -3,6 +3,7 @@
 
 import json
 import re
+import sys
 from pathlib import Path
 from datetime import date, datetime, timedelta, timezone
 
@@ -11,6 +12,9 @@ import pandas as pd
 from dotenv import load_dotenv
 
 load_dotenv()
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from theme import apply_theme
 
 try:
     import gspread
@@ -177,6 +181,7 @@ def fulfill_icon(s: str) -> str:
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Orders", page_icon="🛒", layout="wide")
+apply_theme()
 
 st.markdown("""<style>
     [data-testid="stExpander"] { border: 1px solid #e0e0e0; border-radius: 12px; margin-bottom: 8px; }
