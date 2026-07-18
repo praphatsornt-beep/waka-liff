@@ -39,7 +39,6 @@ def gas_get(do: str, **params) -> dict:
 
 
 # ── Page config ───────────────────────────────────────────────────────────────
-st.set_page_config(page_title="Tournament", page_icon="🏆", layout="wide")
 apply_theme()
 st.markdown("## 🏆 ทัวร์นาเมนต์")
 

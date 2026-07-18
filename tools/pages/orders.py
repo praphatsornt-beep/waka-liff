@@ -187,7 +187,6 @@ def fulfill_icon(s: str) -> str:
 
 
 # ── Page config ───────────────────────────────────────────────────────────────
-st.set_page_config(page_title="Orders", page_icon="🛒", layout="wide")
 apply_theme()
 
 st.markdown("""<style>

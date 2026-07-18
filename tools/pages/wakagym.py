@@ -115,7 +115,6 @@ def give_box(player_name: str):
 
 
 # ── Page config ──────────────────────────────────────────────────────────────
-st.set_page_config(page_title="WAKA GYM", page_icon="🏆", layout="wide")
 apply_theme()
 
 st.markdown("""<style>
