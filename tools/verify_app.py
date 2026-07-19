@@ -206,10 +206,6 @@ def home():
 
     page_header("ภาพรวมวันนี้ · ทุกสาขา", subtitle)
 
-    if st.button("🔄 โหลดใหม่"):
-        st.cache_data.clear()
-        st.rerun()
-
     orders, tourney, gym = load_summary()
     if "_error" in orders or "_error" in tourney or "_error" in gym:
         for section, data in (("ออเดอร์", orders), ("ทัวร์นาเมนต์", tourney), ("WAKA GYM", gym)):
@@ -318,4 +314,10 @@ tournament_pg = st.Page("screens/tournament.py", title="ทัวร์นาเ
 wakagym_pg = st.Page("screens/wakagym.py", title="WAKA GYM", icon="🏋️", url_path="wakagym")
 
 pg = st.navigation({"เมนูหลัก": [home_pg, orders_pg, tournament_pg, wakagym_pg]})
+
+with st.sidebar:
+    if st.button("🔄 โหลดใหม่", use_container_width=True):
+        st.cache_data.clear()
+        st.rerun()
+
 pg.run()

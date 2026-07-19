@@ -57,10 +57,6 @@ def get_supabase():
 apply_theme()
 page_header("ทัวร์นาเมนต์", "สร้าง จัดการ และติดตามผู้สมัครแข่งขัน")
 
-if st.button("🔄 โหลดใหม่"):
-    st.cache_data.clear()
-    st.rerun()
-
 
 @st.cache_data(ttl=30)
 def load_events() -> list:

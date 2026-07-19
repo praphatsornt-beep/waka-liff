@@ -134,14 +134,6 @@ st.markdown("""<style>
 
 page_header("WAKA GYM", "เช็คอิน บันทึกผลแข่ง สถิติสะสม และตรวจสลิป")
 
-t1, t2 = st.columns([3, 1])
-with t1:
-    st.empty()
-with t2:
-    if st.button("🔄 โหลดใหม่", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
-
 tab_today, tab_stats, tab_slips = st.tabs(["📋 วันนี้", "📦 สะสม", "🧾 ตรวจสลิป"])
 
 # ── Tab 1: Today ─────────────────────────────────────────────────────────────

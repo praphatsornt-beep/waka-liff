@@ -195,10 +195,6 @@ def fulfill_kind(s: str) -> str:
 apply_theme()
 page_header("จัดการออเดอร์", "ค้นหา ตรวจสลิป และติดตามสถานะออเดอร์การ์ด")
 
-if st.button("🔄 โหลดใหม่"):
-    st.cache_data.clear()
-    st.rerun()
-
 # ── Load ──────────────────────────────────────────────────────────────────────
 df = load_orders()
 if df.empty:
@@ -389,7 +385,8 @@ for _, row in filtered.iterrows():
             st.rerun()
     with body_col:
         with st.container(border=True):
-            if st.button(row.get("real_name", order_id) or order_id, key=f"tog_{order_id}",
+            toggle_icon = "▲ ซ่อนรายละเอียด" if st.session_state[exp_key] else "▼ ดูรายละเอียด"
+            if st.button(toggle_icon, key=f"tog_{order_id}",
                          help="คลิกเพื่อดู/ซ่อนรายละเอียด", use_container_width=True, type="tertiary"):
                 st.session_state[exp_key] = not st.session_state[exp_key]
                 st.rerun()
