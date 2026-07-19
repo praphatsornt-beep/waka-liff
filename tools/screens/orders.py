@@ -345,9 +345,6 @@ for _, row in filtered.iterrows():
     is_repeat = phone_counts.get(row.get("phone", ""), 0) > 1
     items_summary = ", ".join(f"{i.get('name','')} x{i.get('qty',1)}" for i in items)
     avatar = (row.get("real_name", "?") or "?").strip()[:1]
-    exp_key = f"exp_{order_id}"
-    if exp_key not in st.session_state:
-        st.session_state[exp_key] = needs_attention(cur_status)
 
     row_html = flat(f"""
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -385,15 +382,9 @@ for _, row in filtered.iterrows():
             st.rerun()
     with body_col:
         with st.container(border=True):
-            toggle_icon = "▲ ซ่อนรายละเอียด" if st.session_state[exp_key] else "▼ ดูรายละเอียด"
-            if st.button(toggle_icon, key=f"tog_{order_id}",
-                         help="คลิกเพื่อดู/ซ่อนรายละเอียด", use_container_width=True, type="tertiary"):
-                st.session_state[exp_key] = not st.session_state[exp_key]
-                st.rerun()
             st.markdown(row_html, unsafe_allow_html=True)
 
-            if st.session_state[exp_key]:
-                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            with st.expander("รายละเอียด & จัดการออเดอร์", expanded=needs_attention(cur_status), key=f"exp_{order_id}"):
                 if is_del and row.get("address"):
                     st.caption(f"📍 {row.get('address')}")
                 for i in items:
@@ -428,7 +419,7 @@ for _, row in filtered.iterrows():
                             except Exception as e:
                                 st.error(f"บันทึกไม่ได้: {e}")
 
-                    with st.expander("เปลี่ยนสถานะอื่น ๆ"):
+                    with st.popover("เปลี่ยนสถานะอื่น ๆ"):
                         new_status = st.selectbox(
                             "เปลี่ยนสถานะ", ALL_STATUS,
                             index=ALL_STATUS.index(cur_status) if cur_status in ALL_STATUS else 0,
