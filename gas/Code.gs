@@ -2896,7 +2896,6 @@ function handleCreateShipment(data) {
         if (totalPack > 0) { sRows[ri][8] = Math.max(0, (Number(sRows[ri][8]) || 0) - totalPack); catChanged = true; }
       }
       if (catChanged) catRange.setValues(sRows);
-      items.forEach(function(it) { syncCatalogToSupabase_(ss, it.name); });
     }
 
     shWs.appendRow([shipId, now, data.to_branch || "", "จัดส่ง", JSON.stringify(items), "", ""]);
@@ -3575,6 +3574,7 @@ function handleWithdrawStock(data) {
     wWs.appendRow([now, branch, name, type, qty, reason]);
 
     lock.releaseLock();
+    syncStockBranchToSupabase_(ss, name, branch);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
