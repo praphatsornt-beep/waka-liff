@@ -81,31 +81,42 @@ def count_gym_pending_slips():
         return None
 
 
-@st.cache_data(ttl=30)
-def load_summary():
+def _load_orders():
     try:
-        orders = gas_get("dashboard")
+        return gas_get("dashboard")
     except Exception as e:
-        orders = {"_error": str(e)}
+        return {"_error": str(e)}
 
+
+def _load_tourney():
     try:
         events = gas_get("tournament_events").get("events", [])
-        tourney = {
+        return {
             "open_count": sum(1 for e in events if e.get("status") == "open"),
             "total_count": len(events),
             "pending_applicants": count_tournament_pending(events),
         }
     except Exception as e:
-        tourney = {"_error": str(e)}
+        return {"_error": str(e)}
 
+
+def _load_gym():
     try:
         today = datetime.now(TH_TZ).strftime("%Y-%m-%d")
         gym = gas_get("wakagym_summary", date=today)
         gym["pending_slips"] = count_gym_pending_slips()
+        return gym
     except Exception as e:
-        gym = {"_error": str(e)}
+        return {"_error": str(e)}
 
-    return orders, tourney, gym
+
+@st.cache_data(ttl=30)
+def load_summary():
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        f_orders = ex.submit(_load_orders)
+        f_tourney = ex.submit(_load_tourney)
+        f_gym = ex.submit(_load_gym)
+        return f_orders.result(), f_tourney.result(), f_gym.result()
 
 
 def branch_sales_today(recent_orders: list, today_str: str):
