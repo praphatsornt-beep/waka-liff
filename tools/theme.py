@@ -107,16 +107,14 @@ def flat(html: str) -> str:
 
 
 def page_header(title: str, subtitle: str = "") -> None:
-    """Same title/subtitle treatment on every page: 26px Prompt bold title,
-    13.5px muted subtitle underneath — matches the design mockup exactly."""
-    sub_html = f'<div style="color:{TEXT2};font-size:13.5px;margin-top:2px">{subtitle}</div>' if subtitle else ""
-    st.markdown(
-        flat(f"""<div style="margin-bottom:18px">
-        <div style="font-family:'Prompt',sans-serif;font-weight:700;font-size:26px">{title}</div>
-        {sub_html}
-        </div>"""),
-        unsafe_allow_html=True,
-    )
+    """Same title/subtitle treatment on every page. Uses Streamlit's native
+    st.subheader/st.caption rather than custom HTML — a raw-HTML div at
+    26px/bold intermittently dropped combining tone marks in Thai text
+    (e.g. "วันนี้" rendering as "วันนี") in this environment; native
+    widgets don't have that problem."""
+    st.subheader(title)
+    if subtitle:
+        st.caption(subtitle)
 
 
 def kpi_card(label: str, value, value_color: str = TEXT) -> str:
