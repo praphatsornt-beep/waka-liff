@@ -231,7 +231,7 @@ st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
 # ── Filter bar ────────────────────────────────────────────────────────────────
 with st.container(border=True):
-    f1, f2, f3, f4 = st.columns([2.4, 1, 1, 1.4])
+    f1, f2, f3, f4, f5, f6, f7 = st.columns([2, 0.9, 0.9, 1.1, 0.9, 0.2, 0.9])
     with f1:
         search = st.text_input("ค้นหา", placeholder="ค้นหาชื่อ / เบอร์โทร / เลขออเดอร์ / สินค้า", label_visibility="collapsed")
     with f2:
@@ -240,13 +240,11 @@ with st.container(border=True):
         status_sel = st.selectbox("สถานะสลิป", ["ทุกสถานะสลิป"] + ALL_STATUS, label_visibility="collapsed")
     with f4:
         product_filter = st.multiselect("สินค้า", all_products, default=[], placeholder="ทุกสินค้า", label_visibility="collapsed")
-
-    d1, d2, d3 = st.columns([1, 0.3, 1])
-    with d1:
+    with f5:
         date_from = st.date_input("จากวันที่", value=date.today() - timedelta(days=7), label_visibility="collapsed")
-    with d2:
+    with f6:
         st.markdown(f"<div style='text-align:center;padding-top:8px;color:{TEXT3}'>ถึง</div>", unsafe_allow_html=True)
-    with d3:
+    with f7:
         date_to = st.date_input("ถึงวันที่", value=date.today(), label_visibility="collapsed")
 
 # ── Filter ────────────────────────────────────────────────────────────────────
