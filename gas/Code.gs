@@ -13,6 +13,150 @@ const LINE_TOKEN    = PROPS.getProperty("LINE_TOKEN");
 const SHEET_ID      = PROPS.getProperty("SHEET_ID");
 const SCRIPT_SECRET = PROPS.getProperty("SCRIPT_SECRET") || "";
 
+const SUPABASE_URL         = PROPS.getProperty("SUPABASE_URL") || "";
+const SUPABASE_SERVICE_KEY = PROPS.getProperty("SUPABASE_SERVICE_KEY") || "";
+
+// ── Supabase dual-write (best-effort mirror, Sheets stays authoritative) ────
+// Sheets remains the source of truth for every write in this file. These
+// helpers only keep Supabase's mirror of orders/tournament_reg/wakagym_reg
+// current for Streamlit + LIFF reads. A Supabase outage must NEVER break a
+// real order — never throws, never retried, just logged and ignored.
+function pushToSupabase_(table, row) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return;
+  try {
+    UrlFetchApp.fetch(SUPABASE_URL + "/rest/v1/" + table, {
+      method: "post",
+      contentType: "application/json",
+      headers: {
+        apikey: SUPABASE_SERVICE_KEY,
+        Authorization: "Bearer " + SUPABASE_SERVICE_KEY,
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      payload: JSON.stringify(row),
+      muteHttpExceptions: true,
+    });
+  } catch (e) {
+    Logger.log("pushToSupabase_(" + table + ") failed: " + e.message);
+  }
+}
+
+// Builds a plain object {column: value} from a sheet header row + one data
+// row, converting "" -> null and JSON.parse-ing the given jsonFields so
+// they land as real jsonb in Supabase instead of an escaped string.
+function sheetRowToObject_(header, rowArr, jsonFields) {
+  var obj = {};
+  for (var i = 0; i < header.length; i++) {
+    var v = rowArr[i];
+    obj[header[i]] = (v === "" || v === undefined) ? null : v;
+  }
+  (jsonFields || []).forEach(function(f) {
+    if (obj[f]) {
+      try { obj[f] = JSON.parse(obj[f]); } catch (e) { /* leave as-is */ }
+    }
+  });
+  return obj;
+}
+
+// Re-reads the current row for the given id from `tabName` (by its first
+// column) and pushes the full row to Supabase — always accurate regardless
+// of which fields the caller just changed, and safe to call unconditionally
+// after any write to that row.
+//
+// `header` is passed in explicitly rather than read from the sheet's own
+// row 1: tournament_reg's live header has a blank trailing cell (the tab
+// predates the selected_categories column being added — same drift found
+// while writing tools/supabase_backfill.py), so trusting row 1 text would
+// intermittently push a "" key and fail with PGRST204.
+function syncRowToSupabase_(ss, tabName, idValue, supabaseTable, header, jsonFields) {
+  try {
+    var ws = ss.getSheetByName(tabName);
+    if (!ws) return;
+    var rows = ws.getDataRange().getValues();
+    for (var i = 1; i < rows.length; i++) {
+      if (String(rows[i][0]) === String(idValue)) {
+        pushToSupabase_(supabaseTable, sheetRowToObject_(header, rows[i], jsonFields));
+        return;
+      }
+    }
+  } catch (e) {
+    Logger.log("syncRowToSupabase_(" + tabName + ") failed: " + e.message);
+  }
+}
+
+var SUPABASE_ORDERS_HEADER = [
+  "order_id", "timestamp", "line_user_id", "display_name",
+  "items_json", "total", "branch", "real_name", "phone", "address", "email",
+  "slip_status", "slip_url", "slip_amount", "slip_txn_id", "notes",
+  "fulfillment", "fulfilled_at", "staff_confirmed_at", "customer_confirmed_at",
+];
+var SUPABASE_TOURNAMENT_REG_HEADER = [
+  "reg_id", "timestamp", "event_id", "sequence_no", "line_user_id", "display_name",
+  "real_name", "player_name", "phone", "facebook", "slip_url", "slip_status",
+  "payment_method", "bank", "amount_paid", "status", "checked_in_at", "note",
+  "selected_categories",
+];
+var SUPABASE_WAKAGYM_REG_HEADER = [
+  "reg_id", "timestamp", "event_date", "group_id", "event_id", "line_user_id", "display_name",
+  "real_name", "player_name", "phone", "slip_url", "slip_status", "payment_method",
+  "bank", "placement", "wins_3match", "tokens_earned", "promo_packs", "rewards_given", "note",
+];
+var SUPABASE_CATALOG_HEADER = [
+  "name", "category", "slug", "cost_box", "cost_p", "price_box", "price_pack",
+  "qty_box", "qty_pack", "limit_box", "limit_pack", "active", "image_url", "barcode", "notice",
+];
+var SUPABASE_CONFIG_HEADER = ["key", "value"];
+var SUPABASE_STOCK_BRANCH_HEADER = ["name", "category", "branch", "qty_box", "qty_pack"];
+var SUPABASE_TOURNAMENT_EVENTS_HEADER = [
+  "event_id", "name", "date", "entry_fee", "max_players",
+  "rules_text", "registration_close", "status", "created_at",
+];
+var SUPABASE_TOURNAMENT_CATEGORIES_HEADER = [
+  "category_id", "event_id", "name", "entry_fee", "max_players", "sort_order", "status",
+];
+var SUPABASE_WAKAGYM_EVENTS_HEADER = ["event_id", "date", "branch", "tier", "entry_fee", "status", "created_by"];
+
+function syncOrderToSupabase_(ss, orderId) {
+  syncRowToSupabase_(ss, TAB_ORDERS, orderId, "orders", SUPABASE_ORDERS_HEADER, ["items_json"]);
+}
+function syncTournamentRegToSupabase_(ss, regId) {
+  syncRowToSupabase_(ss, TAB_TOURNAMENT_REG, regId, "tournament_registrations", SUPABASE_TOURNAMENT_REG_HEADER, ["selected_categories"]);
+}
+function syncWakagymRegToSupabase_(ss, regId) {
+  syncRowToSupabase_(ss, TAB_WAKAGYM_REG, regId, "wakagym_registrations", SUPABASE_WAKAGYM_REG_HEADER, []);
+}
+function syncCatalogToSupabase_(ss, name) {
+  syncRowToSupabase_(ss, TAB_CATALOG, name, "catalog", SUPABASE_CATALOG_HEADER, []);
+}
+function syncConfigToSupabase_(ss, key) {
+  syncRowToSupabase_(ss, TAB_CONFIG, key, "config", SUPABASE_CONFIG_HEADER, []);
+}
+function syncTournamentEventToSupabase_(ss, eventId) {
+  syncRowToSupabase_(ss, TAB_TOURNAMENT_EVENTS, eventId, "tournament_events", SUPABASE_TOURNAMENT_EVENTS_HEADER, []);
+}
+function syncTournamentCategoryToSupabase_(ss, categoryId) {
+  syncRowToSupabase_(ss, TAB_TOURNAMENT_CATEGORIES, categoryId, "tournament_categories", SUPABASE_TOURNAMENT_CATEGORIES_HEADER, []);
+}
+function syncWakagymEventToSupabase_(ss, eventId) {
+  syncRowToSupabase_(ss, TAB_WAKAGYM_EVENTS, eventId, "wakagym_events", SUPABASE_WAKAGYM_EVENTS_HEADER, []);
+}
+
+// stock_branch has no single-column id — matched by (name, branch) together.
+function syncStockBranchToSupabase_(ss, name, branch) {
+  try {
+    var ws = ss.getSheetByName(TAB_STOCK_BRANCH);
+    if (!ws) return;
+    var rows = ws.getDataRange().getValues();
+    for (var i = 1; i < rows.length; i++) {
+      if (String(rows[i][0]) === String(name) && String(rows[i][2]) === String(branch)) {
+        pushToSupabase_("stock_branch", sheetRowToObject_(SUPABASE_STOCK_BRANCH_HEADER, rows[i], []));
+        return;
+      }
+    }
+  } catch (e) {
+    Logger.log("syncStockBranchToSupabase_ failed: " + e.message);
+  }
+}
+
 const TAB_ORDERS  = "orders";
 const TAB_CATALOG = "_catalog";
 const TAB_CONFIG  = "_config";
@@ -230,6 +374,7 @@ function doPost(e) {
           var cfgWs = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TAB_CONFIG);
           if (cfgWs) {
             cfgWs.appendRow(["group_staff", src.groupId]);
+            syncConfigToSupabase_(SpreadsheetApp.openById(SHEET_ID), "group_staff");
             _linePush(src.groupId, "ตั้งค่ากลุ่ม staff สำเร็จ!\nGroup ID: " + src.groupId);
           }
         }
@@ -246,6 +391,7 @@ function doPost(e) {
               }
             }
             if (!found2) cfgWs2.appendRow(["finance_line_id", src.userId]);
+            syncConfigToSupabase_(SpreadsheetApp.openById(SHEET_ID), "finance_line_id");
             _linePush(src.userId, "ตั้งค่าบัญชีสำเร็จ ✅\nระบบจะแจ้งเตือนเมื่อมีสลิปมีปัญหา\n\nUser ID: " + src.userId);
           }
         }
@@ -423,6 +569,7 @@ function doPost(e) {
     }
 
     lock.releaseLock();
+    syncOrderToSupabase_(ss, orderId);
 
     // LINE push หลัง release lock — ไม่ block order ถัดไป
     try {
@@ -550,6 +697,7 @@ function deductCatalogLimits(ss, items, _ws, _rows) {
   if (changed) {
     range.setValues(rows);
     CacheService.getScriptCache().remove("catalog_config");
+    items.forEach(function(it) { syncCatalogToSupabase_(ss, it.name); });
   }
   return rows;
 }
@@ -574,7 +722,10 @@ function deductStock(ss, items, _ws, _rows) {
       break;
     }
   }
-  if (changed) range.setValues(rows);
+  if (changed) {
+    range.setValues(rows);
+    items.forEach(function(it) { syncCatalogToSupabase_(ss, it.name); });
+  }
 }
 
 function restoreStock(ss, items) {
@@ -599,7 +750,10 @@ function restoreStock(ss, items) {
       break;
     }
   }
-  if (changed) range.setValues(rows);
+  if (changed) {
+    range.setValues(rows);
+    items.forEach(function(it) { if (!it._preorder) syncCatalogToSupabase_(ss, it.name); });
+  }
 }
 
 function restoreCatalogLimits(ss, items) {
@@ -623,6 +777,7 @@ function restoreCatalogLimits(ss, items) {
   if (changed) {
     range.setValues(rows);
     CacheService.getScriptCache().remove("catalog_config");
+    items.forEach(function(it) { syncCatalogToSupabase_(ss, it.name); });
   }
 }
 
@@ -878,6 +1033,7 @@ function handleWakagymRegister(data) {
     }
 
     lock.releaseLock();
+    results.forEach(function(r) { syncWakagymRegToSupabase_(ss, r.regId); });
 
     var cfgWs = ss.getSheetByName(TAB_CONFIG);
     var groupStaff = _getConfigValue(cfgWs, "group_staff");
@@ -1017,6 +1173,7 @@ function handleTournamentRegister(data) {
       amountPaid, "active", "", "", selectedCatsJson
     ]);
     lock.releaseLock();
+    syncTournamentRegToSupabase_(ss, regId);
 
     var statusUrl = "https://waka-liff.vercel.app/treg_status.html?id=" + encodeURIComponent(regId);
     var cfgWs = ss.getSheetByName(TAB_CONFIG);
@@ -1097,6 +1254,7 @@ function handleStaffPage(orderId, action) {
         _linePush(uid3, "สาขาส่งมอบสินค้าแล้ว กรุณากดยืนยันรับของ\n\nออเดอร์: #" + orderId + "\n\nกดยืนยัน:\n" + trackUrl3);
       }
     }
+    if (action === "shipping" || action === "ready" || action === "handover") syncOrderToSupabase_(ss, orderId);
 
     var items = [];
     try { items = JSON.parse(r[col("items_json")] || "[]"); } catch(e) {}
@@ -1211,6 +1369,7 @@ function handleApi(params) {
         if (uid) _linePush(uid, "สาขาส่งมอบสินค้าแล้ว กรุณากดยืนยันรับของ\n\nออเดอร์: #" + orderId + "\n\nกดยืนยัน:\n" + trackUrl);
       }
       _clearDashCache();
+      syncOrderToSupabase_(ss, orderId);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, status: newStatus, time: now })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
@@ -1255,6 +1414,7 @@ function handleApi(params) {
       var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
       if (col("customer_confirmed_at") >= 0) ws.getRange(m + 1, col("customer_confirmed_at") + 1).setValue(now);
       if (col("fulfillment") >= 0) ws.getRange(m + 1, col("fulfillment") + 1).setValue("รับแล้ว");
+      syncOrderToSupabase_(ss, orderId);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
@@ -1590,6 +1750,7 @@ function handleApi(params) {
         _linePush(uid, cancelMsg);
       }
       _clearDashCache();
+      syncOrderToSupabase_(ss, orderId);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
@@ -1763,6 +1924,7 @@ function handleApi(params) {
       if (String(tuRows[ui][tuCol("reg_id")]) === regId) {
         var fc = tuCol(field);
         if (fc >= 0) tuWs.getRange(ui + 1, fc + 1).setValue(value);
+        syncWakagymRegToSupabase_(ss, regId);
         return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
       }
     }
@@ -1881,6 +2043,7 @@ function handleApi(params) {
     }
     evId += "-" + (evCount + 1);
     evWs.appendRow([evId, evNow, evBranch, evTier, TIER_CONFIG[evTier].fee, "open", params.created_by || "staff"]);
+    syncWakagymEventToSupabase_(evSs, evId);
     return _cors(ContentService.createTextOutput(JSON.stringify({
       ok: true, event_id: evId, tier: evTier, entry_fee: TIER_CONFIG[evTier].fee,
       token_table: TOKEN_TABLE[evTier],
@@ -1959,6 +2122,7 @@ function handleApi(params) {
         }
 
         processed.push({ reg_id: regId, player_name: pName, placement: placement, tokens: tokens, promo_packs: promos, line_user_id: lineUid });
+        syncWakagymRegToSupabase_(ss, regId);
         break;
       }
     }
@@ -2004,6 +2168,7 @@ function handleApi(params) {
         if (grPromos > 0) grMsg += "\n📦 Promo Pack: " + grPromos + " ซอง";
         _linePush(grUid, grMsg);
       }
+      syncWakagymRegToSupabase_(ss, grRegId);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, already: false })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "not found" })));
@@ -2094,6 +2259,7 @@ function handleApi(params) {
             + "\n🎁 Promo Pack: " + gcPromo + " ซอง";
           _linePush(gcUid, gcMsg);
         }
+        syncWakagymRegToSupabase_(ss, gcRegId);
         return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, already: false })));
       }
     }
@@ -2273,6 +2439,7 @@ function handleApi(params) {
     tceWs.appendRow([tceId, tceName, tceDate, Number(params.entry_fee) || 0,
       Number(params.max_players) || 0, String(params.rules_text || "").trim(),
       String(params.registration_close || "").trim(), "open", tceNow]);
+    syncTournamentEventToSupabase_(ss, tceId);
     return _cors(ContentService.createTextOutput(JSON.stringify({
       ok: true, event_id: tceId,
       reg_link: "https://liff.line.me/2010457385-JHbMDl5I?event=" + tceId,
@@ -2300,6 +2467,7 @@ function handleApi(params) {
       if (params.max_players !== undefined) tueSet(tuec("max_players"), Number(params.max_players) || 0);
       if (params.rules_text !== undefined) tueSet(tuec("rules_text"), String(params.rules_text).trim());
       if (params.registration_close !== undefined) tueSet(tuec("registration_close"), String(params.registration_close).trim());
+      syncTournamentEventToSupabase_(ss, tueId);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "not found" })));
@@ -2345,6 +2513,7 @@ function handleApi(params) {
           _linePush(turUid, turMsg);
         }
       }
+      syncTournamentRegToSupabase_(ss, turId);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "not found" })));
@@ -2430,6 +2599,7 @@ function handleApi(params) {
     var tacExisting = tacRows.length - 1;
     var tacId = "CAT" + Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyyMMddHHmmss");
     tacWs.appendRow([tacId, tacEvId, tacName, tacFee, 0, tacExisting + 1, "open"]);
+    syncTournamentCategoryToSupabase_(ss, tacId);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, category_id: tacId })));
   }
 
@@ -2443,6 +2613,7 @@ function handleApi(params) {
     for (var tdci = 1; tdci < tdcRows.length; tdci++) {
       if (String(tdcRows[tdci][tdcc("category_id")]) !== tdcId) continue;
       tdcWs.getRange(tdci + 1, tdcc("status") + 1).setValue("deleted");
+      syncTournamentCategoryToSupabase_(ss, tdcId);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "not found" })));
@@ -2725,6 +2896,7 @@ function handleCreateShipment(data) {
         if (totalPack > 0) { sRows[ri][8] = Math.max(0, (Number(sRows[ri][8]) || 0) - totalPack); catChanged = true; }
       }
       if (catChanged) catRange.setValues(sRows);
+      items.forEach(function(it) { syncCatalogToSupabase_(ss, it.name); });
     }
 
     shWs.appendRow([shipId, now, data.to_branch || "", "จัดส่ง", JSON.stringify(items), "", ""]);
@@ -2860,6 +3032,7 @@ function handleReceiveShipment(data) {
     }
     if (bsChanged) bsRange.setValues(bsRows);
     for (var nr = 0; nr < newBsRows.length; nr++) bsWs.appendRow(newBsRows[nr]);
+    for (var si = 0; si < items.length; si++) syncStockBranchToSupabase_(ss, items[si].name, branch);
 
     // แจ้ง LINE ลูกค้าทุกคนที่มีออเดอร์ยืนยัน + สาขานี้ + ยังไม่ส่ง
     var ws = ss.getSheetByName(TAB_ORDERS);
@@ -2878,6 +3051,7 @@ function handleReceiveShipment(data) {
         if (oCol("fulfilled_at") >= 0) ws.getRange(j + 1, oCol("fulfilled_at") + 1).setValue(now);
         var uid = oRows[j][oCol("line_user_id")] || "";
         var oid = String(oRows[j][oCol("order_id")] || "");
+        syncOrderToSupabase_(ss, oid);
         if (uid) {
           var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + oid;
           _linePush(uid, "สินค้าพร้อมรับที่สาขา" + branch + " แล้ว!\n\nออเดอร์: #" + oid + "\n\nดูสถานะ:\n" + trackUrl);
@@ -2950,6 +3124,7 @@ function handleHandoverOrder(data) {
           bsChanged = true;
         }
         if (bsChanged) bsRange.setValues(bsRows);
+        for (var si = 0; si < itemsToHandover.length; si++) syncStockBranchToSupabase_(ss, itemsToHandover[si].name, branch);
       }
 
       // ตั้ง handed_at บน item ที่เพิ่งส่งมอบ
@@ -2990,6 +3165,7 @@ function handleHandoverOrder(data) {
       }
 
       lock.releaseLock();
+      syncOrderToSupabase_(ss, data.order_id);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now, fulfillment: newFf })));
     }
     lock.releaseLock();
@@ -3059,6 +3235,7 @@ function handlePartialReady(data) {
       }
 
       lock.releaseLock();
+      syncOrderToSupabase_(ss, data.order_id);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, fulfillment: newFf })));
     }
     lock.releaseLock();
@@ -3134,6 +3311,7 @@ function handlePartialCancelItems(data) {
       }
 
       lock.releaseLock();
+      syncOrderToSupabase_(ss, data.order_id);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, cancelled: cancelledItems.length })));
     }
     lock.releaseLock();
@@ -3213,6 +3391,7 @@ function handleConfirmSlip(data) {
         _linePush(uid, "ยืนยันการชำระเงินแล้ว ✅\n\nออเดอร์: #" + orderId + "\n\n" + itemsText + "\n\nยอดรวม: " + total + " บาท\n" + (isDelivery ? "จัดส่งพัสดุ" : "รับที่สาขา: " + branch) + "\n\nทีมงานจะแจ้งเมื่อสินค้าพร้อมรับครับ");
       }
 
+      syncOrderToSupabase_(ss, orderId);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
@@ -3263,6 +3442,7 @@ function handleAddStock(data) {
     }
 
     lock.releaseLock();
+    syncCatalogToSupabase_(ss, data.name);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -3303,6 +3483,7 @@ function handleAddProduct(data) {
 
     CacheService.getScriptCache().remove("catalog_config");
     lock.releaseLock();
+    syncCatalogToSupabase_(ss, data.name);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -3336,6 +3517,7 @@ function handleUpdateProduct(data) {
     if (data.notice !== undefined) catWs.getRange(targetRow, 15).setValue(data.notice || "");
     CacheService.getScriptCache().remove("catalog_config");
     lock.releaseLock();
+    syncCatalogToSupabase_(ss, data.name);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -3456,6 +3638,8 @@ function handleReturnStock(data) {
 
     CacheService.getScriptCache().remove("catalog_config");
     lock.releaseLock();
+    syncStockBranchToSupabase_(ss, name, branch);
+    syncCatalogToSupabase_(ss, name);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}

@@ -10,18 +10,18 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-import requests
+import os
 import streamlit as st
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from theme import (
     apply_theme, page_header, flat, SURFACE, BORDER, TEXT2, TEXT3, ACCENT_LIGHT,
     ACCENT_TEXT, DIVIDER, DIVIDER2, PENDING_TEXT, SUCCESS_TEXT,
 )
 
-WAKA_S  = "wk26xK9mPqRt"
-GAS_URL = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
 TH_TZ = timezone(timedelta(hours=7))
-GYM_SHEET_ID = "1aUHbSt3qlQ4uMIzlCGbF-iFm0AqSeqx12nxk5ny1JoY"
 
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 
@@ -29,72 +29,66 @@ THAI_DAYS = ["วันจันทร์", "วันอังคาร", "ว�
 THAI_MONTHS = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
                "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"]
 
-
-def gas_get(do: str, **params) -> dict:
-    q = {"action": "api", "do": do, "_s": WAKA_S, **params}
-    r = requests.get(GAS_URL, params=q, timeout=30)
-    r.raise_for_status()
-    return r.json()
+PENDING_SLIP_STATUSES = ["รอตรวจ", "รอตรวจเพิ่ม", "ยอดไม่ตรง", "สลิปซ้ำ", "บัญชีไม่ตรง", "สงสัยปลอม"]
 
 
-def count_tournament_pending(events: list):
-    open_ids = [e["event_id"] for e in events if e.get("status") == "open"]
-    if not open_ids:
-        return 0
-
-    def _count(eid):
+@st.cache_resource
+def get_supabase():
+    from supabase import create_client
+    url = os.environ.get("SUPABASE_URL", "")
+    key = os.environ.get("SUPABASE_SERVICE_KEY", "")
+    if not url or not key:
         try:
-            players = gas_get("tournament_list", event=eid).get("players", [])
-            return sum(1 for p in players if p.get("slip_status") == "pending")
+            url = url or st.secrets["SUPABASE_URL"]
+            key = key or st.secrets["SUPABASE_SERVICE_KEY"]
         except Exception:
-            return 0
-
-    try:
-        with ThreadPoolExecutor(max_workers=len(open_ids)) as ex:
-            return sum(ex.map(_count, open_ids))
-    except Exception:
-        return None
-
-
-def count_gym_pending_slips():
-    """Best-effort pending-slip count via gspread. Returns None (not 0) on any
-    failure so the UI can show "—" instead of a misleading zero."""
-    try:
-        import json as _json
-        import gspread
-        from google.oauth2.service_account import Credentials
-
-        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-        if "GOOGLE_SERVICE_ACCOUNT" in st.secrets:
-            info = _json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
-            creds = Credentials.from_service_account_info(info, scopes=scopes)
-        else:
-            creds = Credentials.from_service_account_file("service_account.json", scopes=scopes)
-        gc = gspread.authorize(creds)
-        ws = gc.open_by_key(GYM_SHEET_ID).worksheet("wakagym_reg")
-        rows = ws.get_all_values()
-        if len(rows) < 2 or "slip_status" not in rows[0]:
-            return 0
-        idx = rows[0].index("slip_status")
-        return sum(1 for r in rows[1:] if len(r) > idx and r[idx] == "pending")
-    except Exception:
-        return None
+            pass
+    return create_client(url, key)
 
 
 def _load_orders():
     try:
-        return gas_get("dashboard")
+        sb = get_supabase()
+        rows = (
+            sb.table("orders").select("*")
+            .order("timestamp", desc=True).limit(200).execute().data
+        )
+        today = datetime.now(TH_TZ).strftime("%Y-%m-%d")
+        orders_today = 0
+        revenue_today = 0
+        pending_count = 0
+        for o in rows:
+            ts = o.get("timestamp") or ""
+            slip = o.get("slip_status") or ""
+            if ts.startswith(today):
+                orders_today += 1
+                if slip == "ยืนยัน":
+                    revenue_today += int(o.get("total") or 0)
+            if slip in PENDING_SLIP_STATUSES:
+                pending_count += 1
+        return {
+            "orders_today": orders_today, "revenue_today": revenue_today,
+            "pending_count": pending_count, "recent_orders": rows,
+        }
     except Exception as e:
         return {"_error": str(e)}
 
 
 def _load_tourney():
     try:
-        events = gas_get("tournament_events").get("events", [])
+        sb = get_supabase()
+        events = sb.table("tournament_events").select("*").execute().data
+        open_ids = [e["event_id"] for e in events if e.get("status") == "open"]
+        pending_applicants = 0
+        if open_ids:
+            pending_applicants = len(
+                sb.table("tournament_registrations").select("reg_id")
+                .eq("slip_status", "pending").in_("event_id", open_ids).execute().data
+            )
         return {
-            "open_count": sum(1 for e in events if e.get("status") == "open"),
+            "open_count": len(open_ids),
             "total_count": len(events),
-            "pending_applicants": count_tournament_pending(events),
+            "pending_applicants": pending_applicants,
         }
     except Exception as e:
         return {"_error": str(e)}
@@ -102,10 +96,31 @@ def _load_tourney():
 
 def _load_gym():
     try:
+        sb = get_supabase()
         today = datetime.now(TH_TZ).strftime("%Y-%m-%d")
-        gym = gas_get("wakagym_summary", date=today)
-        gym["pending_slips"] = count_gym_pending_slips()
-        return gym
+        rows = sb.table("wakagym_registrations").select("*").eq("event_date", today).execute().data
+
+        total_tokens = sum(int(r.get("tokens_earned") or 0) for r in rows)
+        total_promo = sum(int(r.get("promo_packs") or 0) for r in rows)
+        rewards_given = sum(1 for r in rows if str(r.get("rewards_given")).lower() == "true")
+        cash_amount = 0
+        transfer_amount = 0
+        for r in rows:
+            entry_fee = int(r.get("note") or 0) or 200
+            if (r.get("payment_method") or "transfer") == "cash":
+                cash_amount += entry_fee
+            else:
+                transfer_amount += entry_fee
+
+        pending_slips = len(
+            sb.table("wakagym_registrations").select("reg_id").eq("slip_status", "pending").execute().data
+        )
+        return {
+            "date": today, "total_players": len(rows), "total_tokens": total_tokens,
+            "total_promo": total_promo, "rewards_given": rewards_given,
+            "cash_amount": cash_amount, "transfer_amount": transfer_amount,
+            "total_amount": cash_amount + transfer_amount, "pending_slips": pending_slips,
+        }
     except Exception as e:
         return {"_error": str(e)}
 

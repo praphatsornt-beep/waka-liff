@@ -79,6 +79,36 @@ def load_orders() -> pd.DataFrame:
         return pd.DataFrame()
 
 
+ORDERS_HEADER = [
+    "order_id", "timestamp", "line_user_id", "display_name",
+    "items_json", "total", "branch", "real_name", "phone", "address", "email",
+    "slip_status", "slip_url", "slip_amount", "slip_txn_id", "notes",
+    "fulfillment", "fulfilled_at", "staff_confirmed_at", "customer_confirmed_at",
+]
+
+
+def sync_order_to_supabase(row_num: int):
+    """Best-effort mirror to Supabase after a direct Sheets write from this
+    dashboard (bypasses gas/Code.gs entirely, so its dual-write can't cover
+    this path — must push here instead). Never raises; a Supabase hiccup
+    must never block the actual approve/reject action."""
+    try:
+        import os
+        from supabase import create_client
+        url, key = os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_KEY")
+        if not url or not key:
+            return
+        ws = get_gc().open_by_key(SHEET_ID).worksheet("orders")
+        values = ws.row_values(row_num)
+        row = {ORDERS_HEADER[i]: (values[i] if i < len(values) and values[i] != "" else None)
+               for i in range(len(ORDERS_HEADER))}
+        if row.get("items_json"):
+            row["items_json"] = json.loads(row["items_json"])
+        create_client(url, key).table("orders").upsert(row, on_conflict="order_id").execute()
+    except Exception:
+        pass
+
+
 def update_slip_status(row_num: int, status: str, amount: str = "", note: str = ""):
     ws = get_gc().open_by_key(SHEET_ID).worksheet("orders")
     rows = ws.get_all_values()
@@ -92,6 +122,7 @@ def update_slip_status(row_num: int, status: str, amount: str = "", note: str = 
         ws.update_cell(row_num, amount_col, amount)
     if notes_col and note:
         ws.update_cell(row_num, notes_col, note)
+    sync_order_to_supabase(row_num)
 
 
 def _now_th():

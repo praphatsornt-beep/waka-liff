@@ -9,3 +9,4 @@ pdfplumber
 pandas
 qrcode[pil]
 streamlit-qrcode-scanner
+supabase

@@ -38,6 +38,21 @@ def gas_get(do: str, **params) -> dict:
     return r.json()
 
 
+@st.cache_resource
+def get_supabase():
+    import os
+    from supabase import create_client
+    url = os.environ.get("SUPABASE_URL", "")
+    key = os.environ.get("SUPABASE_SERVICE_KEY", "")
+    if not url or not key:
+        try:
+            url = url or st.secrets["SUPABASE_URL"]
+            key = key or st.secrets["SUPABASE_SERVICE_KEY"]
+        except Exception:
+            pass
+    return create_client(url, key)
+
+
 # ── Page config ───────────────────────────────────────────────────────────────
 apply_theme()
 page_header("ทัวร์นาเมนต์", "สร้าง จัดการ และติดตามผู้สมัครแข่งขัน")
@@ -49,7 +64,26 @@ if st.button("🔄 โหลดใหม่"):
 
 @st.cache_data(ttl=30)
 def load_events() -> list:
-    return gas_get("tournament_events").get("events", [])
+    # newest-created first, matching gas/Code.gs's tournament_events action (tevList.reverse())
+    rows = get_supabase().table("tournament_events").select("*").execute().data
+    return sorted(rows, key=lambda e: e.get("created_at") or "", reverse=True)
+
+
+@st.cache_data(ttl=30)
+def load_categories(event_id: str) -> list:
+    rows = (
+        get_supabase().table("tournament_categories").select("*")
+        .eq("event_id", event_id).neq("status", "deleted").execute().data
+    )
+    return sorted(rows, key=lambda c: c.get("sort_order") or 0)
+
+
+@st.cache_data(ttl=30)
+def load_players(event_id: str) -> list:
+    return (
+        get_supabase().table("tournament_registrations").select("*")
+        .eq("event_id", event_id).execute().data
+    )
 
 
 tab_events, tab_players = st.tabs(["🗓 จัดการทัวร์นาเมนต์", "👥 ผู้สมัคร / เช็คอิน"])
@@ -132,7 +166,7 @@ with tab_events:
 
             st.markdown("**ประเภทการแข่งขัน**")
             try:
-                cats = gas_get("tournament_categories", event=ev["event_id"]).get("categories", [])
+                cats = load_categories(ev["event_id"])
             except Exception:
                 cats = []
             for c in cats:
@@ -181,7 +215,7 @@ with tab_players:
     sel_id = st.selectbox("เลือกทัวร์นาเมนต์", list(ev_names.keys()), format_func=lambda i: ev_names[i])
 
     try:
-        players = gas_get("tournament_list", event=sel_id).get("players", [])
+        players = load_players(sel_id)
     except Exception as e:
         st.error(f"โหลดไม่ได้: {e}")
         players = []

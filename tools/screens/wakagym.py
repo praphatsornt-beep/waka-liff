@@ -58,19 +58,27 @@ def _now_th():
     return datetime.now(TH_TZ).strftime("%Y-%m-%d")
 
 
+@st.cache_resource
+def get_supabase():
+    import os
+    from supabase import create_client
+    url = os.environ.get("SUPABASE_URL", "")
+    key = os.environ.get("SUPABASE_SERVICE_KEY", "")
+    if not url or not key:
+        try:
+            url = url or st.secrets["SUPABASE_URL"]
+            key = key or st.secrets["SUPABASE_SERVICE_KEY"]
+        except Exception:
+            pass
+    return create_client(url, key)
+
+
 # ── Data loading ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=120)
 def load_registrations() -> pd.DataFrame:
     try:
-        ws = get_gc().open_by_key(SHEET_ID).worksheet("wakagym_reg")
-        rows = ws.get_all_values()
-        if len(rows) < 2:
-            return pd.DataFrame()
-        df = pd.DataFrame(rows[1:], columns=rows[0])
-        df["row_num"] = range(2, len(df) + 2)
-        return df
-    except gspread.exceptions.WorksheetNotFound:
-        return pd.DataFrame()
+        rows = get_supabase().table("wakagym_registrations").select("*").execute().data
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
     except Exception as e:
         st.error(f"โหลด wakagym_reg ไม่ได้: {e}")
         return pd.DataFrame()
