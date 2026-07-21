@@ -347,6 +347,38 @@ with tab_branch:
                 except Exception as e:
                     st.error(f"บันทึกไม่ได้: {e}")
 
+    with st.expander("📤 คืนสต็อกจากสาขากลับคลังกลาง"):
+        names_r = sorted(stock_branch["name"].unique().tolist()) if not stock_branch.empty else []
+        with st.form("return_stock_form"):
+            rb1, rb2 = st.columns(2)
+            r_branch = rb1.selectbox("สาขา", BRANCHES, key="return_branch_sel")
+            r_name = rb2.selectbox("สินค้า", names_r, key="return_name_sel")
+
+            cur_row = pd.DataFrame()
+            if not stock_branch.empty:
+                cur_row = stock_branch[(stock_branch["branch"] == r_branch) & (stock_branch["name"] == r_name)]
+            max_box = int(pd.to_numeric(cur_row["qty_box"], errors="coerce").fillna(0).iloc[0]) if not cur_row.empty else 0
+            max_pack = int(pd.to_numeric(cur_row["qty_pack"], errors="coerce").fillna(0).iloc[0]) if not cur_row.empty else 0
+
+            rb3, rb4 = st.columns(2)
+            r_qty_box = rb3.number_input(f"คืนกล่อง (มี {max_box})", min_value=0, max_value=max(max_box, 0), value=0, step=1)
+            r_qty_pack = rb4.number_input(f"คืนซอง (มี {max_pack})", min_value=0, max_value=max(max_pack, 0), value=0, step=1)
+            submitted_r = st.form_submit_button("คืนสต็อก")
+            if submitted_r:
+                if r_qty_box <= 0 and r_qty_pack <= 0:
+                    st.warning("ใส่จำนวนที่จะคืนก่อน")
+                else:
+                    try:
+                        gas_post({
+                            "_action": "returnStock", "branch": r_branch, "name": r_name,
+                            "qty_box": r_qty_box, "qty_pack": r_qty_pack,
+                        })
+                        st.success("คืนสต็อกแล้ว สต็อกกลางได้รับคืนแล้ว")
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"คืนสต็อกไม่ได้: {e}")
+
 with tab_history:
     ships = load_shipments()
     if ships.empty:
