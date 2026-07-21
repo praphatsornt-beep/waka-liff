@@ -50,6 +50,26 @@ h1, h2, h3, h4,
 [data-testid="stSidebarNav"] span {{ font-size: 15px !important; }}
 [data-testid="stSidebarHeader"] {{ padding-bottom: 0 !important; }}
 
+/* Collapsed sidebar: keep a narrow icon-only rail instead of hiding fully */
+[data-testid="stSidebar"][aria-expanded="false"] {{
+  width: 56px !important;
+  min-width: 56px !important;
+  transform: none !important;
+  visibility: visible !important;
+}}
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarNavLink"] span[label] {{
+  display: none;
+}}
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarNavLink"] {{
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}}
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stNavSectionHeader"],
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarUserContent"] .stButton {{
+  display: none;
+}}
+
 [data-testid="stMetric"] {{
   background: {SURFACE};
   border: 1px solid {BORDER};
