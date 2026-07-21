@@ -274,7 +274,7 @@ with st.container(border=True):
     with f5:
         date_from = st.date_input("จากวันที่", value=date.today() - timedelta(days=7), label_visibility="collapsed")
     with f6:
-        st.markdown(f"<div style='text-align:center;padding-top:8px;color:{TEXT3}'>ถึง</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align:center;padding-top:8px;color:{TEXT3};font-size:12px;white-space:nowrap'>ถึง</div>", unsafe_allow_html=True)
     with f7:
         date_to = st.date_input("ถึงวันที่", value=date.today(), label_visibility="collapsed")
 

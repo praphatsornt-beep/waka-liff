@@ -193,6 +193,116 @@ st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 tab_central, tab_branch, tab_history = st.tabs(["คลังกลาง", "สต็อกสาขา", "ประวัติการโอน"])
 
 with tab_central:
+    ac1, ac2, ac3 = st.columns(3)
+    with ac1:
+        with st.popover("➕ เพิ่มสต็อกคลังกลาง", use_container_width=True):
+            names = catalog["name"].tolist() if not catalog.empty else []
+            with st.form("add_stock_form"):
+                sel_name = st.selectbox("สินค้า", names)
+                c1, c2 = st.columns(2)
+                add_box = c1.number_input("เพิ่มกล่อง", min_value=0, value=0, step=1)
+                add_pack = c2.number_input("เพิ่มซอง", min_value=0, value=0, step=1)
+                submitted = st.form_submit_button("บันทึก")
+                if submitted:
+                    if add_box <= 0 and add_pack <= 0:
+                        st.warning("ใส่จำนวนที่จะเพิ่มก่อน")
+                    else:
+                        try:
+                            gas_post({"_action": "addStock", "name": sel_name, "add_box": add_box, "add_pack": add_pack})
+                            st.success("เพิ่มสต็อกแล้ว")
+                            st.cache_data.clear()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"บันทึกไม่ได้: {e}")
+
+    with ac2:
+        with st.popover("🆕 เพิ่มสินค้าใหม่", use_container_width=True):
+            with st.form("add_product_form"):
+                p1, p2 = st.columns(2)
+                new_name = p1.text_input("ชื่อสินค้า")
+                new_category = p2.text_input("หมวดหมู่")
+                p3, p4 = st.columns(2)
+                new_cost_box = p3.number_input("ต้นทุน/กล่อง", min_value=0.0, value=0.0, step=1.0)
+                new_cost_pack = p4.number_input("ต้นทุน/ซอง", min_value=0.0, value=0.0, step=1.0)
+                p5, p6 = st.columns(2)
+                new_price_box = p5.number_input("ราคาขาย/กล่อง", min_value=0.0, value=0.0, step=1.0)
+                new_price_pack = p6.number_input("ราคาขาย/ซอง", min_value=0.0, value=0.0, step=1.0)
+                p7, p8 = st.columns(2)
+                new_initial_box = p7.number_input("สต็อกเริ่มต้น (กล่อง)", min_value=0, value=0, step=1)
+                new_initial_pack = p8.number_input("สต็อกเริ่มต้น (ซอง)", min_value=0, value=0, step=1)
+                p9, p10 = st.columns(2)
+                new_limit_box = p9.number_input("ขั้นต่ำแจ้งเตือน (กล่อง)", min_value=0, value=0, step=1)
+                new_limit_pack = p10.number_input("ขั้นต่ำแจ้งเตือน (ซอง)", min_value=0, value=0, step=1)
+                new_barcode = st.text_input("บาร์โค้ด (ถ้ามี)")
+                submitted_p = st.form_submit_button("เพิ่มสินค้า")
+                if submitted_p:
+                    if not new_name.strip():
+                        st.warning("กรอกชื่อสินค้าก่อน")
+                    elif not catalog.empty and new_name.strip() in catalog["name"].values:
+                        st.error("มีสินค้าชื่อนี้อยู่แล้ว")
+                    else:
+                        try:
+                            gas_post({
+                                "_action": "addProduct",
+                                "name": new_name.strip(), "category": new_category.strip(),
+                                "cost_box": new_cost_box, "cost_pack": new_cost_pack,
+                                "price_box": new_price_box, "price_pack": new_price_pack,
+                                "initial_box": new_initial_box, "initial_pack": new_initial_pack,
+                                "limit_box": new_limit_box, "limit_pack": new_limit_pack,
+                                "barcode": new_barcode.strip(),
+                            })
+                            st.success(f"เพิ่มสินค้า \"{new_name}\" แล้ว")
+                            st.cache_data.clear()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"เพิ่มสินค้าไม่ได้: {e}")
+
+    with ac3:
+        with st.popover("🚚 สร้างล็อตส่งสาขา", use_container_width=True):
+            ship_branch = st.selectbox("สาขาปลายทาง", BRANCHES, key="ship_branch_sel")
+            demand = {name: d for (branch, name), d in load_pending_branch_demand().items() if branch == ship_branch}
+
+            if demand:
+                st.caption("ออเดอร์รอส่งไปสาขานี้")
+                demand_df = pd.DataFrame([
+                    {"สินค้า": name, "รอส่ง (กล่อง)": d["qty_box"], "รอส่ง (ซอง)": d["qty_pack"], "ออเดอร์": d["order_count"]}
+                    for name, d in demand.items()
+                ]).sort_values("สินค้า")
+                st.dataframe(demand_df, use_container_width=True, hide_index=True)
+            else:
+                st.caption(f"ไม่มีออเดอร์รอส่งไปสาขา {ship_branch} ในตอนนี้ — เลือกสินค้าที่จะส่งเองได้ด้านล่าง")
+
+            all_names = catalog["name"].tolist() if not catalog.empty else []
+            default_sel = [n for n in demand if n in all_names]
+            sel_products = st.multiselect(
+                "เลือกสินค้าที่จะส่ง", all_names, default=default_sel, key=f"ship_sel_{ship_branch}",
+            )
+
+            with st.form(f"create_shipment_form_{ship_branch}"):
+                ship_items = []
+                for name in sel_products:
+                    d = demand.get(name, {"qty_box": 0, "qty_pack": 0})
+                    sc1, sc2 = st.columns(2)
+                    qb = sc1.number_input(f"{name} — กล่อง", min_value=0, value=int(d["qty_box"]), step=1, key=f"shipbox_{ship_branch}_{name}")
+                    qp = sc2.number_input(f"{name} — ซอง", min_value=0, value=int(d["qty_pack"]), step=1, key=f"shippack_{ship_branch}_{name}")
+                    ship_items.append({"name": name, "qty_box": qb, "qty_pack": qp, "qty_box_extra": 0, "qty_pack_extra": 0})
+
+                submitted_ship = st.form_submit_button("📦 สร้างล็อตส่งสาขา")
+                if submitted_ship:
+                    items_payload = [it for it in ship_items if it["qty_box"] > 0 or it["qty_pack"] > 0]
+                    if not items_payload:
+                        st.warning("เลือกสินค้าและใส่จำนวนที่จะส่งก่อน")
+                    else:
+                        try:
+                            result = gas_post({"_action": "createShipment", "to_branch": ship_branch, "items": items_payload})
+                            st.success(f"สร้างล็อต {result.get('shipment_id', '')} แล้ว")
+                            st.cache_data.clear()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"สร้างล็อตไม่ได้: {e}")
+
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
     if catalog.empty:
         st.caption("ยังไม่มีข้อมูลสินค้า")
     else:
@@ -208,110 +318,6 @@ with tab_central:
             "limit_box": "ขั้นต่ำ (กล่อง)", "limit_pack": "ขั้นต่ำ (ซอง)",
         })
         st.dataframe(show, use_container_width=True, hide_index=True)
-
-    with st.expander("➕ เพิ่มสต็อกคลังกลาง"):
-        names = catalog["name"].tolist() if not catalog.empty else []
-        with st.form("add_stock_form"):
-            sel_name = st.selectbox("สินค้า", names)
-            c1, c2 = st.columns(2)
-            add_box = c1.number_input("เพิ่มกล่อง", min_value=0, value=0, step=1)
-            add_pack = c2.number_input("เพิ่มซอง", min_value=0, value=0, step=1)
-            submitted = st.form_submit_button("บันทึก")
-            if submitted:
-                if add_box <= 0 and add_pack <= 0:
-                    st.warning("ใส่จำนวนที่จะเพิ่มก่อน")
-                else:
-                    try:
-                        gas_post({"_action": "addStock", "name": sel_name, "add_box": add_box, "add_pack": add_pack})
-                        st.success("เพิ่มสต็อกแล้ว")
-                        st.cache_data.clear()
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"บันทึกไม่ได้: {e}")
-
-    with st.expander("🆕 เพิ่มสินค้าใหม่"):
-        with st.form("add_product_form"):
-            p1, p2 = st.columns(2)
-            new_name = p1.text_input("ชื่อสินค้า")
-            new_category = p2.text_input("หมวดหมู่")
-            p3, p4 = st.columns(2)
-            new_cost_box = p3.number_input("ต้นทุน/กล่อง", min_value=0.0, value=0.0, step=1.0)
-            new_cost_pack = p4.number_input("ต้นทุน/ซอง", min_value=0.0, value=0.0, step=1.0)
-            p5, p6 = st.columns(2)
-            new_price_box = p5.number_input("ราคาขาย/กล่อง", min_value=0.0, value=0.0, step=1.0)
-            new_price_pack = p6.number_input("ราคาขาย/ซอง", min_value=0.0, value=0.0, step=1.0)
-            p7, p8 = st.columns(2)
-            new_initial_box = p7.number_input("สต็อกเริ่มต้น (กล่อง)", min_value=0, value=0, step=1)
-            new_initial_pack = p8.number_input("สต็อกเริ่มต้น (ซอง)", min_value=0, value=0, step=1)
-            p9, p10 = st.columns(2)
-            new_limit_box = p9.number_input("ขั้นต่ำแจ้งเตือน (กล่อง)", min_value=0, value=0, step=1)
-            new_limit_pack = p10.number_input("ขั้นต่ำแจ้งเตือน (ซอง)", min_value=0, value=0, step=1)
-            new_barcode = st.text_input("บาร์โค้ด (ถ้ามี)")
-            submitted_p = st.form_submit_button("เพิ่มสินค้า")
-            if submitted_p:
-                if not new_name.strip():
-                    st.warning("กรอกชื่อสินค้าก่อน")
-                elif not catalog.empty and new_name.strip() in catalog["name"].values:
-                    st.error("มีสินค้าชื่อนี้อยู่แล้ว")
-                else:
-                    try:
-                        gas_post({
-                            "_action": "addProduct",
-                            "name": new_name.strip(), "category": new_category.strip(),
-                            "cost_box": new_cost_box, "cost_pack": new_cost_pack,
-                            "price_box": new_price_box, "price_pack": new_price_pack,
-                            "initial_box": new_initial_box, "initial_pack": new_initial_pack,
-                            "limit_box": new_limit_box, "limit_pack": new_limit_pack,
-                            "barcode": new_barcode.strip(),
-                        })
-                        st.success(f"เพิ่มสินค้า \"{new_name}\" แล้ว")
-                        st.cache_data.clear()
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"เพิ่มสินค้าไม่ได้: {e}")
-
-    with st.expander("🚚 สร้างล็อตส่งสาขา"):
-        ship_branch = st.selectbox("สาขาปลายทาง", BRANCHES, key="ship_branch_sel")
-        demand = {name: d for (branch, name), d in load_pending_branch_demand().items() if branch == ship_branch}
-
-        if demand:
-            st.caption("ออเดอร์รอส่งไปสาขานี้")
-            demand_df = pd.DataFrame([
-                {"สินค้า": name, "รอส่ง (กล่อง)": d["qty_box"], "รอส่ง (ซอง)": d["qty_pack"], "ออเดอร์": d["order_count"]}
-                for name, d in demand.items()
-            ]).sort_values("สินค้า")
-            st.dataframe(demand_df, use_container_width=True, hide_index=True)
-        else:
-            st.caption(f"ไม่มีออเดอร์รอส่งไปสาขา {ship_branch} ในตอนนี้ — เลือกสินค้าที่จะส่งเองได้ด้านล่าง")
-
-        all_names = catalog["name"].tolist() if not catalog.empty else []
-        default_sel = [n for n in demand if n in all_names]
-        sel_products = st.multiselect(
-            "เลือกสินค้าที่จะส่ง", all_names, default=default_sel, key=f"ship_sel_{ship_branch}",
-        )
-
-        with st.form(f"create_shipment_form_{ship_branch}"):
-            ship_items = []
-            for name in sel_products:
-                d = demand.get(name, {"qty_box": 0, "qty_pack": 0})
-                sc1, sc2 = st.columns(2)
-                qb = sc1.number_input(f"{name} — กล่อง", min_value=0, value=int(d["qty_box"]), step=1, key=f"shipbox_{ship_branch}_{name}")
-                qp = sc2.number_input(f"{name} — ซอง", min_value=0, value=int(d["qty_pack"]), step=1, key=f"shippack_{ship_branch}_{name}")
-                ship_items.append({"name": name, "qty_box": qb, "qty_pack": qp, "qty_box_extra": 0, "qty_pack_extra": 0})
-
-            submitted_ship = st.form_submit_button("📦 สร้างล็อตส่งสาขา")
-            if submitted_ship:
-                items_payload = [it for it in ship_items if it["qty_box"] > 0 or it["qty_pack"] > 0]
-                if not items_payload:
-                    st.warning("เลือกสินค้าและใส่จำนวนที่จะส่งก่อน")
-                else:
-                    try:
-                        result = gas_post({"_action": "createShipment", "to_branch": ship_branch, "items": items_payload})
-                        st.success(f"สร้างล็อต {result.get('shipment_id', '')} แล้ว")
-                        st.cache_data.clear()
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"สร้างล็อตไม่ได้: {e}")
 
 with tab_branch:
     if stock_branch.empty:
