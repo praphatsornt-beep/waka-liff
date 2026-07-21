@@ -15,7 +15,7 @@ load_dotenv()
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from theme import (
     apply_theme, badge, flat, page_header, kpi_card,
-    SURFACE, BORDER, TEXT2, TEXT3, ACCENT_TEXT, ACCENT_LIGHT, DIVIDER2,
+    SURFACE, SURFACE_ALT, BORDER, TEXT2, TEXT3, ACCENT_TEXT, ACCENT_LIGHT, DIVIDER2,
     PENDING_TEXT, SUCCESS_TEXT, DANGER_TEXT,
 )
 
@@ -388,8 +388,8 @@ for _, row in filtered.iterrows():
       <span>{row.get('phone', '—')}</span>
       {badge('ลูกค้าประจำ' if is_repeat else 'ลูกค้าใหม่', 'success' if is_repeat else 'pending')}
       <span>· {branch_str}</span>
-      <span style="padding:1px 8px;border-radius:20px;background:#ECE9E1;color:#57514A;font-size:11px">LIFF App</span>
-      <span style="padding:1px 8px;border-radius:20px;background:#ECE9E1;color:#57514A;font-size:11px">โอนเงิน</span>
+      <span style="padding:1px 8px;border-radius:20px;background:{SURFACE_ALT};color:{TEXT2};font-size:11px">LIFF App</span>
+      <span style="padding:1px 8px;border-radius:20px;background:{SURFACE_ALT};color:{TEXT2};font-size:11px">โอนเงิน</span>
       {badge(f'จัดส่ง · {ff_status}', fulfill_kind(ff_status)) if is_del else ''}
       <span style="flex:1;min-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:{TEXT3}">{items_summary}</span>
     </div>
@@ -510,25 +510,28 @@ for _, row in filtered.iterrows():
                     if slip_url and slip_url.startswith("http"):
                         st.image(slip_url, width=150)
                 with col_act:
-                    qa1, qa2 = st.columns(2)
-                    with qa1:
-                        if cur_status != "ยืนยัน" and st.button("✅ อนุมัติสลิป", key=f"approve_{order_id}", type="primary", use_container_width=True):
-                            try:
-                                confirm_slip_via_gas(order_id)
-                                st.success("อนุมัติแล้ว + แจ้ง LINE ลูกค้าแล้ว")
-                                st.cache_data.clear()
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"บันทึกไม่ได้: {e}")
-                    with qa2:
-                        if cur_status != "ยกเลิก" and st.button("❌ ปฏิเสธ", key=f"reject_{order_id}", use_container_width=True):
-                            try:
-                                update_slip_status(int(row["row_num"]), "ยกเลิก")
-                                st.success("ปฏิเสธแล้ว")
-                                st.cache_data.clear()
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"บันทึกไม่ได้: {e}")
+                    if cur_status != "ยืนยัน" and st.button("✅ อนุมัติสลิป", key=f"approve_{order_id}", type="primary", use_container_width=True):
+                        try:
+                            confirm_slip_via_gas(order_id)
+                            st.success("อนุมัติแล้ว + แจ้ง LINE ลูกค้าแล้ว")
+                            st.cache_data.clear()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"บันทึกไม่ได้: {e}")
+                    if cur_status != "ยกเลิก" and st.button("❌ ปฏิเสธ", key=f"reject_{order_id}", use_container_width=True):
+                        try:
+                            update_slip_status(int(row["row_num"]), "ยกเลิก")
+                            st.success("ปฏิเสธแล้ว")
+                            st.cache_data.clear()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"บันทึกไม่ได้: {e}")
+                    if row.get("line_user_id") and st.button("📣 แจ้งเตือนลูกค้า", key=f"notify_{order_id}", use_container_width=True):
+                        try:
+                            gas_post({"_action": "notifyCustomer", "order_id": order_id})
+                            st.success("แจ้งเตือนลูกค้าทาง LINE แล้ว")
+                        except Exception as e:
+                            st.error(f"แจ้งเตือนไม่ได้: {e}")
 
                     with st.popover("เปลี่ยนสถานะอื่น ๆ"):
                         new_status = st.selectbox(

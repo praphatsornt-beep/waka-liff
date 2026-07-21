@@ -1,33 +1,34 @@
 #!/usr/bin/env python3
-"""Shared WAKA visual theme (fonts, coffee/gray palette, status colors).
+"""Shared WAKA visual theme (fonts, dark navy/gold card-game palette, status colors).
 
-Colors and fonts are lifted from the WAKA Admin Dashboard design mockup's
-`themeVars()` (light mode) so every Streamlit admin page matches it.
+Colors and fonts are lifted from the WAKA Admin Dashboard design mockup —
+dark navy-black background, gold-bordered cards, turquoise primary CTAs.
 Import and call `apply_theme()` once near the top of each page, after
 `st.set_page_config(...)`.
 """
 
 import streamlit as st
 
-BG = "#F0EEEA"
-SURFACE = "#FFFFFF"
-SURFACE_ALT = "#F5F3EE"
-BORDER = "#DDD8CE"
-BORDER2 = "#CFC9BC"
-DIVIDER = "#E6E2D8"
-DIVIDER2 = "#ECE9E1"
-TEXT = "#2B2723"
-TEXT2 = "#6B655C"
-TEXT3 = "#78716A"
-TEXT4 = "#57514A"
-ACCENT_LIGHT = "#E4D9CB"
-ACCENT_TEXT = "#56392A"
-SIDEBAR_BG = "#1E1B18"
+BG = "#0C0E13"
+SURFACE = "#161A22"
+SURFACE_ALT = "#1B212B"
+BORDER = "rgba(184,134,59,0.45)"
+BORDER2 = "#B8863B"
+DIVIDER = "rgba(255,255,255,0.08)"
+DIVIDER2 = "rgba(255,255,255,0.06)"
+TEXT = "#F1EDE4"
+TEXT2 = "#9A9284"
+TEXT3 = "#6E6658"
+TEXT4 = "#B8B0A2"
+ACCENT_LIGHT = "#2A2416"
+ACCENT_TEXT = "#F0C767"
+PRIMARY_BTN = "#1C6C7C"
+SIDEBAR_BG = "#12151C"
 SIDEBAR_TEXT = "#E8E4DD"
 
-PENDING_BG, PENDING_TEXT = "#F6E7CF", "#C4791F"
-SUCCESS_BG, SUCCESS_TEXT = "#E1EFDE", "#3F7A4F"
-DANGER_BG, DANGER_TEXT = "#F6DEDA", "#B23A2E"
+PENDING_BG, PENDING_TEXT = "rgba(196,121,31,0.18)", "#C4791F"
+SUCCESS_BG, SUCCESS_TEXT = "rgba(63,122,79,0.20)", "#4E9A61"
+DANGER_BG, DANGER_TEXT = "rgba(178,58,46,0.20)", "#D9584A"
 
 _CSS = f"""
 <style>
@@ -49,6 +50,14 @@ h1, h2, h3, h4,
 [data-testid="stSidebar"] * {{ color: {SIDEBAR_TEXT} !important; }}
 [data-testid="stSidebarNav"] span {{ font-size: 15px !important; }}
 [data-testid="stSidebarHeader"] {{ padding-bottom: 0 !important; }}
+
+[data-testid="stSidebarNavLink"] {{ border-radius: 8px; }}
+[data-testid="stSidebarNavLink"][aria-current="page"] {{
+  background: {ACCENT_LIGHT} !important;
+}}
+[data-testid="stSidebarNavLink"][aria-current="page"] * {{
+  color: {ACCENT_TEXT} !important;
+}}
 
 /* Collapsed sidebar: keep a narrow icon-only rail instead of hiding fully */
 [data-testid="stSidebar"][aria-expanded="false"] {{
@@ -116,8 +125,8 @@ h1, h2, h3, h4,
   border: 1px solid {BORDER2};
 }}
 .stButton > button[kind="primary"] {{
-  background: {ACCENT_TEXT};
-  border-color: {ACCENT_TEXT};
+  background: {PRIMARY_BTN};
+  border-color: {PRIMARY_BTN};
   color: #fff;
 }}
 
@@ -134,6 +143,17 @@ h1, h2, h3, h4,
   border: 1px solid {BORDER};
   border-radius: 13px;
   background: {SURFACE};
+}}
+
+[data-testid="stVerticalBlockBorderWrapper"] {{
+  border-color: {BORDER} !important;
+  border-radius: 13px !important;
+  background: {SURFACE};
+}}
+
+[data-testid="stPopoverBody"] {{
+  background: {SURFACE};
+  border: 1px solid {BORDER};
 }}
 
 [data-testid="stTabs"] button[role="tab"] {{ font-weight: 600; border-radius: 7px; }}

@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+import json
 import os
 import streamlit as st
 from dotenv import load_dotenv
@@ -18,7 +19,7 @@ load_dotenv()
 
 from theme import (
     apply_theme, page_header, flat, SURFACE, BORDER, TEXT2, TEXT3, ACCENT_LIGHT,
-    ACCENT_TEXT, DIVIDER, DIVIDER2, PENDING_TEXT, SUCCESS_TEXT,
+    ACCENT_TEXT, PRIMARY_BTN, DIVIDER, DIVIDER2, PENDING_TEXT, SUCCESS_TEXT, DANGER_TEXT,
 )
 
 TH_TZ = timezone(timedelta(hours=7))
@@ -78,20 +79,42 @@ def _load_tourney():
     try:
         sb = get_supabase()
         events = sb.table("tournament_events").select("*").execute().data
-        open_ids = [e["event_id"] for e in events if e.get("status") == "open"]
+        open_events = [e for e in events if e.get("status") == "open"]
+        open_ids = [e["event_id"] for e in open_events]
         pending_applicants = 0
+        regs_by_event = {}
         if open_ids:
-            pending_applicants = len(
-                sb.table("tournament_registrations").select("reg_id")
-                .eq("slip_status", "pending").in_("event_id", open_ids).execute().data
+            regs = (
+                sb.table("tournament_registrations").select("event_id,slip_status")
+                .in_("event_id", open_ids).execute().data
             )
+            for r in regs:
+                eid = r.get("event_id")
+                regs_by_event[eid] = regs_by_event.get(eid, 0) + 1
+                if r.get("slip_status") == "pending":
+                    pending_applicants += 1
         return {
             "open_count": len(open_ids),
             "total_count": len(events),
             "pending_applicants": pending_applicants,
+            "open_events": open_events,
+            "regs_by_event": regs_by_event,
         }
     except Exception as e:
         return {"_error": str(e)}
+
+
+def _load_stock_warnings():
+    try:
+        sb = get_supabase()
+        rows = sb.table("catalog").select("name,qty_box,limit_box").execute().data
+        low = [
+            r for r in rows
+            if int(r.get("limit_box") or 0) > 0 and int(r.get("qty_box") or 0) <= int(r.get("limit_box") or 0)
+        ]
+        return sorted(low, key=lambda r: int(r.get("qty_box") or 0))
+    except Exception:
+        return []
 
 
 def _load_gym():
@@ -127,11 +150,36 @@ def _load_gym():
 
 @st.cache_data(ttl=30)
 def load_summary():
-    with ThreadPoolExecutor(max_workers=3) as ex:
+    with ThreadPoolExecutor(max_workers=4) as ex:
         f_orders = ex.submit(_load_orders)
         f_tourney = ex.submit(_load_tourney)
         f_gym = ex.submit(_load_gym)
-        return f_orders.result(), f_tourney.result(), f_gym.result()
+        f_stock = ex.submit(_load_stock_warnings)
+        return f_orders.result(), f_tourney.result(), f_gym.result(), f_stock.result()
+
+
+def top_products(recent_orders: list, limit: int = 5) -> list:
+    agg = {}
+    for o in recent_orders:
+        if o.get("slip_status") != "ยืนยัน":
+            continue
+        items = o.get("items_json") or []
+        if isinstance(items, str):
+            try:
+                items = json.loads(items)
+            except Exception:
+                items = []
+        for i in items:
+            name = i.get("name", "")
+            if not name:
+                continue
+            qty = i.get("qty", 1) or 1
+            price = i.get("price", 0) or 0
+            a = agg.setdefault(name, {"qty": 0, "revenue": 0})
+            a["qty"] += qty
+            a["revenue"] += qty * price
+    rows = [{"name": k, **v} for k, v in agg.items()]
+    return sorted(rows, key=lambda r: r["revenue"], reverse=True)[:limit]
 
 
 def branch_sales_today(recent_orders: list, today_str: str):
@@ -200,13 +248,78 @@ def summary_card(icon: str, label: str, big_number, big_suffix: str, secondary: 
     """
 
 
+def stock_warning_card(low_stock: list) -> str:
+    rows_html = ""
+    for item in low_stock[:5]:
+        rows_html += f"""
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 22px;border-bottom:1px solid {DIVIDER2}">
+          <span style="font-size:13.5px">{item.get('name', '')}</span>
+          <span style="font-size:12.5px;color:{DANGER_TEXT}">เหลือ {int(item.get('qty_box') or 0)} / จุดสั่งซื้อ {int(item.get('limit_box') or 0)}</span>
+        </div>
+        """
+    if not rows_html:
+        rows_html = f'<div style="padding:10px 22px;font-size:13px;color:{TEXT3}">ไม่มีสินค้าใกล้หมด</div>'
+    return flat(f"""<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:14px;padding:6px 0">
+    <div style="padding:14px 22px 12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid {DIVIDER}">
+      <span style="font-weight:600;font-size:14.5px">⚠️ สินค้าใกล้หมด ({len(low_stock)})</span>
+      <a href="/stock" target="_self" style="text-decoration:none;color:{ACCENT_TEXT};font-size:12.5px;font-weight:600">จัดการคลังสินค้า →</a>
+    </div>
+    {flat(rows_html)}
+    </div>""")
+
+
+def top_products_card(products: list) -> str:
+    rows_html = ""
+    for p in products:
+        rows_html += f"""
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 22px;border-bottom:1px solid {DIVIDER2}">
+          <span style="font-size:13.5px">{p['name']}</span>
+          <span style="font-size:12.5px;color:{TEXT3}">{p['qty']} ชิ้น</span>
+          <span style="font-size:13px;font-weight:700;color:{ACCENT_TEXT}">฿{p['revenue']:,.0f}</span>
+        </div>
+        """
+    if not rows_html:
+        rows_html = f'<div style="padding:9px 22px;font-size:13px;color:{TEXT3}">ยังไม่มีข้อมูลสินค้าขายดี</div>'
+    return flat(f"""<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:14px;padding:6px 0">
+    <div style="padding:14px 22px 12px;font-weight:600;font-size:14.5px;border-bottom:1px solid {DIVIDER}">สินค้าขายดี</div>
+    {flat(rows_html)}
+    </div>""")
+
+
+def open_tournaments_card(open_events: list, regs_by_event: dict) -> str:
+    rows_html = ""
+    for ev in open_events[:4]:
+        applied = regs_by_event.get(ev["event_id"], 0)
+        max_p = int(ev.get("max_players") or 0)
+        pct = min(round(applied / max_p * 100), 100) if max_p else 0
+        cap_str = f"{applied}/{max_p}" if max_p else f"{applied} คน"
+        rows_html += f"""
+        <div style="margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
+            <span style="font-weight:600">{ev.get('name', '')}</span>
+            <span style="color:{TEXT2}">{ev.get('date', '—')}</span>
+          </div>
+          <div style="height:7px;background:{DIVIDER};border-radius:4px;overflow:hidden">
+            <div style="height:100%;background:{PRIMARY_BTN};width:{pct}%"></div>
+          </div>
+          <div style="text-align:right;font-size:11px;color:{TEXT3};margin-top:3px">{cap_str}</div>
+        </div>
+        """
+    if not rows_html:
+        rows_html = f'<div style="font-size:13px;color:{TEXT3}">ไม่มีทัวร์นาเมนต์เปิดรับสมัคร</div>'
+    return flat(f"""<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:14px;padding:18px 20px">
+    <div style="font-weight:600;font-size:14.5px;margin-bottom:14px">ทัวร์นาเมนต์ที่กำลังเปิดรับสมัคร</div>
+    {flat(rows_html)}
+    </div>""")
+
+
 def home():
     now = datetime.now(TH_TZ)
     subtitle = f"{THAI_DAYS[now.weekday()]}ที่ {now.day} {THAI_MONTHS[now.month - 1]} {now.year + 543}"
 
     page_header("ภาพรวมวันนี้ · ทุกสาขา", subtitle)
 
-    orders, tourney, gym = load_summary()
+    orders, tourney, gym, low_stock = load_summary()
     if "_error" in orders or "_error" in tourney or "_error" in gym:
         for section, data in (("ออเดอร์", orders), ("ทัวร์นาเมนต์", tourney), ("WAKA GYM", gym)):
             if "_error" in data:
@@ -268,7 +381,7 @@ def home():
                 <span style="font-weight:700;color:{ACCENT_TEXT}">฿{total:,.0f}</span>
               </div>
               <div style="height:7px;background:{DIVIDER};border-radius:4px;overflow:hidden">
-                <div style="height:100%;background:#6F4E37;width:{pct}%"></div>
+                <div style="height:100%;background:{ACCENT_TEXT};width:{pct}%"></div>
               </div>
             </div>
             """
@@ -300,6 +413,19 @@ def home():
             <div style="padding:16px 22px 12px;font-weight:600;font-size:14.5px;border-bottom:1px solid {DIVIDER}">กิจกรรมล่าสุด</div>
             {flat(rows_html)}
             </div>"""),
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    st.markdown(stock_warning_card(low_stock), unsafe_allow_html=True)
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    d1, d2 = st.columns([1, 1.4])
+    with d1:
+        st.markdown(top_products_card(top_products(recent_orders)), unsafe_allow_html=True)
+    with d2:
+        st.markdown(
+            open_tournaments_card(tourney.get("open_events", []), tourney.get("regs_by_event", {})),
             unsafe_allow_html=True,
         )
 

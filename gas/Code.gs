@@ -353,6 +353,10 @@ function doPost(e) {
       return handleConfirmSlip(data);
     }
 
+    if (data._action === "notifyCustomer") {
+      return handleNotifyCustomer(data);
+    }
+
     if (data._action === "wakagymRegister") {
       return handleWakagymRegister(data);
     }
@@ -3400,6 +3404,49 @@ function handleConfirmSlip(data) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
   } finally {
     lock.releaseLock();
+  }
+}
+
+// ── แจ้งเตือนลูกค้าซ้ำ (manual, จากแอดมิน) ──
+// data: { order_id }
+function handleNotifyCustomer(data) {
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var ws = ss.getSheetByName(TAB_ORDERS);
+    var rows = ws.getDataRange().getValues();
+    var hdr = rows[0];
+    var col = function(name) { return hdr.indexOf(name); };
+
+    for (var i = 1; i < rows.length; i++) {
+      if (String(rows[i][col("order_id")]) !== data.order_id) continue;
+      var uid = rows[i][col("line_user_id")] || "";
+      if (!uid) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ออเดอร์นี้ไม่มี LINE user id" })));
+
+      var orderId = String(rows[i][col("order_id")] || "");
+      var branch = rows[i][col("branch")] || "";
+      var total = rows[i][col("total")] || 0;
+      var slipStatus = rows[i][col("slip_status")] || "";
+      var fulfillment = rows[i][col("fulfillment")] || "รอเตรียม";
+      var items = [];
+      try { items = JSON.parse(rows[i][col("items_json")] || "[]"); } catch(_) {}
+
+      var itemsText = items.map(function(it) {
+        var unit = it.type === "box" ? "กล่อง" : "ซอง";
+        return "  - " + it.name + " (" + unit + ") x" + it.qty;
+      }).join("\n");
+      var isDelivery = branch === "จัดส่ง";
+      _linePush(uid,
+        "แจ้งเตือนสถานะออเดอร์ #" + orderId + "\n\n" + itemsText +
+        "\n\nยอดรวม: " + total + " บาท\n" +
+        (isDelivery ? "จัดส่งพัสดุ" : "รับที่สาขา: " + branch) +
+        "\n\nสถานะสลิป: " + (slipStatus || "รอตรวจ") +
+        "\nสถานะจัดส่ง: " + fulfillment
+      );
+      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+    }
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
+  } catch (err) {
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
   }
 }
 

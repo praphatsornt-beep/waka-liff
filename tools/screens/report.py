@@ -14,7 +14,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from theme import apply_theme, page_header, kpi_card, ACCENT_TEXT, SUCCESS_TEXT, DANGER_TEXT
+from theme import (
+    apply_theme, flat, page_header, kpi_card,
+    SURFACE, BORDER, TEXT2, DIVIDER, ACCENT_TEXT, PRIMARY_BTN, SUCCESS_TEXT, DANGER_TEXT,
+)
 
 BRANCHES = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์", "จัดส่ง"]
 CONFIRMED_ORDER_STATUS = "ยืนยัน"
@@ -78,6 +81,27 @@ def load_wakagym_data():
     return events, regs
 
 
+def revenue_share_card(shares: list) -> str:
+    total = sum(v for _, v, _ in shares) or 1
+    segments_html = "".join(
+        f'<div style="height:100%;width:{v / total * 100:.2f}%;background:{color}"></div>'
+        for _, v, color in shares
+    )
+    rows_html = "".join(f"""
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0">
+          <span style="width:9px;height:9px;border-radius:2px;background:{color};flex:none"></span>
+          <span style="flex:1;font-size:13.5px">{label}</span>
+          <span style="font-size:13px;color:{TEXT2};width:50px;text-align:right">{v / total * 100:.0f}%</span>
+          <span style="font-size:13px;font-weight:700;width:100px;text-align:right">฿{v:,.0f}</span>
+        </div>
+        """ for label, v, color in shares)
+    return flat(f"""<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:14px;padding:18px 20px">
+    <div style="font-weight:600;font-size:14.5px;margin-bottom:14px">สัดส่วนรายได้ตามช่องทาง</div>
+    <div style="height:10px;border-radius:5px;overflow:hidden;display:flex;background:{DIVIDER}">{segments_html}</div>
+    <div style="margin-top:12px">{flat(rows_html)}</div>
+    </div>""")
+
+
 def order_cost(items_json, cost_map: dict) -> float:
     total = 0
     for i in parse_items(items_json):
@@ -132,6 +156,31 @@ st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 tab_sales, tab_products, tab_compare = st.tabs(["ยอดขาย", "สินค้าขายดี", "ทัวร์นาเมนต์ vs WAKA GYM"])
 
 with tab_sales:
+    t_events_s, t_regs_s = load_tournament_data()
+    g_events_s, g_regs_s = load_wakagym_data()
+
+    def _in_range(ts: str) -> bool:
+        try:
+            d = pd.to_datetime(ts, utc=True).tz_convert("Asia/Bangkok").date()
+        except Exception:
+            return False
+        return date_from <= d <= date_to
+
+    tourney_revenue = sum(
+        int(r.get("amount_paid") or 0) for r in t_regs_s
+        if r.get("slip_status") in CONFIRMED_REG_STATUS and _in_range(r.get("timestamp", ""))
+    )
+    gym_revenue = sum(
+        int(r.get("note") or 0) or 200 for r in g_regs_s
+        if r.get("slip_status") in CONFIRMED_REG_STATUS and _in_range(r.get("timestamp", ""))
+    )
+    st.markdown(revenue_share_card([
+        ("ออเดอร์การ์ด", total_revenue, ACCENT_TEXT),
+        ("ค่าสมัครทัวร์นาเมนต์", tourney_revenue, PRIMARY_BTN),
+        ("WAKA GYM", gym_revenue, SUCCESS_TEXT),
+    ]), unsafe_allow_html=True)
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
     if confirmed.empty:
         st.caption("ไม่มีข้อมูลยอดขายในช่วงที่เลือก")
     else:
