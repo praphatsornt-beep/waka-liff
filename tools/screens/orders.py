@@ -162,6 +162,15 @@ def confirm_slip_via_gas(order_id: str):
         raise Exception(result.get("error", "GAS ตอบผิดพลาด"))
 
 
+def gas_post(payload: dict) -> dict:
+    import requests
+    resp = requests.post(GAS_URL, json=payload, timeout=30)
+    result = resp.json()
+    if not result.get("ok"):
+        raise Exception(result.get("error", "GAS ตอบผิดพลาด"))
+    return result
+
+
 def parse_items(items_json: str) -> list:
     try:
         return json.loads(items_json) if items_json else []
@@ -186,6 +195,28 @@ def fulfill_icon(s: str) -> str:
     if s == "พร้อมรับ":           return "📍"
     if s == "กำลังจัดส่งไปสาขา":  return "🚚"
     return "⏳"
+
+
+def item_state(it: dict):
+    if it.get("cancelled_at"):
+        return "ยกเลิกแล้ว", "danger"
+    if it.get("handed_at"):
+        return "ส่งมอบแล้ว", "success"
+    if it.get("ready_at"):
+        return "พร้อมรับ", "pending"
+    return "รอดำเนินการ", "pending"
+
+
+def handover_candidates(items: list) -> list:
+    """Mirrors gas/Code.gs's handleHandoverOrder item-selection logic: items
+    marked ready (or, for orders that never used the partial-ready flow,
+    every still-active item) that haven't been handed over or cancelled."""
+    has_ready = any(it.get("ready_at") for it in items)
+    return [
+        idx for idx, it in enumerate(items)
+        if not it.get("cancelled_at") and not it.get("handed_at")
+        and (bool(it.get("ready_at")) if has_ready else True)
+    ]
 
 def fulfill_kind(s: str) -> str:
     return "success" if s in ("รับแล้ว", "สาขายืนยัน", "จัดส่งแล้ว", "พร้อมรับ") else "pending"
@@ -387,9 +418,91 @@ for _, row in filtered.iterrows():
                     st.caption(f"📍 {row.get('address')}")
                 for i in items:
                     unit = "กล่อง" if i.get("type") == "box" else "ซอง"
-                    st.markdown(f"&nbsp;&nbsp;• {i.get('name','')} ({unit}) ×{i.get('qty',1)} = ฿{i.get('price',0)*i.get('qty',1):,}")
+                    label, kind = item_state(i)
+                    st.markdown(
+                        f"&nbsp;&nbsp;• {i.get('name','')} ({unit}) ×{i.get('qty',1)} = ฿{i.get('price',0)*i.get('qty',1):,} "
+                        f"&nbsp; {badge(label, kind)}",
+                        unsafe_allow_html=True,
+                    )
                 if row.get("notes"):
                     st.caption(f"📝 {row.get('notes')}")
+
+                if cur_status == "ยืนยัน" and items:
+                    handover_idx = handover_candidates(items)
+                    pending_idx = [
+                        idx for idx, it in enumerate(items)
+                        if not it.get("ready_at") and not it.get("handed_at") and not it.get("cancelled_at")
+                    ]
+                    cancelable_idx = [
+                        idx for idx, it in enumerate(items)
+                        if not it.get("handed_at") and not it.get("cancelled_at")
+                    ]
+
+                    if handover_idx or pending_idx or cancelable_idx:
+                        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+                        fc1, fc2, fc3 = st.columns(3)
+                        with fc1:
+                            if handover_idx and st.button(
+                                "🤝 ส่งมอบสินค้า", key=f"handover_{order_id}", use_container_width=True,
+                            ):
+                                try:
+                                    gas_post({"_action": "handoverOrder", "order_id": order_id})
+                                    st.success("ส่งมอบแล้ว + แจ้ง LINE ลูกค้าแล้ว")
+                                    st.cache_data.clear()
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"ทำรายการไม่ได้: {e}")
+                        with fc2:
+                            if pending_idx:
+                                with st.popover("📣 แจ้งพร้อมรับ", use_container_width=True):
+                                    st.caption("เลือกสินค้าที่พร้อมรับ")
+                                    sel_ready = [
+                                        idx for idx in pending_idx
+                                        if st.checkbox(
+                                            f"{items[idx].get('name','')} x{items[idx].get('qty',1)}",
+                                            key=f"ready_chk_{order_id}_{idx}",
+                                        )
+                                    ]
+                                    if st.button("📣 ยืนยันแจ้งพร้อมรับ", key=f"ready_submit_{order_id}"):
+                                        if not sel_ready:
+                                            st.warning("เลือกสินค้าอย่างน้อย 1 รายการ")
+                                        else:
+                                            try:
+                                                gas_post({"_action": "partialReady", "order_id": order_id, "indices": sel_ready})
+                                                st.success("แจ้งพร้อมรับแล้ว + แจ้ง LINE ลูกค้าแล้ว")
+                                                st.cache_data.clear()
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"ทำรายการไม่ได้: {e}")
+                        with fc3:
+                            if cancelable_idx:
+                                with st.popover("❌ ยกเลิกบางรายการ", use_container_width=True):
+                                    st.caption("เลือกสินค้าที่ต้องการยกเลิก")
+                                    sel_cancel = [
+                                        idx for idx in cancelable_idx
+                                        if st.checkbox(
+                                            f"{items[idx].get('name','')} x{items[idx].get('qty',1)}",
+                                            key=f"cancel_chk_{order_id}_{idx}",
+                                        )
+                                    ]
+                                    cancel_reason = st.text_input(
+                                        "เหตุผล", key=f"cancel_reason_{order_id}",
+                                        placeholder="ลูกค้าขอยกเลิก / ของหมด...",
+                                    )
+                                    if st.button("❌ ยืนยันยกเลิก", key=f"cancel_submit_{order_id}"):
+                                        if not sel_cancel:
+                                            st.warning("เลือกสินค้าที่ต้องการยกเลิกก่อน")
+                                        else:
+                                            try:
+                                                gas_post({
+                                                    "_action": "partialCancelItems", "order_id": order_id,
+                                                    "indices": sel_cancel, "reason": cancel_reason,
+                                                })
+                                                st.success("ยกเลิกรายการที่เลือกแล้ว")
+                                                st.cache_data.clear()
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"ทำรายการไม่ได้: {e}")
 
                 col_slip, col_act = st.columns([1, 2])
                 with col_slip:
