@@ -67,24 +67,34 @@ h1, h2, h3, h4,
   visibility: visible !important;
 }}
 [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarHeader"] {{
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
+  justify-content: center;
   width: 96px;
   height: auto;
   padding: 10px 0;
-  gap: 10px;
+  gap: 6px;
 }}
 [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stBaseButton-headerNoPadding"] {{
   visibility: visible !important;
+  width: 22px !important;
+  height: 22px !important;
+  min-width: 22px !important;
+  min-height: 22px !important;
+  padding: 0 !important;
+}}
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stBaseButton-headerNoPadding"] [data-testid="stIconMaterial"] {{
+  font-size: 16px !important;
 }}
 [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarHeader"] > div {{
   display: flex;
+  align-items: center;
   justify-content: center;
-  width: 100%;
+  width: auto;
 }}
 [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarLogo"] {{
-  width: 38px !important;
-  height: 38px !important;
+  width: 26px !important;
+  height: 26px !important;
   object-fit: contain;
 }}
 [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarNavLink"] {{
