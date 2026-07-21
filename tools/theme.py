@@ -69,6 +69,15 @@ h1, h2, h3, h4,
   color: #fff;
 }}
 
+[data-testid="stSidebar"] .stButton > button {{
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+}}
+[data-testid="stSidebar"] .stButton > button:hover {{
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.22);
+}}
+
 [data-testid="stExpander"] {{
   border: 1px solid {BORDER};
   border-radius: 13px;
