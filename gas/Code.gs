@@ -2900,6 +2900,7 @@ function handleCreateShipment(data) {
 
     shWs.appendRow([shipId, now, data.to_branch || "", "จัดส่ง", JSON.stringify(items), "", ""]);
     lock.releaseLock();
+    for (var siCreate = 0; siCreate < items.length; siCreate++) syncCatalogToSupabase_(ss, items[siCreate].name);
 
     // LINE แจ้งกลุ่ม staff
     try {
@@ -2964,6 +2965,7 @@ function handleCancelShipment(data) {
       }
       shWs.getRange(i + 1, colIdx("status") + 1).setValue("ยกเลิก");
       lock.releaseLock();
+      for (var siCancel = 0; siCancel < items.length; siCancel++) syncCatalogToSupabase_(ss, items[siCancel].name);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
     }
     lock.releaseLock();
