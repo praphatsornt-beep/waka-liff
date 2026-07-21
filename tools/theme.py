@@ -52,22 +52,53 @@ h1, h2, h3, h4,
 
 /* Collapsed sidebar: keep a narrow icon-only rail instead of hiding fully */
 [data-testid="stSidebar"][aria-expanded="false"] {{
-  width: 56px !important;
-  min-width: 56px !important;
+  width: 64px !important;
+  min-width: 64px !important;
   transform: none !important;
   visibility: visible !important;
+}}
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarHeader"] {{
+  flex-direction: column;
+  align-items: center;
+  width: 64px;
+  height: auto;
+  padding: 10px 0;
+  gap: 10px;
+}}
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stBaseButton-headerNoPadding"] {{
+  visibility: visible !important;
+}}
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarHeader"] > div {{
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}}
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarLogo"] {{
+  width: 32px !important;
+  height: 32px !important;
+  object-fit: contain;
 }}
 [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarNavLink"] span[label] {{
   display: none;
 }}
 [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarNavLink"] {{
   justify-content: center;
-  padding-left: 0;
-  padding-right: 0;
+  padding: 12px 0;
+}}
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarNavLink"] [data-testid="stIconEmoji"] {{
+  font-size: 24px;
 }}
 [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stNavSectionHeader"],
 [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarUserContent"] .stButton {{
   display: none;
+}}
+
+/* Streamlit also renders its own logo + "expand sidebar" button in the main
+   toolbar for reopening a collapsed sidebar — redundant now that our rail
+   keeps a working logo + collapse toggle visible at all times. */
+[data-testid="stHeaderLogo"],
+[data-testid="stExpandSidebarButton"] {{
+  display: none !important;
 }}
 
 [data-testid="stMetric"] {{
