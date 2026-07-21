@@ -44,7 +44,8 @@ h1, h2, h3, h4,
 
 [data-testid="stMain"] .block-container {{ padding-top: 2.2rem !important; }}
 
-[data-testid="stSidebar"] {{ background: {SIDEBAR_BG}; width: 200px !important; min-width: 200px !important; }}
+[data-testid="stSidebar"] {{ background: {SIDEBAR_BG}; }}
+[data-testid="stSidebar"][aria-expanded="true"] {{ width: 200px !important; min-width: 200px !important; }}
 [data-testid="stSidebar"] * {{ color: {SIDEBAR_TEXT} !important; }}
 [data-testid="stSidebarNav"] span {{ font-size: 15px !important; }}
 [data-testid="stSidebarHeader"] {{ padding-bottom: 0 !important; }}
