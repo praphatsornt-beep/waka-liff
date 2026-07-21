@@ -61,15 +61,15 @@ h1, h2, h3, h4,
 
 /* Collapsed sidebar: keep a narrow icon-only rail instead of hiding fully */
 [data-testid="stSidebar"][aria-expanded="false"] {{
-  width: 64px !important;
-  min-width: 64px !important;
+  width: 96px !important;
+  min-width: 96px !important;
   transform: none !important;
   visibility: visible !important;
 }}
 [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarHeader"] {{
   flex-direction: column;
   align-items: center;
-  width: 64px;
+  width: 96px;
   height: auto;
   padding: 10px 0;
   gap: 10px;
@@ -83,16 +83,37 @@ h1, h2, h3, h4,
   width: 100%;
 }}
 [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarLogo"] {{
-  width: 32px !important;
-  height: 32px !important;
+  width: 38px !important;
+  height: 38px !important;
   object-fit: contain;
 }}
-[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarNavLink"] span[label] {{
-  display: none;
-}}
 [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarNavLink"] {{
+  position: relative;
   justify-content: center;
   padding: 12px 0;
+}}
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarContent"] {{
+  overflow: visible !important;
+}}
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarNavLink"] span[label] {{
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: #12151C;
+  color: {SIDEBAR_TEXT} !important;
+  padding: 6px 11px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s ease;
+  z-index: 50;
+}}
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarNavLink"]:hover span[label] {{
+  opacity: 1;
 }}
 [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarNavLink"] [data-testid="stIconEmoji"] {{
   font-size: 24px;
