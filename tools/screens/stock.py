@@ -314,6 +314,26 @@ with tab_central:
 
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
+    if not catalog.empty:
+        cat_summary = (
+            catalog.assign(
+                qty_box=pd.to_numeric(catalog["qty_box"], errors="coerce").fillna(0),
+                category=catalog["category"].fillna("(ไม่ระบุหมวดหมู่)"),
+            )
+            .groupby("category")
+            .agg(สินค้า=("name", "count"), กล่องรวม=("qty_box", "sum"))
+            .reset_index()
+            .sort_values("category")
+        )
+        cat_cols = st.columns(min(len(cat_summary), 6) or 1)
+        for i, (_, r) in enumerate(cat_summary.iterrows()):
+            with cat_cols[i % len(cat_cols)]:
+                st.markdown(
+                    kpi_card(r["category"], f"{int(r['กล่องรวม']):,} กล่อง · {int(r['สินค้า'])} SKU"),
+                    unsafe_allow_html=True,
+                )
+        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
     if catalog.empty:
         st.caption("ยังไม่มีข้อมูลสินค้า")
     else:

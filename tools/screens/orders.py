@@ -261,22 +261,29 @@ with k4:
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
 # ── Filter bar ────────────────────────────────────────────────────────────────
+FILTER_KEYS = ["ord_search", "ord_branch", "ord_status", "ord_products", "ord_date_from", "ord_date_to"]
+
 with st.container(border=True):
-    f1, f2, f3, f4, f5, f6, f7 = st.columns([2, 0.9, 0.9, 1.1, 0.9, 0.2, 0.9])
+    f1, f2, f3, f4, f5, f6, f7, f8 = st.columns([2, 0.9, 0.9, 1.1, 0.9, 0.2, 0.9, 0.9])
     with f1:
-        search = st.text_input("ค้นหา", placeholder="ค้นหาชื่อ / เบอร์โทร / เลขออเดอร์ / สินค้า", label_visibility="collapsed")
+        search = st.text_input("ค้นหา", placeholder="ค้นหาชื่อ / เบอร์โทร / เลขออเดอร์ / สินค้า", label_visibility="collapsed", key="ord_search")
     with f2:
-        branch_sel = st.selectbox("สาขา", ["ทุกสาขา"] + BRANCHES, label_visibility="collapsed")
+        branch_sel = st.selectbox("สาขา", ["ทุกสาขา"] + BRANCHES, label_visibility="collapsed", key="ord_branch")
     with f3:
-        status_sel = st.selectbox("สถานะสลิป", ["ทุกสถานะสลิป"] + ALL_STATUS, label_visibility="collapsed")
+        status_sel = st.selectbox("สถานะสลิป", ["ทุกสถานะสลิป"] + ALL_STATUS, label_visibility="collapsed", key="ord_status")
     with f4:
-        product_filter = st.multiselect("สินค้า", all_products, default=[], placeholder="ทุกสินค้า", label_visibility="collapsed")
+        product_filter = st.multiselect("สินค้า", all_products, default=[], placeholder="ทุกสินค้า", label_visibility="collapsed", key="ord_products")
     with f5:
-        date_from = st.date_input("จากวันที่", value=date.today() - timedelta(days=7), label_visibility="collapsed")
+        date_from = st.date_input("จากวันที่", value=date.today() - timedelta(days=7), label_visibility="collapsed", key="ord_date_from")
     with f6:
         st.markdown(f"<div style='text-align:center;padding-top:8px;color:{TEXT3};font-size:12px;white-space:nowrap'>ถึง</div>", unsafe_allow_html=True)
     with f7:
-        date_to = st.date_input("ถึงวันที่", value=date.today(), label_visibility="collapsed")
+        date_to = st.date_input("ถึงวันที่", value=date.today(), label_visibility="collapsed", key="ord_date_to")
+    with f8:
+        if st.button("ล้างตัวกรอง", use_container_width=True):
+            for k in FILTER_KEYS:
+                st.session_state.pop(k, None)
+            st.rerun()
 
 # ── Filter ────────────────────────────────────────────────────────────────────
 filtered = df.copy()
@@ -300,8 +307,8 @@ if search:
     )
     filtered = filtered[mask]
 
-# ── Sort + count row ──────────────────────────────────────────────────────────
-c1, c2 = st.columns([3, 1])
+# ── Sort + count + page-size row ─────────────────────────────────────────────
+c1, c2, c3 = st.columns([2.2, 1, 1])
 with c1:
     st.markdown(
         f"<div style='font-size:13px;color:{TEXT2};padding-top:8px'>แสดง <strong style='color:inherit'>{len(filtered)}</strong> จาก {len(df)} ออเดอร์</div>",
@@ -309,6 +316,8 @@ with c1:
     )
 with c2:
     sort_sel = st.selectbox("เรียงตาม", ["ใหม่สุดก่อน", "เก่าสุดก่อน", "ยอดสูงสุดก่อน"], label_visibility="collapsed")
+with c3:
+    page_size_sel = st.selectbox("แสดงต่อหน้า", [20, 40, 60, 80, "ทั้งหมด"], label_visibility="collapsed", key="ord_page_size")
 
 if sort_sel == "ใหม่สุดก่อน":
     filtered = filtered.sort_values("timestamp_dt", ascending=False)
@@ -322,6 +331,35 @@ if filtered.empty:
     st.info("ไม่มีออเดอร์ตามเงื่อนไขที่เลือก")
     st.stop()
 
+# ── Pagination ─────────────────────────────────────────────────────────────────
+if page_size_sel == "ทั้งหมด":
+    page_df = filtered
+    total_pages = 1
+else:
+    page_size = int(page_size_sel)
+    total_pages = max((len(filtered) + page_size - 1) // page_size, 1)
+    st.session_state.ord_page_num = min(st.session_state.get("ord_page_num", 1), total_pages)
+    if st.session_state.ord_page_num < 1:
+        st.session_state.ord_page_num = 1
+    start = (st.session_state.ord_page_num - 1) * page_size
+    page_df = filtered.iloc[start:start + page_size]
+
+    if total_pages > 1:
+        pn1, pn2, pn3 = st.columns([1, 2, 1])
+        with pn1:
+            if st.button("← ก่อนหน้า", disabled=st.session_state.ord_page_num <= 1, use_container_width=True):
+                st.session_state.ord_page_num -= 1
+                st.rerun()
+        with pn2:
+            st.markdown(
+                f"<div style='text-align:center;padding-top:8px;color:{TEXT2};font-size:13px'>หน้า {st.session_state.ord_page_num} / {total_pages}</div>",
+                unsafe_allow_html=True,
+            )
+        with pn3:
+            if st.button("ถัดไป →", disabled=st.session_state.ord_page_num >= total_pages, use_container_width=True):
+                st.session_state.ord_page_num += 1
+                st.rerun()
+
 # ── Bulk selection state ──────────────────────────────────────────────────────
 if "selected_orders" not in st.session_state:
     st.session_state.selected_orders = set()
@@ -332,8 +370,12 @@ st.session_state.selected_orders &= visible_ids  # drop selections that scrolled
 if st.session_state.selected_orders:
     sel_rows = filtered[filtered["order_id"].isin(st.session_state.selected_orders)]
     sel_pending = sel_rows[sel_rows["slip_status"].isin(["รอตรวจ", "รอตรวจเพิ่ม"])]
+    sel_handover_ids = [
+        r["order_id"] for _, r in sel_rows.iterrows()
+        if r["slip_status"] == "ยืนยัน" and handover_candidates(parse_items(r.get("items_json", "")))
+    ]
     with st.container(border=True):
-        b1, b2, b3, b4 = st.columns([2, 1.4, 1.2, 1])
+        b1, b2, b3, b4, b5 = st.columns([1.6, 1.4, 1.3, 1.1, 0.9])
         with b1:
             st.markdown(f"<div style='padding-top:8px;font-weight:600'>เลือกแล้ว {len(st.session_state.selected_orders)} ออเดอร์</div>", unsafe_allow_html=True)
         with b2:
@@ -347,6 +389,16 @@ if st.session_state.selected_orders:
                 st.cache_data.clear()
                 st.rerun()
         with b3:
+            if st.button(f"🤝 ส่งมอบที่เลือก ({len(sel_handover_ids)})", disabled=not sel_handover_ids):
+                for order_id in sel_handover_ids:
+                    try:
+                        gas_post({"_action": "handoverOrder", "order_id": order_id})
+                    except Exception as e:
+                        st.error(f"#{order_id}: {e}")
+                st.session_state.selected_orders = set()
+                st.cache_data.clear()
+                st.rerun()
+        with b4:
             if st.button("❌ ยกเลิกสลิปที่เลือก"):
                 for _, r in sel_rows.iterrows():
                     try:
@@ -356,13 +408,13 @@ if st.session_state.selected_orders:
                 st.session_state.selected_orders = set()
                 st.cache_data.clear()
                 st.rerun()
-        with b4:
+        with b5:
             if st.button("ยกเลิกการเลือก"):
                 st.session_state.selected_orders = set()
                 st.rerun()
 
 # ── Order cards ───────────────────────────────────────────────────────────────
-for _, row in filtered.iterrows():
+for _, row in page_df.iterrows():
     order_id = row.get("order_id", "")
     items = parse_items(row.get("items_json", ""))
     is_del = row.get("branch", "") == "จัดส่ง"
@@ -509,6 +561,16 @@ for _, row in filtered.iterrows():
                     slip_url = row.get("slip_url", "")
                     if slip_url and slip_url.startswith("http"):
                         st.image(slip_url, width=150)
+                    slip_amt = float(row.get("slip_amount", 0) or 0)
+                    order_total = float(row.get("total", 0) or 0)
+                    if slip_amt:
+                        if abs(slip_amt - order_total) < 0.5:
+                            st.markdown(badge(f"✅ ยอดตรง ฿{slip_amt:,.0f}", "success"), unsafe_allow_html=True)
+                        else:
+                            diff = abs(slip_amt - order_total)
+                            st.markdown(badge(f"⚠️ สลิป ฿{slip_amt:,.0f} (ต่าง ฿{diff:,.0f})", "danger"), unsafe_allow_html=True)
+                    else:
+                        st.caption("— ไม่พบยอดจากสลิป")
                 with col_act:
                     if cur_status != "ยืนยัน" and st.button("✅ อนุมัติสลิป", key=f"approve_{order_id}", type="primary", use_container_width=True):
                         try:

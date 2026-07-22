@@ -82,6 +82,16 @@ def load_players(event_id: str) -> list:
     )
 
 
+CONFIRMED_REG_STATUS = ("verified", "cash")
+
+
+@st.cache_data(ttl=30)
+def load_all_players() -> list:
+    """Cross-event registrations for overview KPIs / remaining-slots — one
+    query instead of looping load_players() per event."""
+    return get_supabase().table("tournament_registrations").select("event_id,amount_paid,slip_status").execute().data
+
+
 tab_events, tab_players = st.tabs(["🗓 จัดการทัวร์นาเมนต์", "👥 ผู้สมัคร / เช็คอิน"])
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -135,15 +145,48 @@ with tab_events:
 
     st.divider()
     events = load_events()
+
+    all_players = load_all_players()
+    applicants_by_event: dict = {}
+    fee_collected = 0
+    for p in all_players:
+        applicants_by_event[p.get("event_id")] = applicants_by_event.get(p.get("event_id"), 0) + 1
+        if p.get("slip_status") in CONFIRMED_REG_STATUS:
+            fee_collected += int(p.get("amount_paid") or 0)
+
+    ok1, ok2, ok3, ok4 = st.columns(4)
+    ok1.metric("ทัวร์นาเมนต์ทั้งหมด", len(events))
+    ok2.metric("เปิดรับสมัคร", sum(1 for e in events if e.get("status") == "open"))
+    ok3.metric("ผู้สมัครรวม", len(all_players))
+    ok4.metric("ค่าสมัครเก็บแล้ว (฿)", f"{fee_collected:,}")
+
+    ef1, ef2 = st.columns([2, 1])
+    ev_search = ef1.text_input("🔍 ค้นหาชื่องาน", key="ev_search", label_visibility="collapsed", placeholder="🔍 ค้นหาชื่องาน")
+    ev_status_filter = ef2.selectbox(
+        "สถานะ", ["ทุกสถานะ"] + list(STATUS_LABEL.keys()), key="ev_status_filter",
+        format_func=lambda s: "ทุกสถานะ" if s == "ทุกสถานะ" else STATUS_LABEL.get(s, s),
+        label_visibility="collapsed",
+    )
+
+    if ev_search:
+        events = [e for e in events if ev_search.lower() in (e.get("name") or "").lower()]
+    if ev_status_filter != "ทุกสถานะ":
+        events = [e for e in events if e.get("status") == ev_status_filter]
+
     if not events:
-        st.info("ยังไม่มีทัวร์นาเมนต์")
+        st.info("ไม่มีทัวร์นาเมนต์ตามเงื่อนไขที่เลือก")
     for ev in events:
         link = f"{LIFF_BASE}?event={ev['event_id']}"
         meta = f"📅 {ev.get('date','—')}"
         if ev.get("entry_fee"):
             meta += f" · 💰 {int(ev['entry_fee']):,} บาท"
+        applicants_n = applicants_by_event.get(ev["event_id"], 0)
         if ev.get("max_players"):
-            meta += f" · 👤 max {ev['max_players']}"
+            max_players_n = int(ev["max_players"])
+            slots_left = max(max_players_n - applicants_n, 0)
+            meta += f" · 👤 {applicants_n}/{max_players_n} (เหลือ {slots_left} ที่)"
+        elif applicants_n:
+            meta += f" · 👤 {applicants_n} คนสมัครแล้ว"
         label = f"{STATUS_LABEL.get(ev.get('status',''), ev.get('status',''))} · **{ev['name']}** — {meta}"
 
         with st.expander(label):
@@ -218,11 +261,15 @@ with tab_players:
 
     total = len(players)
     checked = sum(1 for p in players if p.get("checked_in_at"))
-    verified = sum(1 for p in players if p.get("slip_status") in ("verified", "cash"))
-    k1, k2, k3 = st.columns(3)
+    verified = sum(1 for p in players if p.get("slip_status") in CONFIRMED_REG_STATUS)
+    fee_paid = sum(int(p.get("amount_paid") or 0) for p in players if p.get("slip_status") in CONFIRMED_REG_STATUS)
+    fee_pending = sum(int(p.get("amount_paid") or 0) for p in players if p.get("slip_status") not in CONFIRMED_REG_STATUS)
+    k1, k2, k3, k4, k5 = st.columns(5)
     k1.metric("ผู้สมัครทั้งหมด", total)
     k2.metric("เช็คอินแล้ว", checked)
     k3.metric("ชำระเงินแล้ว", verified)
+    k4.metric("ค่าสมัครเก็บแล้ว (฿)", f"{fee_paid:,}")
+    k5.metric("รอเก็บ (฿)", f"{fee_pending:,}")
 
     try:
         csv_resp = requests.get(GAS_URL, params={"action": "api", "do": "tournament_export", "_s": WAKA_S, "event": sel_id}, timeout=30)
