@@ -245,7 +245,7 @@ def build_confirm_message(order_id: str, items: list, total, branch: str) -> str
 
 
 DONE_FULFILLMENT = ("รับแล้ว", "สาขายืนยัน")
-CLOSING_MESSAGE = "ขอบคุณสำหรับการเข้าร่วมกิจกรรมกับ WAKA แล้วพบกันใหม่งานหน้า"
+CLOSING_MESSAGE = "ขอบคุณที่แวะมาที่ WAKA นะครับ/คะ 🎴✨\nพบกันใหม่งานหน้า อย่าลืมชวนเพื่อนมาด้วยกันนะ!"
 
 
 def build_notify_message(order_id: str, items: list, total, branch: str, slip_status: str, fulfillment: str) -> str:
