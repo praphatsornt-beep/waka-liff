@@ -3436,18 +3436,22 @@ function handleNotifyCustomer(data) {
       var items = [];
       try { items = JSON.parse(rows[i][col("items_json")] || "[]"); } catch(_) {}
 
-      var itemsText = items.map(function(it) {
-        var unit = it.type === "box" ? "กล่อง" : "ซอง";
-        return "  - " + it.name + " (" + unit + ") x" + it.qty;
-      }).join("\n");
-      var isDelivery = branch === "จัดส่ง";
-      _linePush(uid,
-        "แจ้งเตือนสถานะออเดอร์ #" + orderId + "\n\n" + itemsText +
-        "\n\nยอดรวม: " + total + " บาท\n" +
-        (isDelivery ? "จัดส่งพัสดุ" : "รับที่สาขา: " + branch) +
-        "\n\nสถานะสลิป: " + (slipStatus || "รอตรวจ") +
-        "\nสถานะจัดส่ง: " + fulfillment
-      );
+      var message;
+      if (data.custom_message && String(data.custom_message).trim()) {
+        message = String(data.custom_message).trim();
+      } else {
+        var itemsText = items.map(function(it) {
+          var unit = it.type === "box" ? "กล่อง" : "ซอง";
+          return "  - " + it.name + " (" + unit + ") x" + it.qty;
+        }).join("\n");
+        var isDelivery = branch === "จัดส่ง";
+        message = "แจ้งเตือนสถานะออเดอร์ #" + orderId + "\n\n" + itemsText +
+          "\n\nยอดรวม: " + total + " บาท\n" +
+          (isDelivery ? "จัดส่งพัสดุ" : "รับที่สาขา: " + branch) +
+          "\n\nสถานะสลิป: " + (slipStatus || "รอตรวจ") +
+          "\nสถานะจัดส่ง: " + fulfillment;
+      }
+      _linePush(uid, message);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));

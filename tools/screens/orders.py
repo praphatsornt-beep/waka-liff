@@ -244,6 +244,27 @@ def build_confirm_message(order_id: str, items: list, total, branch: str) -> str
     )
 
 
+DONE_FULFILLMENT = ("รับแล้ว", "สาขายืนยัน")
+CLOSING_MESSAGE = "ขอบคุณสำหรับการเข้าร่วมกิจกรรมกับ WAKA แล้วพบกันใหม่งานหน้า"
+
+
+def build_notify_message(order_id: str, items: list, total, branch: str, slip_status: str, fulfillment: str) -> str:
+    """Mirrors gas/Code.gs's handleNotifyCustomer default LINE message."""
+    items_text = "\n".join(
+        f"  - {i.get('name','')} ({'กล่อง' if i.get('type') == 'box' else 'ซอง'}) x{i.get('qty', 1)}"
+        for i in items
+    )
+    is_delivery = branch == "จัดส่ง"
+    loc = "จัดส่งพัสดุ" if is_delivery else f"รับที่สาขา: {branch}"
+    return (
+        f"แจ้งเตือนสถานะออเดอร์ #{order_id}\n\n"
+        f"{items_text}\n\n"
+        f"ยอดรวม: {int(float(total or 0))} บาท\n{loc}\n\n"
+        f"สถานะสลิป: {slip_status or 'รอตรวจ'}\n"
+        f"สถานะจัดส่ง: {fulfillment or 'รอเตรียม'}"
+    )
+
+
 # ── Page header ───────────────────────────────────────────────────────────────
 apply_theme()
 page_header("จัดการออเดอร์", "ค้นหา ตรวจสลิป และติดตามสถานะออเดอร์การ์ด")
@@ -631,12 +652,23 @@ for _, row in page_df.iterrows():
                             st.rerun()
                         except Exception as e:
                             st.error(f"บันทึกไม่ได้: {e}")
-                    if row.get("line_user_id") and st.button("📣 แจ้งเตือนลูกค้า", key=f"notify_{order_id}", use_container_width=True):
-                        try:
-                            gas_post({"_action": "notifyCustomer", "order_id": order_id})
-                            st.success("แจ้งเตือนลูกค้าทาง LINE แล้ว")
-                        except Exception as e:
-                            st.error(f"แจ้งเตือนไม่ได้: {e}")
+                    if row.get("line_user_id"):
+                        with st.popover("📣 แจ้งเตือนลูกค้า", use_container_width=True):
+                            st.caption("แก้ไขข้อความที่จะส่งได้ก่อนส่ง — เช่น เปลี่ยนเป็นข้อความปิดงานส่งมอบ")
+                            is_done = ff_status in DONE_FULFILLMENT or bool(row.get("customer_confirmed_at"))
+                            default_notify_msg = CLOSING_MESSAGE if is_done else build_notify_message(
+                                order_id, items, row.get("total", 0), row.get("branch", ""), cur_status, ff_status,
+                            )
+                            edited_notify_msg = st.text_area(
+                                "ข้อความแจ้งลูกค้า", value=default_notify_msg,
+                                key=f"notify_msg_{order_id}", height=180, label_visibility="collapsed",
+                            )
+                            if st.button("📣 ส่งข้อความนี้", key=f"notify_{order_id}", type="primary", use_container_width=True):
+                                try:
+                                    gas_post({"_action": "notifyCustomer", "order_id": order_id, "custom_message": edited_notify_msg})
+                                    st.success("แจ้งเตือนลูกค้าทาง LINE แล้ว")
+                                except Exception as e:
+                                    st.error(f"แจ้งเตือนไม่ได้: {e}")
 
                     with st.popover("เปลี่ยนสถานะอื่น ๆ"):
                         new_status = st.selectbox(
