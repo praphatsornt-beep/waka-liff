@@ -153,10 +153,11 @@ def staff_confirm_handover(row_num: int):
 
 
 GAS_URL = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
+WAKA_S  = "wk26xK9mPqRt"  # shared secret doPost/doGet require via ?_s= (same value as tournament.py's WAKA_S)
 
 def confirm_slip_via_gas(order_id: str):
     import requests
-    resp = requests.post(GAS_URL, json={"_action": "confirmSlip", "order_id": order_id}, timeout=30)
+    resp = requests.post(f"{GAS_URL}?_s={WAKA_S}", json={"_action": "confirmSlip", "order_id": order_id}, timeout=30)
     result = resp.json()
     if not result.get("ok"):
         raise Exception(result.get("error", "GAS ตอบผิดพลาด"))
@@ -164,7 +165,7 @@ def confirm_slip_via_gas(order_id: str):
 
 def gas_post(payload: dict) -> dict:
     import requests
-    resp = requests.post(GAS_URL, json=payload, timeout=30)
+    resp = requests.post(f"{GAS_URL}?_s={WAKA_S}", json=payload, timeout=30)
     result = resp.json()
     if not result.get("ok"):
         raise Exception(result.get("error", "GAS ตอบผิดพลาด"))

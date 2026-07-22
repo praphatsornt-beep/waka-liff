@@ -30,6 +30,7 @@ SCOPES   = ["https://www.googleapis.com/auth/spreadsheets"]
 SA_PATH  = Path("service_account.json")
 SHEET_ID = "1aUHbSt3qlQ4uMIzlCGbF-iFm0AqSeqx12nxk5ny1JoY"
 GAS_URL  = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
+WAKA_S   = "wk26xK9mPqRt"  # shared secret doPost/doGet require via ?_s= (same value as tournament.py's WAKA_S)
 
 BRANCHES = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์"]
 
@@ -73,7 +74,7 @@ def get_supabase():
 
 
 def gas_post(payload: dict) -> dict:
-    resp = requests.post(GAS_URL, json=payload, timeout=30)
+    resp = requests.post(f"{GAS_URL}?_s={WAKA_S}", json=payload, timeout=30)
     result = resp.json()
     if result.get("error"):
         raise Exception(result["error"])

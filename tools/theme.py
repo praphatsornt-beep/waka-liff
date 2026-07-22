@@ -189,6 +189,28 @@ h1, h2, h3, h4,
 
 [data-testid="stTabs"] button[role="tab"] {{ font-weight: 600; border-radius: 7px; }}
 
+/* Selectbox/multiselect dropdown menus default to the trigger's (often
+   narrow) width, truncating long option labels. The option list is a
+   virtualized (absolutely-positioned) list, so width:max-content can't
+   measure its content — force a fixed wider width at every wrapping level
+   instead, and let each option's label wrap rather than ellipsis-truncate. */
+div[data-baseweb="popover"]:has(ul[data-testid="stSelectboxVirtualDropdown"]),
+div[data-baseweb="popover"]:has(ul[data-testid="stSelectboxVirtualDropdown"]) > div,
+div[data-baseweb="popover"]:has(ul[data-testid="stSelectboxVirtualDropdown"]) > div > div {{
+  width: 340px !important;
+  max-width: 340px !important;
+}}
+ul[data-testid="stSelectboxVirtualDropdown"],
+ul[data-testid="stSelectboxVirtualDropdown"] > div,
+ul[data-testid="stSelectboxVirtualDropdown"] li[role="option"] {{
+  width: 340px !important;
+}}
+ul[data-testid="stSelectboxVirtualDropdown"] li[role="option"] * {{
+  overflow: visible !important;
+  text-overflow: unset !important;
+  white-space: normal !important;
+}}
+
 [data-testid="stDataFrame"] {{ border-radius: 10px; overflow: hidden; }}
 </style>
 """

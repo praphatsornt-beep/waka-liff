@@ -26,6 +26,7 @@ SCOPES   = ["https://www.googleapis.com/auth/spreadsheets"]
 SA_PATH  = Path("service_account.json")
 SHEET_ID = "1aUHbSt3qlQ4uMIzlCGbF-iFm0AqSeqx12nxk5ny1JoY"
 GAS_URL    = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
+WAKA_S     = "wk26xK9mPqRt"  # shared secret doPost/doGet require via ?_s= (same value as tournament.py's WAKA_S)
 
 TH_TZ = timezone(timedelta(hours=7))
 
@@ -108,7 +109,7 @@ def update_reg_field(reg_id: str, field: str, value: str):
     import requests
     requests.get(
         GAS_URL,
-        params={"action": "api", "do": "wakagym_update_reg", "reg_id": reg_id, "field": field, "value": value},
+        params={"action": "api", "do": "wakagym_update_reg", "_s": WAKA_S, "reg_id": reg_id, "field": field, "value": value},
         timeout=15,
     )
 
@@ -117,7 +118,7 @@ def give_box(player_name: str):
     import requests
     requests.get(
         GAS_URL,
-        params={"action": "api", "do": "wakagym_give_box", "player_name": player_name},
+        params={"action": "api", "do": "wakagym_give_box", "_s": WAKA_S, "player_name": player_name},
         timeout=15,
     )
 
