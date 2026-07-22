@@ -3388,12 +3388,18 @@ function handleConfirmSlip(data) {
       try { items = JSON.parse(rows[i][col("items_json")] || "[]"); } catch(_) {}
 
       if (uid) {
-        var itemsText = items.map(function(it) {
-          var unit = it.type === "box" ? "กล่อง" : "ซอง";
-          return "  - " + it.name + " (" + unit + ") x" + it.qty;
-        }).join("\n");
-        var isDelivery = branch === "จัดส่ง";
-        _linePush(uid, "ยืนยันการชำระเงินแล้ว ✅\n\nออเดอร์: #" + orderId + "\n\n" + itemsText + "\n\nยอดรวม: " + total + " บาท\n" + (isDelivery ? "จัดส่งพัสดุ" : "รับที่สาขา: " + branch) + "\n\nทีมงานจะแจ้งเมื่อสินค้าพร้อมรับครับ");
+        var message;
+        if (data.custom_message && String(data.custom_message).trim()) {
+          message = String(data.custom_message).trim();
+        } else {
+          var itemsText = items.map(function(it) {
+            var unit = it.type === "box" ? "กล่อง" : "ซอง";
+            return "  - " + it.name + " (" + unit + ") x" + it.qty;
+          }).join("\n");
+          var isDelivery = branch === "จัดส่ง";
+          message = "ยืนยันการชำระเงินแล้ว ✅\n\nออเดอร์: #" + orderId + "\n\n" + itemsText + "\n\nยอดรวม: " + total + " บาท\n" + (isDelivery ? "จัดส่งพัสดุ" : "รับที่สาขา: " + branch) + "\n\nทีมงานจะแจ้งเมื่อสินค้าพร้อมรับครับ";
+        }
+        _linePush(uid, message);
       }
 
       syncOrderToSupabase_(ss, orderId);

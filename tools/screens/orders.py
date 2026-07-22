@@ -155,9 +155,12 @@ def staff_confirm_handover(row_num: int):
 GAS_URL = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
 WAKA_S  = "wk26xK9mPqRt"  # shared secret doPost/doGet require via ?_s= (same value as tournament.py's WAKA_S)
 
-def confirm_slip_via_gas(order_id: str):
+def confirm_slip_via_gas(order_id: str, custom_message: str = ""):
     import requests
-    resp = requests.post(f"{GAS_URL}?_s={WAKA_S}", json={"_action": "confirmSlip", "order_id": order_id}, timeout=30)
+    payload = {"_action": "confirmSlip", "order_id": order_id}
+    if custom_message.strip():
+        payload["custom_message"] = custom_message.strip()
+    resp = requests.post(f"{GAS_URL}?_s={WAKA_S}", json=payload, timeout=30)
     result = resp.json()
     if not result.get("ok"):
         raise Exception(result.get("error", "GAS ตอบผิดพลาด"))
@@ -221,6 +224,24 @@ def handover_candidates(items: list) -> list:
 
 def fulfill_kind(s: str) -> str:
     return "success" if s in ("รับแล้ว", "สาขายืนยัน", "จัดส่งแล้ว", "พร้อมรับ") else "pending"
+
+
+def build_confirm_message(order_id: str, items: list, total, branch: str) -> str:
+    """Mirrors gas/Code.gs's handleConfirmSlip default LINE message — used to
+    pre-fill the editable textarea so admins start from the real template."""
+    items_text = "\n".join(
+        f"  - {i.get('name','')} ({'กล่อง' if i.get('type') == 'box' else 'ซอง'}) x{i.get('qty', 1)}"
+        for i in items
+    )
+    is_delivery = branch == "จัดส่ง"
+    loc = "จัดส่งพัสดุ" if is_delivery else f"รับที่สาขา: {branch}"
+    return (
+        f"ยืนยันการชำระเงินแล้ว ✅\n\n"
+        f"ออเดอร์: #{order_id}\n\n"
+        f"{items_text}\n\n"
+        f"ยอดรวม: {int(float(total or 0))} บาท\n{loc}\n\n"
+        f"ทีมงานจะแจ้งเมื่อสินค้าพร้อมรับครับ"
+    )
 
 
 # ── Page header ───────────────────────────────────────────────────────────────
@@ -586,14 +607,22 @@ for _, row in page_df.iterrows():
                     else:
                         st.caption("— ไม่พบยอดจากสลิป")
                 with col_act:
-                    if cur_status != "ยืนยัน" and st.button("✅ อนุมัติสลิป", key=f"approve_{order_id}", type="primary", use_container_width=True):
-                        try:
-                            confirm_slip_via_gas(order_id)
-                            st.success("อนุมัติแล้ว + แจ้ง LINE ลูกค้าแล้ว")
-                            st.cache_data.clear()
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"บันทึกไม่ได้: {e}")
+                    if cur_status != "ยืนยัน":
+                        with st.popover("✅ อนุมัติสลิป", use_container_width=True):
+                            st.caption("แก้ไขข้อความแจ้งลูกค้าได้ก่อนส่ง (รายสินค้า/ทั่วไป)")
+                            default_msg = build_confirm_message(order_id, items, row.get("total", 0), row.get("branch", ""))
+                            edited_msg = st.text_area(
+                                "ข้อความแจ้งลูกค้า", value=default_msg,
+                                key=f"confirm_msg_{order_id}", height=220, label_visibility="collapsed",
+                            )
+                            if st.button("✅ ยืนยัน + ส่งข้อความนี้", key=f"approve_{order_id}", type="primary", use_container_width=True):
+                                try:
+                                    confirm_slip_via_gas(order_id, custom_message=edited_msg)
+                                    st.success("อนุมัติแล้ว + แจ้ง LINE ลูกค้าแล้ว")
+                                    st.cache_data.clear()
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"บันทึกไม่ได้: {e}")
                     if cur_status != "ยกเลิก" and st.button("❌ ปฏิเสธ", key=f"reject_{order_id}", use_container_width=True):
                         try:
                             update_slip_status(int(row["row_num"]), "ยกเลิก")
