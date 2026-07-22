@@ -413,6 +413,19 @@ if st.session_state.selected_orders:
                 st.session_state.selected_orders = set()
                 st.rerun()
 
+# ── Select all (current page) ───────────────────────────────────────────────
+page_ids = set(page_df["order_id"])
+was_all_checked = bool(page_ids) and page_ids.issubset(st.session_state.selected_orders)
+all_checked = st.checkbox(f"เลือกทั้งหมดในหน้านี้ ({len(page_ids)} ออเดอร์)", value=was_all_checked, key="select_all_page")
+if all_checked != was_all_checked:
+    if all_checked:
+        st.session_state.selected_orders |= page_ids
+    else:
+        st.session_state.selected_orders -= page_ids
+    for oid in page_ids:
+        st.session_state[f"sel_{oid}"] = all_checked
+    st.rerun()
+
 # ── Order cards ───────────────────────────────────────────────────────────────
 for _, row in page_df.iterrows():
     order_id = row.get("order_id", "")
