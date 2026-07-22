@@ -111,6 +111,11 @@ def order_cost(items_json, cost_map: dict) -> float:
     return total
 
 
+def df_to_csv_bytes(df: pd.DataFrame) -> bytes:
+    """utf-8-sig so Thai text opens correctly in Excel instead of mojibake."""
+    return df.to_csv(index=False).encode("utf-8-sig")
+
+
 # ── Page ──────────────────────────────────────────────────────────────────────
 apply_theme()
 page_header("รายงาน", "ยอดขาย สินค้าขายดี และเปรียบเทียบทัวร์นาเมนต์ / WAKA GYM")
@@ -150,6 +155,14 @@ with k3:
     st.markdown(kpi_card("กำไร", f"฿{total_profit:,.0f}", SUCCESS_TEXT if total_profit >= 0 else DANGER_TEXT), unsafe_allow_html=True)
 with k4:
     st.markdown(kpi_card("จำนวนออเดอร์", len(confirmed)), unsafe_allow_html=True)
+
+st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+export_cols = ["order_id", "date", "branch", "real_name", "phone", "total", "cost"]
+export_df = confirmed[[c for c in export_cols if c in confirmed.columns]] if not confirmed.empty else pd.DataFrame(columns=export_cols)
+st.download_button(
+    "⬇️ ดาวน์โหลดออเดอร์ (CSV)", df_to_csv_bytes(export_df),
+    file_name=f"waka_orders_{date_from}_{date_to}.csv", mime="text/csv",
+)
 
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
@@ -194,6 +207,11 @@ with tab_sales:
             .sort_values("ยอดขาย", ascending=False)
         )
         st.dataframe(by_branch, use_container_width=True, hide_index=True)
+        st.download_button(
+            "⬇️ ดาวน์โหลดยอดขายแยกสาขา (CSV)", df_to_csv_bytes(by_branch),
+            file_name=f"waka_sales_by_branch_{date_from}_{date_to}.csv", mime="text/csv",
+            key="dl_by_branch",
+        )
 
 with tab_products:
     if confirmed.empty:
@@ -212,6 +230,11 @@ with tab_products:
             for (name, t), v in agg.items()
         ]).sort_values("ยอดขาย", ascending=False)
         st.dataframe(prod_df.head(20), use_container_width=True, hide_index=True)
+        st.download_button(
+            "⬇️ ดาวน์โหลดสินค้าขายดี (CSV)", df_to_csv_bytes(prod_df),
+            file_name=f"waka_top_products_{date_from}_{date_to}.csv", mime="text/csv",
+            key="dl_prod",
+        )
 
 with tab_compare:
     t_events, t_regs = load_tournament_data()
@@ -234,4 +257,9 @@ with tab_compare:
         {"ประเภท": "WAKA GYM", "จำนวนงาน": len(g_events), "ผู้สมัครทั้งหมด": len(g_regs), "ยืนยันแล้ว": len(g_confirmed)},
     ])
     st.dataframe(compare_df, use_container_width=True, hide_index=True)
+    st.download_button(
+        "⬇️ ดาวน์โหลดตารางเปรียบเทียบ (CSV)", df_to_csv_bytes(compare_df),
+        file_name=f"waka_tournament_vs_gym_{date_from}_{date_to}.csv", mime="text/csv",
+        key="dl_compare",
+    )
     st.bar_chart(compare_df.set_index("ประเภท")[["ผู้สมัครทั้งหมด", "ยืนยันแล้ว"]])

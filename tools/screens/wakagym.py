@@ -261,6 +261,21 @@ with tab_stats:
     if df_stats.empty:
         st.info("ยังไม่มีข้อมูลผู้เล่น")
     else:
+        df_stats = df_stats.sort_values("total_tokens", ascending=False).reset_index(drop=True)
+
+        with st.expander("🏆 ตารางอันดับ (เรียงตาม Token สะสม)", expanded=True):
+            medals = {0: "🥇", 1: "🥈", 2: "🥉"}
+            board_df = pd.DataFrame([
+                {
+                    "อันดับ": medals.get(i, i + 1),
+                    "ผู้เล่น": r.get("player_name") or r.get("real_name") or "—",
+                    "🪙 Token": int(r.get("total_tokens", 0)),
+                    "เข้าร่วม": int(r.get("total_plays", 0)),
+                }
+                for i, r in df_stats.head(20).iterrows()
+            ])
+            st.dataframe(board_df, use_container_width=True, hide_index=True)
+
         search = st.text_input("🔍 ค้นหาผู้เล่น", placeholder="ชื่อแข่ง / ชื่อจริง", key="stats_search")
         if search:
             s = search.lower()

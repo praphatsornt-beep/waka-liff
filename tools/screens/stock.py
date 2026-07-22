@@ -176,7 +176,16 @@ if not catalog.empty:
            <= pd.to_numeric(catalog["limit_box"], errors="coerce").fillna(0))
     ]
 
-k1, k2, k3 = st.columns(3)
+stock_value = 0.0
+if not catalog.empty:
+    stock_value = (
+        pd.to_numeric(catalog.get("price_box", 0), errors="coerce").fillna(0)
+        * pd.to_numeric(catalog.get("qty_box", 0), errors="coerce").fillna(0)
+        + pd.to_numeric(catalog.get("price_pack", 0), errors="coerce").fillna(0)
+        * pd.to_numeric(catalog.get("qty_pack", 0), errors="coerce").fillna(0)
+    ).sum()
+
+k1, k2, k3, k4 = st.columns(4)
 with k1:
     st.markdown(kpi_card("สินค้าทั้งหมด", len(catalog)), unsafe_allow_html=True)
 with k2:
@@ -187,6 +196,8 @@ with k2:
 with k3:
     total_branch_box = int(pd.to_numeric(stock_branch["qty_box"], errors="coerce").fillna(0).sum()) if not stock_branch.empty else 0
     st.markdown(kpi_card("สต็อกสาขารวม (กล่อง)", f"{total_branch_box:,}"), unsafe_allow_html=True)
+with k4:
+    st.markdown(kpi_card("มูลค่าสต็อกคลังกลาง (฿)", f"฿{stock_value:,.0f}"), unsafe_allow_html=True)
 
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
@@ -306,7 +317,11 @@ with tab_central:
     if catalog.empty:
         st.caption("ยังไม่มีข้อมูลสินค้า")
     else:
-        show = catalog[["name", "category", "qty_box", "qty_pack", "limit_box", "limit_pack"]].copy()
+        cats = ["ทุกหมวดหมู่"] + sorted([c for c in catalog["category"].dropna().unique().tolist() if c])
+        cat_sel = st.selectbox("กรองหมวดหมู่", cats, key="central_cat_filter")
+        catalog_show = catalog if cat_sel == "ทุกหมวดหมู่" else catalog[catalog["category"] == cat_sel]
+
+        show = catalog_show[["name", "category", "qty_box", "qty_pack", "limit_box", "limit_pack"]].copy()
         show["สถานะ"] = show.apply(
             lambda r: "⚠️ ใกล้หมด" if (pd.to_numeric(r["limit_box"], errors="coerce") or 0) > 0
             and (pd.to_numeric(r["qty_box"], errors="coerce") or 0) <= (pd.to_numeric(r["limit_box"], errors="coerce") or 0)
