@@ -246,6 +246,8 @@ with tab_central:
                 new_limit_box = p9.number_input("ขั้นต่ำแจ้งเตือน (กล่อง)", min_value=0, value=0, step=1)
                 new_limit_pack = p10.number_input("ขั้นต่ำแจ้งเตือน (ซอง)", min_value=0, value=0, step=1)
                 new_barcode = st.text_input("บาร์โค้ด (ถ้ามี)")
+                new_image_url = st.text_input("ลิงก์รูปภาพ (ถ้ามี)")
+                st.caption("อัปโหลดรูปขึ้น Google Drive → คลิกขวา \"รับลิงก์\" → ตั้งสิทธิ์เป็น \"ทุกคนที่มีลิงก์\" → วางลิงก์ที่นี่")
                 submitted_p = st.form_submit_button("เพิ่มสินค้า")
                 if submitted_p:
                     if not new_name.strip():
@@ -262,6 +264,7 @@ with tab_central:
                                 "initial_box": new_initial_box, "initial_pack": new_initial_pack,
                                 "limit_box": new_limit_box, "limit_pack": new_limit_pack,
                                 "barcode": new_barcode.strip(),
+                                "image_url": new_image_url.strip(),
                             })
                             st.success(f"เพิ่มสินค้า \"{new_name}\" แล้ว")
                             st.cache_data.clear()
