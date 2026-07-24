@@ -175,6 +175,14 @@ h1, h2, h3, h4,
   border-radius: 13px;
   background: {SURFACE};
 }}
+[data-testid="stExpander"] summary {{
+  padding: 8px 12px !important;
+}}
+[data-testid="stExpander"] summary span {{
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: {TEXT3} !important;
+}}
 
 [data-testid="stVerticalBlockBorderWrapper"] {{
   border-color: {BORDER} !important;
