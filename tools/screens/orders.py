@@ -448,7 +448,7 @@ if st.session_state.selected_orders:
         if r["slip_status"] == "ยืนยัน" and handover_candidates(parse_items(r.get("items_json", "")))
     ]
     with st.container(border=True):
-        b1, b2, b3, b4, b5 = st.columns([1.6, 1.4, 1.3, 1.1, 0.9])
+        b1, b2, b3, b6, b4, b5 = st.columns([1.4, 1.3, 1.3, 1.3, 1.0, 0.9])
         with b1:
             st.markdown(f"<div style='padding-top:8px;font-weight:600'>เลือกแล้ว {len(st.session_state.selected_orders)} ออเดอร์</div>", unsafe_allow_html=True)
         with b2:
@@ -462,15 +462,52 @@ if st.session_state.selected_orders:
                 st.cache_data.clear()
                 st.rerun()
         with b3:
-            if st.button(f"🤝 ส่งมอบที่เลือก ({len(sel_handover_ids)})", disabled=not sel_handover_ids):
-                for order_id in sel_handover_ids:
-                    try:
-                        gas_post({"_action": "handoverOrder", "order_id": order_id})
-                    except Exception as e:
-                        st.error(f"#{order_id}: {e}")
-                st.session_state.selected_orders = set()
-                st.cache_data.clear()
-                st.rerun()
+            with st.popover(f"🤝 ส่งมอบที่เลือก ({len(sel_handover_ids)})", use_container_width=True):
+                st.caption("ส่งมอบ + ส่งข้อความเดียวกันนี้ให้ลูกค้าทุกออเดอร์ที่เลือกพร้อมกัน (แก้ไขได้ก่อนส่ง)")
+                bulk_handover_msg = st.text_area(
+                    "ข้อความ", value=CLOSING_MESSAGE,
+                    key="bulk_handover_msg", height=150, label_visibility="collapsed",
+                )
+                if st.button(
+                    f"🤝 ยืนยันส่งมอบ + ส่งข้อความนี้ ({len(sel_handover_ids)})",
+                    key="bulk_handover_btn", type="primary", use_container_width=True,
+                    disabled=not sel_handover_ids,
+                ):
+                    sent = 0
+                    for order_id in sel_handover_ids:
+                        try:
+                            gas_post({"_action": "handoverOrder", "order_id": order_id, "custom_message": bulk_handover_msg})
+                            sent += 1
+                        except Exception as e:
+                            st.error(f"#{order_id}: {e}")
+                    st.success(f"ส่งมอบ + แจ้งเตือนแล้ว {sent} ออเดอร์")
+                    st.session_state.selected_orders = set()
+                    st.cache_data.clear()
+                    st.rerun()
+        with b6:
+            sel_with_line = sel_rows[sel_rows["line_user_id"].astype(str).str.strip() != ""]
+            with st.popover(f"📣 แจ้งเตือนที่เลือก ({len(sel_with_line)})", use_container_width=True):
+                st.caption("ส่งข้อความนี้ให้ทุกออเดอร์ที่เลือก โดยไม่แตะสถานะส่งมอบ (เช่น ส่งข้อความปิดงานทีหลัง หลังส่งมอบไปแล้ว)")
+                bulk_notify_msg = st.text_area(
+                    "ข้อความ", value=CLOSING_MESSAGE,
+                    key="bulk_notify_msg", height=150, label_visibility="collapsed",
+                )
+                if st.button(
+                    f"📣 ส่งให้ทุกคนที่เลือก ({len(sel_with_line)})",
+                    key="bulk_notify_btn", type="primary", use_container_width=True,
+                    disabled=sel_with_line.empty,
+                ):
+                    sent = 0
+                    for _, r in sel_with_line.iterrows():
+                        try:
+                            gas_post({"_action": "notifyCustomer", "order_id": r["order_id"], "custom_message": bulk_notify_msg})
+                            sent += 1
+                        except Exception as e:
+                            st.error(f"#{r['order_id']}: {e}")
+                    st.success(f"แจ้งเตือนแล้ว {sent} ออเดอร์")
+                    st.session_state.selected_orders = set()
+                    st.cache_data.clear()
+                    st.rerun()
         with b4:
             if st.button("❌ ยกเลิกสลิปที่เลือก"):
                 for _, r in sel_rows.iterrows():
