@@ -502,7 +502,7 @@ for _, row in page_df.iterrows():
       <span style="padding:1px 8px;border-radius:20px;background:{SURFACE_ALT};color:{TEXT2};font-size:11px">โอนเงิน</span>
       {badge((f'จัดส่ง · {ff_status}' if is_del else f'{ff_icon} {ff_status}'), fulfill_kind(ff_status)) if cur_status == "ยืนยัน" else ''}
       {badge(f'📣 แจ้งแล้ว {notified_at}', 'success') if notified_at else ''}
-      <span style="flex:1;min-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:{TEXT3}">{items_summary}</span>
+      <span style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:{TEXT3}">{items_summary}</span>
     </div>
     """)
 
