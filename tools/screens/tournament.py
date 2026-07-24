@@ -97,6 +97,15 @@ def load_players(event_id: str) -> list:
 CONFIRMED_REG_STATUS = ("verified", "cash")
 
 
+def parse_selected_categories(raw) -> list:
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)
+        except Exception:
+            return []
+    return raw or []
+
+
 @st.cache_data(ttl=30)
 def load_all_players() -> list:
     """Cross-event registrations for overview KPIs / remaining-slots — one
@@ -317,11 +326,37 @@ with tab_players:
                     st.error(f"ส่งไม่ได้: {e}")
 
     st.markdown(f"**รายชื่อผู้สมัคร** ({len(players)} คน)")
-    search = st.text_input("🔍 ค้นหา", placeholder="ชื่อ / เบอร์ / reg_id")
+    try:
+        cat_options = [c["name"] for c in load_categories(sel_id)]
+    except Exception:
+        cat_options = []
+
+    rf1, rf2, rf3, rf4 = st.columns([2, 1.3, 1.3, 1.3])
+    with rf1:
+        search = st.text_input("🔍 ค้นหา", placeholder="ชื่อ / เบอร์ / reg_id", label_visibility="collapsed")
+    with rf2:
+        cat_filter = st.multiselect("ประเภท", cat_options, default=[], placeholder="ทุกประเภท", label_visibility="collapsed")
+    with rf3:
+        slip_filter = st.selectbox(
+            "สถานะสลิป", ["ทุกสถานะ"] + list(SLIP_LABEL.keys()),
+            format_func=lambda s: "ทุกสถานะ" if s == "ทุกสถานะ" else SLIP_LABEL.get(s, s),
+            label_visibility="collapsed",
+        )
+    with rf4:
+        checkin_filter = st.selectbox("เช็คอิน", ["ทุกคน", "เช็คอินแล้ว", "ยังไม่เช็คอิน"], label_visibility="collapsed")
+
     rows = players
     if search:
         s = search.lower()
         rows = [p for p in rows if s in (p.get("real_name","")+p.get("player_name","")+p.get("phone","")+p.get("reg_id","")).lower()]
+    if cat_filter:
+        rows = [p for p in rows if any(c.get("name") in cat_filter for c in parse_selected_categories(p.get("selected_categories")))]
+    if slip_filter != "ทุกสถานะ":
+        rows = [p for p in rows if p.get("slip_status") == slip_filter]
+    if checkin_filter == "เช็คอินแล้ว":
+        rows = [p for p in rows if p.get("checked_in_at")]
+    elif checkin_filter == "ยังไม่เช็คอิน":
+        rows = [p for p in rows if not p.get("checked_in_at")]
 
     if not rows:
         st.info("ไม่พบผู้สมัครตามที่ค้นหา" if search else "ยังไม่มีผู้สมัครในทัวร์นาเมนต์นี้")
@@ -330,13 +365,7 @@ with tab_players:
         c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
         name_line = f"#{p.get('sequence_no','')} · {p.get('player_name') or '—'} ({p.get('real_name','—')})"
         c1.write(name_line)
-        cats = p.get("selected_categories")
-        if isinstance(cats, str):
-            try:
-                cats = json.loads(cats)
-            except Exception:
-                cats = []
-        cat_names = ", ".join(c.get("name", "") for c in (cats or []) if c.get("name"))
+        cat_names = ", ".join(c.get("name", "") for c in parse_selected_categories(p.get("selected_categories")) if c.get("name"))
         c1.caption(f"🏷️ {cat_names}" if cat_names else "🏷️ ไม่ระบุประเภท")
         c2.write(f"📞 {p.get('phone','—')}")
         slip_kind = "success" if p.get("slip_status") in ("cash", "verified") else "pending"
