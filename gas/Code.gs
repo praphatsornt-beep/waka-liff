@@ -3158,7 +3158,9 @@ function handleHandoverOrder(data) {
         var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + data.order_id;
         var pendingItems = items.filter(function(it) { return !it.handed_at && !it.cancelled_at; });
         var msg;
-        if (allDone) {
+        if (data.custom_message && String(data.custom_message).trim()) {
+          msg = String(data.custom_message).trim();
+        } else if (allDone) {
           msg = "สาขาส่งมอบสินค้าครบแล้ว กรุณากดยืนยันรับของ\n\nออเดอร์: #" + data.order_id + "\n\nกดยืนยัน:\n" + trackUrl;
         } else {
           msg = "📦 ส่งมอบสินค้าบางส่วนแล้ว\nออเดอร์: #" + data.order_id + "\n\n✅ รับแล้ว:\n" +

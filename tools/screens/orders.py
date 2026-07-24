@@ -244,6 +244,29 @@ def build_confirm_message(order_id: str, items: list, total, branch: str) -> str
     )
 
 
+def build_handover_message(order_id: str, items: list, handover_idx: list) -> str:
+    """Mirrors gas/Code.gs's handleHandoverOrder default LINE message — used to
+    pre-fill the editable textarea so admins start from the real template."""
+    handover_names = [
+        f"{items[idx].get('name','')} x{items[idx].get('qty',1)} ({'กล่อง' if items[idx].get('type') == 'box' else 'ซอง'})"
+        for idx in handover_idx
+    ]
+    remaining_pending = [
+        it for i, it in enumerate(items)
+        if i not in handover_idx and not it.get("handed_at") and not it.get("cancelled_at")
+    ]
+    track_url = f"https://waka-liff.vercel.app/confirm.html?order={order_id}"
+    if not remaining_pending:
+        return f"สาขาส่งมอบสินค้าครบแล้ว กรุณากดยืนยันรับของ\n\nออเดอร์: #{order_id}\n\nกดยืนยัน:\n{track_url}"
+    handed_text = "\n".join(f"- {n}" for n in handover_names)
+    pending_text = "\n".join(f"- {it.get('name','')} x{it.get('qty',1)}" for it in remaining_pending)
+    return (
+        f"📦 ส่งมอบสินค้าบางส่วนแล้ว\nออเดอร์: #{order_id}\n\n"
+        f"✅ รับแล้ว:\n{handed_text}\n\n⏳ รอสินค้า:\n{pending_text}\n\n"
+        f"สินค้าที่เหลือจะแจ้งให้ทราบเมื่อพร้อม"
+    )
+
+
 DONE_FULFILLMENT = ("รับแล้ว", "สาขายืนยัน")
 CLOSING_MESSAGE = (
     "ขอขอบคุณทุกท่านที่มาร่วมกิจกรรมกับพวกเราที่ WAKA นะครับ 🙏\n"
@@ -556,16 +579,22 @@ for _, row in page_df.iterrows():
                         st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
                         fc1, fc2, fc3 = st.columns(3)
                         with fc1:
-                            if handover_idx and st.button(
-                                "🤝 ส่งมอบสินค้า", key=f"handover_{order_id}", use_container_width=True,
-                            ):
-                                try:
-                                    gas_post({"_action": "handoverOrder", "order_id": order_id})
-                                    st.success("ส่งมอบแล้ว + แจ้ง LINE ลูกค้าแล้ว")
-                                    st.cache_data.clear()
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"ทำรายการไม่ได้: {e}")
+                            if handover_idx:
+                                with st.popover("🤝 ส่งมอบสินค้า", use_container_width=True):
+                                    st.caption("แก้ไขข้อความแจ้งลูกค้าได้ก่อนส่ง — เช่น ถ้าไม่ต้องให้ลูกค้ากดยืนยันรับของ ให้แก้เป็นข้อความปิดงานแทน")
+                                    default_handover_msg = build_handover_message(order_id, items, handover_idx)
+                                    edited_handover_msg = st.text_area(
+                                        "ข้อความแจ้งลูกค้า", value=default_handover_msg,
+                                        key=f"handover_msg_{order_id}", height=180, label_visibility="collapsed",
+                                    )
+                                    if st.button("🤝 ยืนยัน + ส่งข้อความนี้", key=f"handover_{order_id}", type="primary", use_container_width=True):
+                                        try:
+                                            gas_post({"_action": "handoverOrder", "order_id": order_id, "custom_message": edited_handover_msg})
+                                            st.success("ส่งมอบแล้ว + แจ้ง LINE ลูกค้าแล้ว")
+                                            st.cache_data.clear()
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"ทำรายการไม่ได้: {e}")
                         with fc2:
                             if pending_idx:
                                 with st.popover("📣 แจ้งพร้อมรับ", use_container_width=True):
