@@ -3170,6 +3170,7 @@ function handleHandoverOrder(data) {
             "\n\nสินค้าที่เหลือจะแจ้งให้ทราบเมื่อพร้อม";
         }
         _linePush(uid, msg);
+        if (oCol("notified_at") >= 0) ws.getRange(i + 1, oCol("notified_at") + 1).setValue(now);
       }
 
       lock.releaseLock();
