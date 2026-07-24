@@ -2531,14 +2531,28 @@ function handleApi(params) {
   if (action === "tournament_export") {
     var texEvId = String(params.event || "").trim();
     var texWs = ss.getSheetByName(TAB_TOURNAMENT_REG);
-    var csvCols = ["reg_id","sequence_no","player_name","real_name","phone","facebook","payment_method","bank","slip_status","status","timestamp"];
+    var csvCols = ["reg_id","sequence_no","player_name","real_name","phone","facebook","payment_method","bank","slip_status","status","timestamp","category"];
     var csv = "﻿" + csvCols.join(",") + "\n";
     if (texWs) {
       var texRows = texWs.getDataRange().getValues(); var texHdr = texRows[0];
       var texrc = function(n) { return texHdr.indexOf(n); };
       for (var texi = 1; texi < texRows.length; texi++) {
         if (texEvId && String(texRows[texi][texrc("event_id")]) !== texEvId) continue;
-        var csvRow = csvCols.map(function(c) { return '"' + String(texRows[texi][texrc(c)] || "").replace(/"/g, '""') + '"'; });
+        var texCatNames = "";
+        try {
+          var texCatsRaw = texRows[texi][texrc("selected_categories")];
+          var texCats = texCatsRaw ? JSON.parse(texCatsRaw) : [];
+          texCatNames = texCats.map(function(c) { return c.name; }).join(", ");
+        } catch (e) {}
+        var csvRow = csvCols.map(function(c) {
+          if (c === "category") return '"' + texCatNames.replace(/"/g, '""') + '"';
+          if (c === "phone") {
+            // ="..." forces Excel to keep the leading 0 as text instead of
+            // auto-converting the cell to a number on open.
+            return '="' + String(texRows[texi][texrc(c)] || "").replace(/"/g, '""') + '"';
+          }
+          return '"' + String(texRows[texi][texrc(c)] || "").replace(/"/g, '""') + '"';
+        });
         csv += csvRow.join(",") + "\n";
       }
     }
