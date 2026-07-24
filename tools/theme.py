@@ -176,7 +176,8 @@ h1, h2, h3, h4,
   background: {SURFACE};
 }}
 [data-testid="stExpander"] summary {{
-  padding: 8px 12px !important;
+  padding: 4px 10px !important;
+  min-height: 0 !important;
 }}
 [data-testid="stExpander"] summary * {{
   font-size: 12px !important;
