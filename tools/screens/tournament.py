@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """WAKA Tournament — Event & registrant management (mirrors liff/tournament_admin.html)"""
 
+import json
 import sys
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
@@ -329,6 +330,14 @@ with tab_players:
         c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
         name_line = f"#{p.get('sequence_no','')} · {p.get('player_name') or '—'} ({p.get('real_name','—')})"
         c1.write(name_line)
+        cats = p.get("selected_categories")
+        if isinstance(cats, str):
+            try:
+                cats = json.loads(cats)
+            except Exception:
+                cats = []
+        cat_names = ", ".join(c.get("name", "") for c in (cats or []) if c.get("name"))
+        c1.caption(f"🏷️ {cat_names}" if cat_names else "🏷️ ไม่ระบุประเภท")
         c2.write(f"📞 {p.get('phone','—')}")
         slip_kind = "success" if p.get("slip_status") in ("cash", "verified") else "pending"
         c3.markdown(
