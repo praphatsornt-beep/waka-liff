@@ -292,11 +292,25 @@ with tab_players:
     k4.metric("ค่าสมัครเก็บแล้ว (฿)", f"{fee_paid:,}")
     k5.metric("รอเก็บ (฿)", f"{fee_pending:,}")
 
-    dl_col, notify_col = st.columns([1, 1])
+    try:
+        cat_options = [c["name"] for c in load_categories(sel_id)]
+    except Exception:
+        cat_options = []
+
+    cat_sel_col, dl_col, notify_col = st.columns([1, 1, 2])
+    with cat_sel_col:
+        export_cat = st.selectbox(
+            "ประเภทที่ export", ["ทุกประเภท"] + cat_options,
+            key=f"export_cat_{sel_id}", label_visibility="collapsed",
+        )
     with dl_col:
         try:
-            csv_resp = requests.get(GAS_URL, params={"action": "api", "do": "tournament_export", "_s": WAKA_S, "event": sel_id}, timeout=30)
-            st.download_button("⬇️ Export CSV", csv_resp.content, file_name=f"{sel_id}.csv", mime="text/csv")
+            export_params = {"action": "api", "do": "tournament_export", "_s": WAKA_S, "event": sel_id}
+            if export_cat != "ทุกประเภท":
+                export_params["category"] = export_cat
+            csv_resp = requests.get(GAS_URL, params=export_params, timeout=30)
+            fname = f"{sel_id}.csv" if export_cat == "ทุกประเภท" else f"{sel_id}_{export_cat}.csv"
+            st.download_button("⬇️ Export CSV", csv_resp.content, file_name=fname, mime="text/csv")
         except Exception:
             pass
     with notify_col:
@@ -326,11 +340,6 @@ with tab_players:
                     st.error(f"ส่งไม่ได้: {e}")
 
     st.markdown(f"**รายชื่อผู้สมัคร** ({len(players)} คน)")
-    try:
-        cat_options = [c["name"] for c in load_categories(sel_id)]
-    except Exception:
-        cat_options = []
-
     rf1, rf2, rf3, rf4 = st.columns([2, 1.3, 1.3, 1.3])
     with rf1:
         search = st.text_input("🔍 ค้นหา", placeholder="ชื่อ / เบอร์ / reg_id", label_visibility="collapsed")

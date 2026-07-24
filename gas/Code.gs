@@ -2530,6 +2530,7 @@ function handleApi(params) {
 
   if (action === "tournament_export") {
     var texEvId = String(params.event || "").trim();
+    var texCatFilter = String(params.category || "").trim();
     var texWs = ss.getSheetByName(TAB_TOURNAMENT_REG);
     var csvCols = ["reg_id","sequence_no","player_name","real_name","phone","facebook","payment_method","bank","slip_status","status","timestamp","category"];
     var csv = "﻿" + csvCols.join(",") + "\n";
@@ -2539,11 +2540,13 @@ function handleApi(params) {
       for (var texi = 1; texi < texRows.length; texi++) {
         if (texEvId && String(texRows[texi][texrc("event_id")]) !== texEvId) continue;
         var texCatNames = "";
+        var texCatList = [];
         try {
           var texCatsRaw = texRows[texi][texrc("selected_categories")];
-          var texCats = texCatsRaw ? JSON.parse(texCatsRaw) : [];
-          texCatNames = texCats.map(function(c) { return c.name; }).join(", ");
+          texCatList = texCatsRaw ? JSON.parse(texCatsRaw) : [];
+          texCatNames = texCatList.map(function(c) { return c.name; }).join(", ");
         } catch (e) {}
+        if (texCatFilter && !texCatList.some(function(c) { return c.name === texCatFilter; })) continue;
         var csvRow = csvCols.map(function(c) {
           if (c === "category") return '"' + texCatNames.replace(/"/g, '""') + '"';
           if (c === "phone") {
