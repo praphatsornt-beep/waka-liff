@@ -38,6 +38,23 @@ def gas_get(do: str, **params) -> dict:
     return r.json()
 
 
+def gas_post(payload: dict) -> dict:
+    resp = requests.post(f"{GAS_URL}?_s={WAKA_S}", json=payload, timeout=30)
+    result = resp.json()
+    if not result.get("ok"):
+        raise Exception(result.get("error", "GAS ตอบผิดพลาด"))
+    return result
+
+
+CLOSING_MESSAGE = (
+    "ขอขอบคุณทุกท่านที่มาร่วมกิจกรรมกับพวกเราที่ WAKA นะครับ 🙏\n"
+    "หวังเป็นอย่างยิ่งว่าทุกท่านจะได้รับความสนุกและความประทับใจจากงานของเรา "
+    "แล้วพบกันใหม่ในกิจกรรมครั้งหน้านะครับ 💛\n"
+    "หากมีข้อผิดพลาดประการใด ทางทีมงานต้องขออภัยเป็นอย่างยิ่ง และจะนำทุกข้อเสนอแนะไปปรับปรุง "
+    "เพื่อให้กิจกรรมครั้งต่อ ๆ ไปดียิ่งขึ้นครับ 🙇"
+)
+
+
 @st.cache_resource
 def get_supabase():
     import os
@@ -271,11 +288,38 @@ with tab_players:
     k4.metric("ค่าสมัครเก็บแล้ว (฿)", f"{fee_paid:,}")
     k5.metric("รอเก็บ (฿)", f"{fee_pending:,}")
 
-    try:
-        csv_resp = requests.get(GAS_URL, params={"action": "api", "do": "tournament_export", "_s": WAKA_S, "event": sel_id}, timeout=30)
-        st.download_button("⬇️ Export CSV", csv_resp.content, file_name=f"{sel_id}.csv", mime="text/csv")
-    except Exception:
-        pass
+    dl_col, notify_col = st.columns([1, 1])
+    with dl_col:
+        try:
+            csv_resp = requests.get(GAS_URL, params={"action": "api", "do": "tournament_export", "_s": WAKA_S, "event": sel_id}, timeout=30)
+            st.download_button("⬇️ Export CSV", csv_resp.content, file_name=f"{sel_id}.csv", mime="text/csv")
+        except Exception:
+            pass
+    with notify_col:
+        eligible_players = [
+            p for p in players
+            if p.get("slip_status") in CONFIRMED_REG_STATUS and str(p.get("line_user_id") or "").strip()
+        ]
+        with st.popover(f"🏆 ส่งข้อความปิดงาน ({len(eligible_players)})", use_container_width=True):
+            st.caption("ส่งข้อความนี้ให้ผู้สมัครที่ชำระเงินแล้วทุกคนในทัวร์นาเมนต์นี้ (แก้ไขได้ก่อนส่ง) — เช่น ขอบคุณ/ปิดงานหลังทัวร์นาเมนต์จบ")
+            closing_msg = st.text_area(
+                "ข้อความ", value=CLOSING_MESSAGE,
+                key=f"tour_closing_msg_{sel_id}", height=170, label_visibility="collapsed",
+            )
+            if st.button(
+                f"🏆 ส่งให้ผู้สมัคร {len(eligible_players)} คน",
+                key=f"tour_closing_btn_{sel_id}", type="primary", use_container_width=True,
+                disabled=not eligible_players,
+            ):
+                try:
+                    result = gas_post({
+                        "_action": "notifyTournamentPlayers",
+                        "reg_ids": [p["reg_id"] for p in eligible_players],
+                        "custom_message": closing_msg,
+                    })
+                    st.success(f"ส่งแล้ว {result.get('sent', 0)} คน")
+                except Exception as e:
+                    st.error(f"ส่งไม่ได้: {e}")
 
     if HAS_SCANNER:
         st.markdown("**📷 สแกน QR เช็คอิน**")

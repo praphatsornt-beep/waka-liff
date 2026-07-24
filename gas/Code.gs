@@ -366,6 +366,10 @@ function doPost(e) {
       return handleTournamentRegister(data);
     }
 
+    if (data._action === "notifyTournamentPlayers") {
+      return handleNotifyTournamentPlayers(data);
+    }
+
     if (data.action === "api") {
       return handleApi(data);
     }
@@ -3159,9 +3163,7 @@ function handleHandoverOrder(data) {
         var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + data.order_id;
         var pendingItems = items.filter(function(it) { return !it.handed_at && !it.cancelled_at; });
         var msg;
-        if (data.custom_message && String(data.custom_message).trim()) {
-          msg = String(data.custom_message).trim();
-        } else if (allDone) {
+        if (allDone) {
           msg = "สาขาส่งมอบสินค้าครบแล้ว กรุณากดยืนยันรับของ\n\nออเดอร์: #" + data.order_id + "\n\nกดยืนยัน:\n" + trackUrl;
         } else {
           msg = "📦 ส่งมอบสินค้าบางส่วนแล้ว\nออเดอร์: #" + data.order_id + "\n\n✅ รับแล้ว:\n" +
@@ -3462,6 +3464,37 @@ function handleNotifyCustomer(data) {
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: notifyNow })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
+  } catch (err) {
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+// ── ส่งข้อความ (เช่น ปิดงาน/ขอบคุณ) ให้ผู้สมัครทัวร์นาเมนต์ที่เลือกเป็นชุด ──
+// data: { reg_ids: [...], custom_message }
+function handleNotifyTournamentPlayers(data) {
+  try {
+    var message = String(data.custom_message || "").trim();
+    var regIds = Array.isArray(data.reg_ids) ? data.reg_ids.map(String) : [];
+    if (!message || !regIds.length) {
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing custom_message or reg_ids" })));
+    }
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var ws = ss.getSheetByName(TAB_TOURNAMENT_REG);
+    if (!ws) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no data" })));
+    var rows = ws.getDataRange().getValues();
+    var hdr = rows[0];
+    var col = function(name) { return hdr.indexOf(name); };
+    var idSet = {};
+    regIds.forEach(function(id) { idSet[id] = true; });
+    var sent = 0;
+    for (var i = 1; i < rows.length; i++) {
+      if (!idSet[String(rows[i][col("reg_id")])]) continue;
+      var uid = rows[i][col("line_user_id")] || "";
+      if (!uid || uid === "dev_user") continue;
+      _linePush(uid, message);
+      sent++;
+    }
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, sent: sent })));
   } catch (err) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
   }
