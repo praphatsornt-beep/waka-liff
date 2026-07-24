@@ -229,6 +229,16 @@ ul[data-testid="stSelectboxVirtualDropdown"] li[role="option"] {{
   font-size: 13px !important;
 }}
 
+/* text_input/text_area default to an unfocused border color that's
+   identical to their own fill (both = SURFACE), so the box is
+   completely invisible unless a surrounding bordered container happens
+   to provide contrast — e.g. inside a plain st.expander body. Force a
+   real border so the field is always visible on its own. */
+[data-testid="stTextInputRootElement"],
+[data-testid="stTextAreaRootElement"] {{
+  border-color: {BORDER} !important;
+}}
+
 [data-testid="stDataFrame"] {{ border-radius: 10px; overflow: hidden; }}
 </style>
 """
