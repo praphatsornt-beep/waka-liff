@@ -306,7 +306,7 @@ st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 FILTER_KEYS = ["ord_search", "ord_branch", "ord_status", "ord_products", "ord_date_from", "ord_date_to"]
 
 with st.container(border=True):
-    f1, f2, f3, f4, f5, f6, f7, f8 = st.columns([2, 0.9, 0.9, 1.1, 0.9, 0.2, 0.9, 0.9])
+    f1, f2, f3, f4 = st.columns([2, 1.3, 1.3, 1.5])
     with f1:
         search = st.text_input("ค้นหา", placeholder="ค้นหาชื่อ / เบอร์โทร / เลขออเดอร์ / สินค้า", label_visibility="collapsed", key="ord_search")
     with f2:
@@ -315,6 +315,8 @@ with st.container(border=True):
         status_sel = st.selectbox("สถานะสลิป", ["ทุกสถานะสลิป"] + ALL_STATUS, label_visibility="collapsed", key="ord_status")
     with f4:
         product_filter = st.multiselect("สินค้า", all_products, default=[], placeholder="ทุกสินค้า", label_visibility="collapsed", key="ord_products")
+
+    f5, f6, f7, f8 = st.columns([1.3, 0.3, 1.3, 1.3])
     with f5:
         date_from = st.date_input("จากวันที่", value=date.today() - timedelta(days=7), label_visibility="collapsed", key="ord_date_from")
     with f6:
