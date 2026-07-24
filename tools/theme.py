@@ -254,8 +254,12 @@ def badge(text: str, kind: str = "pending") -> str:
 
 def flat(html: str) -> str:
     """Strip leading whitespace from each line so Python's source indentation
-    doesn't get read back as a markdown indented-code-block by st.markdown."""
-    return "\n".join(line.strip() for line in html.strip().splitlines())
+    doesn't get read back as a markdown indented-code-block by st.markdown.
+    Also drops now-blank lines (from conditional f-string expressions that
+    evaluate to "") — a blank line there reads as a paragraph break to
+    st.markdown, which silently wraps the next element in a stray <p>,
+    breaking flex alignment with its siblings."""
+    return "\n".join(line.strip() for line in html.strip().splitlines() if line.strip())
 
 
 def page_header(title: str, subtitle: str = "") -> None:
