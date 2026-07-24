@@ -15,12 +15,6 @@ load_dotenv()
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from theme import apply_theme, badge, page_header
 
-try:
-    from streamlit_qrcode_scanner import qrcode_scanner as _qr_scanner
-    HAS_SCANNER = True
-except ImportError:
-    HAS_SCANNER = False
-
 WAKA_S   = "wk26xK9mPqRt"
 GAS_URL  = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
 LIFF_BASE = "https://liff.line.me/2010457385-JHbMDl5I"
@@ -321,27 +315,15 @@ with tab_players:
                 except Exception as e:
                     st.error(f"ส่งไม่ได้: {e}")
 
-    if HAS_SCANNER:
-        st.markdown("**📷 สแกน QR เช็คอิน**")
-        scanned = _qr_scanner(key=f"qr_{sel_id}")
-        if scanned:
-            match = next((p for p in players if p["reg_id"] == scanned.strip()), None)
-            if not match:
-                st.error(f"ไม่พบ reg_id '{scanned}' ในทัวร์นาเมนต์นี้")
-            elif match.get("checked_in_at"):
-                st.warning(f"⚠️ {match.get('player_name') or match.get('real_name')} เช็คอินไปแล้ว")
-            else:
-                now = datetime.now(TH_TZ).strftime("%Y-%m-%d %H:%M")
-                gas_get("tournament_update_reg", reg_id=match["reg_id"], field="checked_in_at", value=now)
-                st.success(f"✅ เช็คอิน {match.get('player_name') or match.get('real_name')} แล้ว!")
-                st.rerun()
-        st.divider()
-
+    st.markdown(f"**รายชื่อผู้สมัคร** ({len(players)} คน)")
     search = st.text_input("🔍 ค้นหา", placeholder="ชื่อ / เบอร์ / reg_id")
     rows = players
     if search:
         s = search.lower()
         rows = [p for p in rows if s in (p.get("real_name","")+p.get("player_name","")+p.get("phone","")+p.get("reg_id","")).lower()]
+
+    if not rows:
+        st.info("ไม่พบผู้สมัครตามที่ค้นหา" if search else "ยังไม่มีผู้สมัครในทัวร์นาเมนต์นี้")
 
     for p in rows:
         c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
