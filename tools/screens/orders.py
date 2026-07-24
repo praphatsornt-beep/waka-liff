@@ -84,6 +84,7 @@ ORDERS_HEADER = [
     "items_json", "total", "branch", "real_name", "phone", "address", "email",
     "slip_status", "slip_url", "slip_amount", "slip_txn_id", "notes",
     "fulfillment", "fulfilled_at", "staff_confirmed_at", "customer_confirmed_at",
+    "notified_at",
 ]
 
 
@@ -511,6 +512,7 @@ for _, row in page_df.iterrows():
     is_repeat = phone_counts.get(row.get("phone", ""), 0) > 1
     items_summary = ", ".join(f"{i.get('name','')} x{i.get('qty',1)}" for i in items)
     avatar = (row.get("real_name", "?") or "?").strip()[:1]
+    notified_at = row.get("notified_at", "") or ""
 
     row_html = flat(f"""
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -528,6 +530,7 @@ for _, row in page_df.iterrows():
       <span style="padding:1px 8px;border-radius:20px;background:{SURFACE_ALT};color:{TEXT2};font-size:11px">LIFF App</span>
       <span style="padding:1px 8px;border-radius:20px;background:{SURFACE_ALT};color:{TEXT2};font-size:11px">โอนเงิน</span>
       {badge(f'จัดส่ง · {ff_status}', fulfill_kind(ff_status)) if is_del else ''}
+      {badge(f'📣 แจ้งแล้ว {notified_at}', 'success') if notified_at else ''}
       <span style="flex:1;min-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:{TEXT3}">{items_summary}</span>
     </div>
     """)
@@ -702,6 +705,8 @@ for _, row in page_df.iterrows():
                                 try:
                                     gas_post({"_action": "notifyCustomer", "order_id": order_id, "custom_message": edited_notify_msg})
                                     st.success("แจ้งเตือนลูกค้าทาง LINE แล้ว")
+                                    st.cache_data.clear()
+                                    st.rerun()
                                 except Exception as e:
                                     st.error(f"แจ้งเตือนไม่ได้: {e}")
 

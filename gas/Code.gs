@@ -88,6 +88,7 @@ var SUPABASE_ORDERS_HEADER = [
   "items_json", "total", "branch", "real_name", "phone", "address", "email",
   "slip_status", "slip_url", "slip_amount", "slip_txn_id", "notes",
   "fulfillment", "fulfilled_at", "staff_confirmed_at", "customer_confirmed_at",
+  "notified_at",
 ];
 var SUPABASE_TOURNAMENT_REG_HEADER = [
   "reg_id", "timestamp", "event_id", "sequence_no", "line_user_id", "display_name",
@@ -3454,7 +3455,10 @@ function handleNotifyCustomer(data) {
           "\nสถานะจัดส่ง: " + fulfillment;
       }
       _linePush(uid, message);
-      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+      var notifyNow = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
+      if (col("notified_at") >= 0) ws.getRange(i + 1, col("notified_at") + 1).setValue(notifyNow);
+      syncOrderToSupabase_(ss, orderId);
+      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: notifyNow })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
   } catch (err) {
