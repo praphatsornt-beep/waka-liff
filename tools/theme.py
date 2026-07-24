@@ -211,6 +211,15 @@ ul[data-testid="stSelectboxVirtualDropdown"] li[role="option"] * {{
   white-space: normal !important;
 }}
 
+/* Smaller text in form controls (search/select/date inputs + their dropdown
+   options) — the default size felt oversized next to the rest of the UI. */
+div.stTextInput input, div.stDateInput input,
+div.stSelectbox div[data-baseweb="select"] span,
+div.stMultiSelect div[data-baseweb="select"] span,
+ul[data-testid="stSelectboxVirtualDropdown"] li[role="option"] {{
+  font-size: 13px !important;
+}}
+
 [data-testid="stDataFrame"] {{ border-radius: 10px; overflow: hidden; }}
 </style>
 """
