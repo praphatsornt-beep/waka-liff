@@ -178,7 +178,7 @@ h1, h2, h3, h4,
 [data-testid="stExpander"] summary {{
   padding: 8px 12px !important;
 }}
-[data-testid="stExpander"] summary span {{
+[data-testid="stExpander"] summary * {{
   font-size: 12px !important;
   font-weight: 500 !important;
   color: {TEXT3} !important;
