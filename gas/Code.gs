@@ -122,6 +122,23 @@ function setConfig_(key, value) {
   CacheService.getScriptCache().remove("config_map");
 }
 
+// data: { config: {key1: value1, key2: value2, ...} } — batch update, used by
+// the Streamlit settings page. Protected: not in PUBLIC_ACTIONS_POST, so
+// callers must pass the shared secret via ?_s=.
+function handleSetConfig(data) {
+  try {
+    var cfg = data.config || {};
+    var keys = Object.keys(cfg);
+    if (!keys.length) {
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing config" })));
+    }
+    keys.forEach(function(k) { setConfig_(k, String(cfg[k])); });
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, updated: keys.length })));
+  } catch (err) {
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
 // Builds a plain object {column: value} from a sheet header row + one data
 // row, converting "" -> null and JSON.parse-ing the given jsonFields so
 // they land as real jsonb in Supabase instead of an escaped string.
@@ -418,6 +435,10 @@ function doPost(e) {
 
     if (data._action === "returnStock") {
       return handleReturnStock(data);
+    }
+
+    if (data._action === "setConfig") {
+      return handleSetConfig(data);
     }
 
     if (data._action === "uploadProductImage") {
