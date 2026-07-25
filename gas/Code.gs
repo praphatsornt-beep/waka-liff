@@ -16,6 +16,11 @@ const SCRIPT_SECRET = PROPS.getProperty("SCRIPT_SECRET") || "";
 const SUPABASE_URL         = PROPS.getProperty("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_KEY = PROPS.getProperty("SUPABASE_SERVICE_KEY") || "";
 
+// Separate spreadsheet (not SHEET_ID) that mirrors Supabase-primary tables
+// for human reading (partners etc.) — set once the sheet exists. Empty =
+// mirroring is skipped everywhere, no error.
+const REPORT_SHEET_ID = PROPS.getProperty("REPORT_SHEET_ID") || "";
+
 // ── Supabase dual-write (best-effort mirror, Sheets stays authoritative) ────
 // Sheets remains the source of truth for every write in this file. These
 // helpers only keep Supabase's mirror of orders/tournament_reg/wakagym_reg
@@ -38,6 +43,83 @@ function pushToSupabase_(table, row) {
   } catch (e) {
     Logger.log("pushToSupabase_(" + table + ") failed: " + e.message);
   }
+}
+
+// ── Supabase-primary tables (config, stock_branch, shipments, tournament_*,
+// wakagym_events, player_stats — migrated one at a time). These tables read
+// and write Supabase directly instead of the Sheet; mirrorToReportSheet_
+// keeps a human-readable copy in the separate REPORT_SHEET_ID spreadsheet.
+function supabaseSelect_(table, query) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return [];
+  var url = SUPABASE_URL + "/rest/v1/" + table + (query ? "?" + query : "");
+  var res = UrlFetchApp.fetch(url, {
+    method: "get",
+    headers: {
+      apikey: SUPABASE_SERVICE_KEY,
+      Authorization: "Bearer " + SUPABASE_SERVICE_KEY,
+    },
+    muteHttpExceptions: true,
+  });
+  var code = res.getResponseCode();
+  if (code < 200 || code >= 300) {
+    throw new Error("supabaseSelect_(" + table + ") HTTP " + code + ": " + res.getContentText());
+  }
+  return JSON.parse(res.getContentText());
+}
+
+// Upserts one row into REPORT_SHEET_ID's tab (creating the tab + header if
+// missing). Best-effort only — a report-sheet outage must never break a
+// Supabase-primary write, so this never throws.
+function mirrorToReportSheet_(tabName, header, keyCol, obj) {
+  if (!REPORT_SHEET_ID) return;
+  try {
+    var rss = SpreadsheetApp.openById(REPORT_SHEET_ID);
+    var ws = rss.getSheetByName(tabName);
+    if (!ws) {
+      ws = rss.insertSheet(tabName);
+      ws.appendRow(header);
+    }
+    var keyIdx = header.indexOf(keyCol);
+    var rowArr = header.map(function(h) {
+      var v = obj[h];
+      if (v === null || v === undefined) return "";
+      return (typeof v === "object") ? JSON.stringify(v) : v;
+    });
+    var data = ws.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][keyIdx]) === String(obj[keyCol])) {
+        ws.getRange(i + 1, 1, 1, rowArr.length).setValues([rowArr]);
+        return;
+      }
+    }
+    ws.appendRow(rowArr);
+  } catch (e) {
+    Logger.log("mirrorToReportSheet_(" + tabName + ") failed: " + e.message);
+  }
+}
+
+// ── _config: Supabase-primary (Phase 1 of the Sheet→Supabase migration) ──
+function getConfig_() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get("config_map");
+  if (cached) {
+    try { return JSON.parse(cached); } catch (e) { /* fall through and refetch */ }
+  }
+  var map = {};
+  try {
+    var rows = supabaseSelect_("config", "select=key,value");
+    rows.forEach(function(r) { if (r.key) map[r.key] = r.value; });
+    cache.put("config_map", JSON.stringify(map), 120);
+  } catch (e) {
+    Logger.log("getConfig_ failed: " + e.message);
+  }
+  return map;
+}
+
+function setConfig_(key, value) {
+  pushToSupabase_("config", { key: key, value: value });
+  mirrorToReportSheet_("_config", SUPABASE_CONFIG_HEADER, "key", { key: key, value: value });
+  CacheService.getScriptCache().remove("config_map");
 }
 
 // Builds a plain object {column: value} from a sheet header row + one data
@@ -127,9 +209,6 @@ function syncWakagymRegToSupabase_(ss, regId) {
 }
 function syncCatalogToSupabase_(ss, name) {
   syncRowToSupabase_(ss, TAB_CATALOG, name, "catalog", SUPABASE_CATALOG_HEADER, []);
-}
-function syncConfigToSupabase_(ss, key) {
-  syncRowToSupabase_(ss, TAB_CONFIG, key, "config", SUPABASE_CONFIG_HEADER, []);
 }
 function syncTournamentEventToSupabase_(ss, eventId) {
   syncRowToSupabase_(ss, TAB_TOURNAMENT_EVENTS, eventId, "tournament_events", SUPABASE_TOURNAMENT_EVENTS_HEADER, []);
@@ -231,7 +310,6 @@ function doGet(e) {
 
     var ss    = SpreadsheetApp.openById(SHEET_ID);
     var catWs = ss.getSheetByName(TAB_CATALOG);
-    var cfgWs = ss.getSheetByName(TAB_CONFIG);
 
     var catRows = catWs ? catWs.getDataRange().getValues() : [];
     var catalog = [];
@@ -263,11 +341,7 @@ function doGet(e) {
       });
     }
 
-    var cfgRows = cfgWs ? cfgWs.getDataRange().getValues() : [];
-    var config  = {};
-    for (var j = 1; j < cfgRows.length; j++) {
-      if (cfgRows[j][0]) config[String(cfgRows[j][0])] = String(cfgRows[j][1] || "");
-    }
+    var config = getConfig_();
 
     var jsonOut = JSON.stringify({ catalog: catalog, config: config });
     cache.put("catalog_config", jsonOut, 300);
@@ -380,29 +454,12 @@ function doPost(e) {
         var src = evt.source || {};
         var msgText = (evt.message && evt.message.text) || "";
         if (src.type === "group" && src.groupId && msgText.trim() === "!waka-setup") {
-          var cfgWs = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TAB_CONFIG);
-          if (cfgWs) {
-            cfgWs.appendRow(["group_staff", src.groupId]);
-            syncConfigToSupabase_(SpreadsheetApp.openById(SHEET_ID), "group_staff");
-            _linePush(src.groupId, "ตั้งค่ากลุ่ม staff สำเร็จ!\nGroup ID: " + src.groupId);
-          }
+          setConfig_("group_staff", src.groupId);
+          _linePush(src.groupId, "ตั้งค่ากลุ่ม staff สำเร็จ!\nGroup ID: " + src.groupId);
         }
         if (src.userId && msgText.trim() === "!waka-finance") {
-          var cfgWs2 = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TAB_CONFIG);
-          if (cfgWs2) {
-            var rows2 = cfgWs2.getDataRange().getValues();
-            var found2 = false;
-            for (var fi = 1; fi < rows2.length; fi++) {
-              if (String(rows2[fi][0]) === "finance_line_id") {
-                cfgWs2.getRange(fi + 1, 2).setValue(src.userId);
-                found2 = true;
-                break;
-              }
-            }
-            if (!found2) cfgWs2.appendRow(["finance_line_id", src.userId]);
-            syncConfigToSupabase_(SpreadsheetApp.openById(SHEET_ID), "finance_line_id");
-            _linePush(src.userId, "ตั้งค่าบัญชีสำเร็จ ✅\nระบบจะแจ้งเตือนเมื่อมีสลิปมีปัญหา\n\nUser ID: " + src.userId);
-          }
+          setConfig_("finance_line_id", src.userId);
+          _linePush(src.userId, "ตั้งค่าบัญชีสำเร็จ ✅\nระบบจะแจ้งเตือนเมื่อมีสลิปมีปัญหา\n\nUser ID: " + src.userId);
         }
       }
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
@@ -873,13 +930,12 @@ function _linePush(to, text) {
   });
 }
 
+// `cfgWs` param kept (but unused) so every existing call site — which still
+// passes `ss.getSheetByName(TAB_CONFIG)` — keeps working unchanged now that
+// _config reads go through Supabase (getConfig_) instead of the Sheet.
 function _getConfigValue(cfgWs, key) {
-  if (!cfgWs) return null;
-  const rows = cfgWs.getDataRange().getValues();
-  for (let i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]) === key && rows[i][1]) return String(rows[i][1]);
-  }
-  return null;
+  var v = getConfig_()[key];
+  return (v === undefined || v === null || v === "") ? null : String(v);
 }
 
 
@@ -1968,20 +2024,15 @@ function handleApi(params) {
   if (action === "verify_staff_pin") {
     var pin = String(params.pin || "").trim();
     if (!pin) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing pin" })));
-    var cfgWs3 = ss.getSheetByName(TAB_CONFIG);
-    var adminPin = _getConfigValue(cfgWs3, "admin_pin") || "waka99";
+    var adminPin = _getConfigValue(null, "admin_pin") || "waka99";
     if (pin === adminPin) {
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, role: "admin", branch: "ทั้งหมด" })));
     }
-    if (cfgWs3) {
-      var cfgRows3 = cfgWs3.getDataRange().getValues();
-      for (var ci = 1; ci < cfgRows3.length; ci++) {
-        var key = String(cfgRows3[ci][0] || "");
-        var val = String(cfgRows3[ci][1] || "");
-        if (key.indexOf("staff_pin_") === 0 && val === pin) {
-          var branchName = key.replace("staff_pin_", "");
-          return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, role: "staff", branch: branchName })));
-        }
+    var configMap = getConfig_();
+    for (var key in configMap) {
+      if (key.indexOf("staff_pin_") === 0 && String(configMap[key]) === pin) {
+        var branchName = key.replace("staff_pin_", "");
+        return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, role: "staff", branch: branchName })));
       }
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "invalid" })));
@@ -2688,11 +2739,8 @@ function isDuplicateSlip(ss, ref) {
 }
 
 function isCorrectAccount(ss, toAccount, toName) {
-  var cfgWs = ss.getSheetByName(TAB_CONFIG);
-  if (!cfgWs) return true;
-
   var acctOk = true;
-  var shopAccount = _getConfigValue(cfgWs, "bank_account");
+  var shopAccount = _getConfigValue(null, "bank_account");
   if (shopAccount && toAccount) {
     var clean1 = String(toAccount).replace(/[-\s]/g, "");
     var clean2 = String(shopAccount).replace(/[-\s]/g, "");
@@ -2703,8 +2751,8 @@ function isCorrectAccount(ss, toAccount, toName) {
 
   var nameOk = true;
   if (toName) {
-    var shopNameTh = _getConfigValue(cfgWs, "bank_account_name") || "";
-    var shopNameEn = _getConfigValue(cfgWs, "bank_account_name_en") || "";
+    var shopNameTh = _getConfigValue(null, "bank_account_name") || "";
+    var shopNameEn = _getConfigValue(null, "bank_account_name_en") || "";
     var shopNames = [];
     shopNameTh.split("|").forEach(function(n) { n = n.trim(); if (n) shopNames.push(n.toLowerCase()); });
     shopNameEn.split("|").forEach(function(n) { n = n.trim(); if (n) shopNames.push(n.toLowerCase()); });
