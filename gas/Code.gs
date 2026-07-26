@@ -256,6 +256,20 @@ function syncWakagymRegToSupabase_(ss, regId) {
 function syncCatalogToSupabase_(ss, name) {
   syncRowToSupabase_(ss, TAB_CATALOG, name, "catalog", SUPABASE_CATALOG_HEADER, []);
 }
+
+// Pushes each item's _catalog row straight to Supabase from an already-loaded
+// `rows` array (in-memory scan only) instead of syncCatalogToSupabase_, which
+// would re-read the whole _catalog sheet once per item.
+function syncCatalogItemsFromRows_(rows, items) {
+  items.forEach(function(it) {
+    for (var r = 1; r < rows.length; r++) {
+      if (String(rows[r][0]).trim() === String(it.name).trim()) {
+        pushToSupabase_("catalog", sheetRowToObject_(SUPABASE_CATALOG_HEADER, rows[r], []));
+        break;
+      }
+    }
+  });
+}
 function syncTournamentEventToSupabase_(ss, eventId) {
   syncRowToSupabase_(ss, TAB_TOURNAMENT_EVENTS, eventId, "tournament_events", SUPABASE_TOURNAMENT_EVENTS_HEADER, []);
 }
@@ -281,6 +295,18 @@ function syncStockBranchToSupabase_(ss, name, branch) {
   } catch (e) {
     Logger.log("syncStockBranchToSupabase_ failed: " + e.message);
   }
+}
+
+// Pushes each item's stock_branch row straight to Supabase using an
+// already-loaded `bsRows`/`bsMap` (built by the caller as name||branch ->
+// row index) instead of syncStockBranchToSupabase_, which would re-read the
+// whole stock_branch sheet once per item.
+function syncStockBranchItemsFromRows_(bsRows, bsMap, items, branch) {
+  items.forEach(function(it) {
+    var idx = bsMap[String(it.name).trim() + "||" + branch];
+    if (idx === undefined) return;
+    pushToSupabase_("stock_branch", sheetRowToObject_(SUPABASE_STOCK_BRANCH_HEADER, bsRows[idx], []));
+  });
 }
 
 const TAB_ORDERS  = "orders";
@@ -831,7 +857,7 @@ function deductCatalogLimits(ss, items, _ws, _rows) {
   if (changed) {
     range.setValues(rows);
     CacheService.getScriptCache().remove("catalog_config");
-    items.forEach(function(it) { syncCatalogToSupabase_(ss, it.name); });
+    syncCatalogItemsFromRows_(rows, items);
   }
   return rows;
 }
@@ -858,7 +884,7 @@ function deductStock(ss, items, _ws, _rows) {
   }
   if (changed) {
     range.setValues(rows);
-    items.forEach(function(it) { syncCatalogToSupabase_(ss, it.name); });
+    syncCatalogItemsFromRows_(rows, items);
   }
 }
 
@@ -886,7 +912,7 @@ function restoreStock(ss, items) {
   }
   if (changed) {
     range.setValues(rows);
-    items.forEach(function(it) { if (!it._preorder) syncCatalogToSupabase_(ss, it.name); });
+    syncCatalogItemsFromRows_(rows, items.filter(function(it) { return !it._preorder; }));
   }
 }
 
@@ -911,7 +937,7 @@ function restoreCatalogLimits(ss, items) {
   if (changed) {
     range.setValues(rows);
     CacheService.getScriptCache().remove("catalog_config");
-    items.forEach(function(it) { syncCatalogToSupabase_(ss, it.name); });
+    syncCatalogItemsFromRows_(rows, items);
   }
 }
 
@@ -3193,8 +3219,11 @@ function handleReceiveShipment(data) {
       }
     }
     if (bsChanged) bsRange.setValues(bsRows);
-    for (var nr = 0; nr < newBsRows.length; nr++) bsWs.appendRow(newBsRows[nr]);
-    for (var si = 0; si < items.length; si++) syncStockBranchToSupabase_(ss, items[si].name, branch);
+    for (var nr = 0; nr < newBsRows.length; nr++) {
+      bsWs.appendRow(newBsRows[nr]);
+      pushToSupabase_("stock_branch", sheetRowToObject_(SUPABASE_STOCK_BRANCH_HEADER, newBsRows[nr], []));
+    }
+    syncStockBranchItemsFromRows_(bsRows, bsMap, items, branch);
 
     // แจ้ง LINE ลูกค้าทุกคนที่มีออเดอร์ยืนยัน + สาขานี้ + ยังไม่ส่ง
     var ws = ss.getSheetByName(TAB_ORDERS);
@@ -3290,7 +3319,7 @@ function handleHandoverOrder(data) {
           bsChanged = true;
         }
         if (bsChanged) bsRange.setValues(bsRows);
-        for (var si = 0; si < itemsToHandover.length; si++) syncStockBranchToSupabase_(ss, itemsToHandover[si].name, branch);
+        syncStockBranchItemsFromRows_(bsRows, bsMap, itemsToHandover, branch);
       }
 
       // ตั้ง handed_at บน item ที่เพิ่งส่งมอบ
