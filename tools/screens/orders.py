@@ -167,6 +167,17 @@ def confirm_slip_via_gas(order_id: str, custom_message: str = ""):
         raise Exception(result.get("error", "GAS ตอบผิดพลาด"))
 
 
+def reject_slip_via_gas(order_id: str, reason: str = ""):
+    import requests
+    payload = {"_action": "rejectSlip", "order_id": order_id}
+    if reason.strip():
+        payload["reason"] = reason.strip()
+    resp = requests.post(f"{GAS_URL}?_s={WAKA_S}", json=payload, timeout=30)
+    result = resp.json()
+    if not result.get("ok"):
+        raise Exception(result.get("error", "GAS ตอบผิดพลาด"))
+
+
 def gas_post(payload: dict) -> dict:
     import requests
     resp = requests.post(f"{GAS_URL}?_s={WAKA_S}", json=payload, timeout=30)
@@ -446,7 +457,7 @@ if st.session_state.selected_orders:
             if st.button("❌ ยกเลิกสลิปที่เลือก"):
                 for _, r in sel_rows.iterrows():
                     try:
-                        update_slip_status(int(r["row_num"]), "ยกเลิก")
+                        reject_slip_via_gas(str(r["order_id"]))
                     except Exception as e:
                         st.error(f"#{r['order_id']}: {e}")
                 st.session_state.selected_orders = set()
@@ -649,8 +660,8 @@ for _, row in page_df.iterrows():
                                     st.error(f"บันทึกไม่ได้: {e}")
                     if cur_status != "ยกเลิก" and st.button("❌ ปฏิเสธ", key=f"reject_{order_id}", use_container_width=True):
                         try:
-                            update_slip_status(int(row["row_num"]), "ยกเลิก")
-                            st.success("ปฏิเสธแล้ว")
+                            reject_slip_via_gas(order_id)
+                            st.success("ปฏิเสธแล้ว + แจ้ง LINE ลูกค้าแล้ว")
                             st.cache_data.clear()
                             st.rerun()
                         except Exception as e:

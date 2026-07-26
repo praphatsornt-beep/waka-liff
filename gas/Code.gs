@@ -478,6 +478,10 @@ function doPost(e) {
       return handleConfirmSlip(data);
     }
 
+    if (data._action === "rejectSlip") {
+      return handleRejectSlip(data);
+    }
+
     if (data._action === "notifyCustomer") {
       return handleNotifyCustomer(data);
     }
@@ -3544,6 +3548,50 @@ function handleConfirmSlip(data) {
       // Push the row we already have in memory (with this function's own
       // edits applied) instead of syncOrderToSupabase_, which would re-read
       // the whole orders sheet a second time just to find this same row.
+      pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
+      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+    }
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
+  } catch (err) {
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ── แอดมินยกเลิก/ปฏิเสธออเดอร์ (เช่น กดพลาด หรือลูกค้าแนบสลิปผิด) ──
+// data: { order_id, reason (optional) }
+function handleRejectSlip(data) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var ss = SpreadsheetApp.openById(SHEET_ID);
+    var ws = ss.getSheetByName(TAB_ORDERS);
+    var rows = ws.getDataRange().getValues();
+    var hdr = rows[0];
+    var col = function(name) { return hdr.indexOf(name); };
+
+    for (var i = 1; i < rows.length; i++) {
+      if (String(rows[i][col("order_id")]) !== String(data.order_id)) continue;
+      var orderId = String(rows[i][col("order_id")] || "");
+      var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
+      var reason = String(data.reason || "").trim();
+      var note = "Admin reject " + now + (reason ? " (" + reason + ")" : "");
+
+      ws.getRange(i + 1, col("slip_status") + 1).setValue("ยกเลิก");
+      ws.getRange(i + 1, col("notes") + 1).setValue(note);
+      var updatedRow = rows[i].slice();
+      updatedRow[col("slip_status")] = "ยกเลิก";
+      updatedRow[col("notes")] = note;
+
+      var uid = rows[i][col("line_user_id")] || "";
+      if (uid && uid !== "dev_user") {
+        var reasonLine = reason ? "\nเหตุผล: " + reason + "\n" : "";
+        var msg = "ขออภัยลูกค้าด้วยนะคะ 🙏 แอดมินขออนุญาตยกเลิกออเดอร์ #" + orderId + " นี้ก่อนนะคะ\n" + reasonLine +
+          "\nหากมีข้อสงสัยหรือต้องการสอบถามเพิ่มเติม ติดต่อแอดมินได้เลยนะคะ ขอบคุณค่ะ 💛";
+        _linePush(uid, msg);
+      }
+
       pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
     }
