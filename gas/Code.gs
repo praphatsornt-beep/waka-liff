@@ -1372,14 +1372,15 @@ function handleStaffPage(orderId, action) {
     var isDelivery = branch === "จัดส่ง";
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
 
+    var updatedRow = r.slice();
     if (action === "shipping") {
-      if (col("fulfillment") >= 0) ws.getRange(i+1, col("fulfillment")+1).setValue("กำลังจัดส่งไปสาขา");
-      if (col("fulfilled_at") >= 0) ws.getRange(i+1, col("fulfilled_at")+1).setValue(now);
+      if (col("fulfillment") >= 0) { ws.getRange(i+1, col("fulfillment")+1).setValue("กำลังจัดส่งไปสาขา"); updatedRow[col("fulfillment")] = "กำลังจัดส่งไปสาขา"; }
+      if (col("fulfilled_at") >= 0) { ws.getRange(i+1, col("fulfilled_at")+1).setValue(now); updatedRow[col("fulfilled_at")] = now; }
       ff = "กำลังจัดส่งไปสาขา";
       _clearDashCache();
     } else if (action === "ready") {
-      if (col("fulfillment") >= 0) ws.getRange(i+1, col("fulfillment")+1).setValue("พร้อมรับ");
-      if (col("fulfilled_at") >= 0) ws.getRange(i+1, col("fulfilled_at")+1).setValue(now);
+      if (col("fulfillment") >= 0) { ws.getRange(i+1, col("fulfillment")+1).setValue("พร้อมรับ"); updatedRow[col("fulfillment")] = "พร้อมรับ"; }
+      if (col("fulfilled_at") >= 0) { ws.getRange(i+1, col("fulfilled_at")+1).setValue(now); updatedRow[col("fulfilled_at")] = now; }
       ff = "พร้อมรับ";
       _clearDashCache();
       var uid2 = r[col("line_user_id")];
@@ -1389,8 +1390,8 @@ function handleStaffPage(orderId, action) {
       }
     } else if (action === "handover") {
       var ffValue = isDelivery ? "จัดส่งแล้ว" : "สาขายืนยัน";
-      if (col("fulfillment") >= 0) ws.getRange(i+1, col("fulfillment")+1).setValue(ffValue);
-      if (col("staff_confirmed_at") >= 0) ws.getRange(i+1, col("staff_confirmed_at")+1).setValue(now);
+      if (col("fulfillment") >= 0) { ws.getRange(i+1, col("fulfillment")+1).setValue(ffValue); updatedRow[col("fulfillment")] = ffValue; }
+      if (col("staff_confirmed_at") >= 0) { ws.getRange(i+1, col("staff_confirmed_at")+1).setValue(now); updatedRow[col("staff_confirmed_at")] = now; }
       ff = ffValue;
       _clearDashCache();
       var uid3 = r[col("line_user_id")];
@@ -1399,7 +1400,9 @@ function handleStaffPage(orderId, action) {
         _linePush(uid3, "สาขาส่งมอบสินค้าแล้ว กรุณากดยืนยันรับของ\n\nออเดอร์: #" + orderId + "\n\nกดยืนยัน:\n" + trackUrl3);
       }
     }
-    if (action === "shipping" || action === "ready" || action === "handover") syncOrderToSupabase_(ss, orderId);
+    if (action === "shipping" || action === "ready" || action === "handover") {
+      pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
+    }
 
     var items = [];
     try { items = JSON.parse(r[col("items_json")] || "[]"); } catch(e) {}
@@ -1500,21 +1503,22 @@ function handleApi(params) {
       var uid = rows[j][col("line_user_id")] || "";
       var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + orderId;
 
+      var updatedRow = rows[j].slice();
       if (newStatus === "shipping") {
-        if (col("fulfillment") >= 0) ws.getRange(j+1, col("fulfillment")+1).setValue("กำลังจัดส่งไปสาขา");
-        if (col("fulfilled_at") >= 0) ws.getRange(j+1, col("fulfilled_at")+1).setValue(now);
+        if (col("fulfillment") >= 0) { ws.getRange(j+1, col("fulfillment")+1).setValue("กำลังจัดส่งไปสาขา"); updatedRow[col("fulfillment")] = "กำลังจัดส่งไปสาขา"; }
+        if (col("fulfilled_at") >= 0) { ws.getRange(j+1, col("fulfilled_at")+1).setValue(now); updatedRow[col("fulfilled_at")] = now; }
       } else if (newStatus === "ready") {
-        if (col("fulfillment") >= 0) ws.getRange(j+1, col("fulfillment")+1).setValue("พร้อมรับ");
-        if (col("fulfilled_at") >= 0) ws.getRange(j+1, col("fulfilled_at")+1).setValue(now);
+        if (col("fulfillment") >= 0) { ws.getRange(j+1, col("fulfillment")+1).setValue("พร้อมรับ"); updatedRow[col("fulfillment")] = "พร้อมรับ"; }
+        if (col("fulfilled_at") >= 0) { ws.getRange(j+1, col("fulfilled_at")+1).setValue(now); updatedRow[col("fulfilled_at")] = now; }
         if (uid) _linePush(uid, "สินค้าพร้อมรับที่สาขา" + branch + " แล้ว!\n\nออเดอร์: #" + orderId + "\n\nดูสถานะ:\n" + trackUrl);
       } else if (newStatus === "handover") {
         var ffVal = isDelivery ? "จัดส่งแล้ว" : "สาขายืนยัน";
-        if (col("fulfillment") >= 0) ws.getRange(j+1, col("fulfillment")+1).setValue(ffVal);
-        if (col("staff_confirmed_at") >= 0) ws.getRange(j+1, col("staff_confirmed_at")+1).setValue(now);
+        if (col("fulfillment") >= 0) { ws.getRange(j+1, col("fulfillment")+1).setValue(ffVal); updatedRow[col("fulfillment")] = ffVal; }
+        if (col("staff_confirmed_at") >= 0) { ws.getRange(j+1, col("staff_confirmed_at")+1).setValue(now); updatedRow[col("staff_confirmed_at")] = now; }
         if (uid) _linePush(uid, "สาขาส่งมอบสินค้าแล้ว กรุณากดยืนยันรับของ\n\nออเดอร์: #" + orderId + "\n\nกดยืนยัน:\n" + trackUrl);
       }
       _clearDashCache();
-      syncOrderToSupabase_(ss, orderId);
+      pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, status: newStatus, time: now })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
@@ -1557,9 +1561,10 @@ function handleApi(params) {
         return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, partial: true, msg: "รับของบางส่วนเรียบร้อยแล้ว สินค้าที่เหลือจะแจ้งให้ทราบเมื่อพร้อม" })));
       }
       var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
-      if (col("customer_confirmed_at") >= 0) ws.getRange(m + 1, col("customer_confirmed_at") + 1).setValue(now);
-      if (col("fulfillment") >= 0) ws.getRange(m + 1, col("fulfillment") + 1).setValue("รับแล้ว");
-      syncOrderToSupabase_(ss, orderId);
+      var updatedRow = rows[m].slice();
+      if (col("customer_confirmed_at") >= 0) { ws.getRange(m + 1, col("customer_confirmed_at") + 1).setValue(now); updatedRow[col("customer_confirmed_at")] = now; }
+      if (col("fulfillment") >= 0) { ws.getRange(m + 1, col("fulfillment") + 1).setValue("รับแล้ว"); updatedRow[col("fulfillment")] = "รับแล้ว"; }
+      pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
@@ -1879,6 +1884,8 @@ function handleApi(params) {
         restoreCatalogLimits(ss, itemsToRestore);
       }
       ws.getRange(i + 1, col("fulfillment") + 1).setValue("ยกเลิก");
+      var updatedRow = rows[i].slice();
+      updatedRow[col("fulfillment")] = "ยกเลิก";
       var uid = String(rows[i][col("line_user_id")] || "");
       if (uid) {
         var cancelMsg;
@@ -1895,7 +1902,7 @@ function handleApi(params) {
         _linePush(uid, cancelMsg);
       }
       _clearDashCache();
-      syncOrderToSupabase_(ss, orderId);
+      pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
@@ -3202,11 +3209,15 @@ function handleReceiveShipment(data) {
         if (oBranch !== branch || oSlip !== "ยืนยัน") continue;
         if (["พร้อมรับ","บางส่วน","รับบางส่วนแล้ว","สาขายืนยัน","รับแล้ว"].indexOf(oFf) >= 0) continue;
         // อัปเดต fulfillment เป็น "พร้อมรับ"
-        if (oCol("fulfillment") >= 0) ws.getRange(j + 1, oCol("fulfillment") + 1).setValue("พร้อมรับ");
-        if (oCol("fulfilled_at") >= 0) ws.getRange(j + 1, oCol("fulfilled_at") + 1).setValue(now);
+        var oUpdatedRow = oRows[j].slice();
+        if (oCol("fulfillment") >= 0) { ws.getRange(j + 1, oCol("fulfillment") + 1).setValue("พร้อมรับ"); oUpdatedRow[oCol("fulfillment")] = "พร้อมรับ"; }
+        if (oCol("fulfilled_at") >= 0) { ws.getRange(j + 1, oCol("fulfilled_at") + 1).setValue(now); oUpdatedRow[oCol("fulfilled_at")] = now; }
         var uid = oRows[j][oCol("line_user_id")] || "";
         var oid = String(oRows[j][oCol("order_id")] || "");
-        syncOrderToSupabase_(ss, oid);
+        // Avoid an O(n^2) blowup: this loop can touch every pending order for
+        // a branch, and syncOrderToSupabase_ would re-scan the whole orders
+        // sheet once per match. Push the row we already have instead.
+        pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, oUpdatedRow, ["items_json"]));
         if (uid) {
           var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + oid;
           _linePush(uid, "สินค้าพร้อมรับที่สาขา" + branch + " แล้ว!\n\nออเดอร์: #" + oid + "\n\nดูสถานะ:\n" + trackUrl);
@@ -3460,12 +3471,15 @@ function handlePartialCancelItems(data) {
       restoreCatalogLimits(ss, cancelledItems);
 
       ws.getRange(i + 1, oCol("items_json") + 1).setValue(JSON.stringify(items));
+      var updatedRow = oRows[i].slice();
+      updatedRow[oCol("items_json")] = JSON.stringify(items);
 
       // ถ้าทุก item cancelled → ปิด order
       var allCancelled = items.every(function(it) { return !!it.cancelled_at || !!it.handed_at; });
       var onlyHandedRemain = items.every(function(it) { return !!it.handed_at || !!it.cancelled_at; });
       if (items.every(function(it) { return !!it.cancelled_at; })) {
         ws.getRange(i + 1, oCol("fulfillment") + 1).setValue("ยกเลิก");
+        updatedRow[oCol("fulfillment")] = "ยกเลิก";
       }
       _clearDashCache();
 
@@ -3483,7 +3497,7 @@ function handlePartialCancelItems(data) {
       }
 
       lock.releaseLock();
-      syncOrderToSupabase_(ss, data.order_id);
+      pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, cancelled: cancelledItems.length })));
     }
     lock.releaseLock();
