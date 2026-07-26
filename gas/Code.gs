@@ -485,6 +485,16 @@ function doPost(e) {
       }
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
     }
+
+    // Anything reaching this point falls through to order creation below —
+    // guard against any unrecognized/malformed POST (e.g. a typo'd _action,
+    // a future action added to the dispatch list above but not yet deployed,
+    // or a stray request hitting the endpoint) silently creating an empty
+    // order. A real checkout always has at least one item.
+    if (!Array.isArray(data.items) || data.items.length === 0) {
+      return _cors(ContentService.createTextOutput(JSON.stringify({ success: false, error: "unknown action or empty order" })));
+    }
+
     var ss = SpreadsheetApp.openById(SHEET_ID);
 
     var slipStatus = "ไม่มีสลิป";
