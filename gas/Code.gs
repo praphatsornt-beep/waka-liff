@@ -3586,9 +3586,9 @@ function handleRejectSlip(data) {
 
       var uid = rows[i][col("line_user_id")] || "";
       if (uid && uid !== "dev_user") {
-        var reasonLine = reason ? "\nเหตุผล: " + reason + "\n" : "";
-        var msg = "ขออภัยลูกค้าด้วยนะคะ 🙏 แอดมินขออนุญาตยกเลิกออเดอร์ #" + orderId + " นี้ก่อนนะคะ\n" + reasonLine +
-          "\nหากมีข้อสงสัยหรือต้องการสอบถามเพิ่มเติม ติดต่อแอดมินได้เลยนะคะ ขอบคุณค่ะ 💛";
+        var reasonLine = reason ? "\nเหตุผล: " + reason : "";
+        var msg = "🙏 แอดมินขออนุญาตยกเลิกออเดอร์ #" + orderId + " หากมีข้อสงสัยหรือต้องการสอบถามเพิ่มเติม ติดต่อแอดมินได้เลยนะคะ" + reasonLine +
+          "\n\nขออภัยลูกค้าด้วยนะคะ ขอบคุณค่ะ 💛";
         _linePush(uid, msg);
       }
 
