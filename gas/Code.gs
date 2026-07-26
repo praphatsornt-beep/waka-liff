@@ -120,10 +120,26 @@ function getConfig_() {
   try {
     var rows = supabaseSelect_("config", "select=key,value");
     rows.forEach(function(r) { if (r.key) map[r.key] = r.value; });
-    cache.put("config_map", JSON.stringify(map), 120);
   } catch (e) {
-    Logger.log("getConfig_ failed: " + e.message);
+    Logger.log("getConfig_ Supabase read failed: " + e.message);
   }
+  // Safety net: if Supabase gave back nothing (misconfigured
+  // SUPABASE_URL/SUPABASE_SERVICE_KEY, outage, etc.) fall back to the _config
+  // Sheet tab directly rather than serving customers an empty config (bank
+  // account, delivery fee) — this must never go blank.
+  if (Object.keys(map).length === 0) {
+    try {
+      var cfgWsFallback = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TAB_CONFIG);
+      var cfgRowsFallback = cfgWsFallback ? cfgWsFallback.getDataRange().getValues() : [];
+      for (var j = 1; j < cfgRowsFallback.length; j++) {
+        if (cfgRowsFallback[j][0]) map[String(cfgRowsFallback[j][0])] = String(cfgRowsFallback[j][1] || "");
+      }
+      if (Object.keys(map).length > 0) Logger.log("getConfig_ fell back to the _config Sheet tab");
+    } catch (e2) {
+      Logger.log("getConfig_ Sheet fallback failed: " + e2.message);
+    }
+  }
+  if (Object.keys(map).length > 0) cache.put("config_map", JSON.stringify(map), 120);
   return map;
 }
 
