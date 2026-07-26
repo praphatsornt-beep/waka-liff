@@ -3095,7 +3095,10 @@ function handleCreateShipment(data) {
 
     shWs.appendRow([shipId, now, data.to_branch || "", "จัดส่ง", JSON.stringify(items), "", ""]);
     lock.releaseLock();
-    for (var siCreate = 0; siCreate < items.length; siCreate++) syncCatalogToSupabase_(ss, items[siCreate].name);
+    // Push the catalog rows already updated in memory above instead of
+    // syncCatalogToSupabase_, which would re-read the whole _catalog sheet
+    // once per item in the shipment.
+    if (shCatWs) syncCatalogItemsFromRows_(sRows, items);
 
     // LINE แจ้งกลุ่ม staff
     try {
@@ -3160,7 +3163,9 @@ function handleCancelShipment(data) {
       }
       shWs.getRange(i + 1, colIdx("status") + 1).setValue("ยกเลิก");
       lock.releaseLock();
-      for (var siCancel = 0; siCancel < items.length; siCancel++) syncCatalogToSupabase_(ss, items[siCancel].name);
+      // Same fix as handleCreateShipment: push the catalog rows already
+      // updated in memory instead of re-reading the whole sheet per item.
+      if (catWs && items.length > 0) syncCatalogItemsFromRows_(catRows, items);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
     }
     lock.releaseLock();
