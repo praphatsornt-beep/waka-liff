@@ -27,9 +27,9 @@ const REPORT_SHEET_ID = PROPS.getProperty("REPORT_SHEET_ID") || "";
 // current for Streamlit + LIFF reads. A Supabase outage must NEVER break a
 // real order — never throws, never retried, just logged and ignored.
 function pushToSupabase_(table, row) {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return;
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return false;
   try {
-    UrlFetchApp.fetch(SUPABASE_URL + "/rest/v1/" + table, {
+    var res = UrlFetchApp.fetch(SUPABASE_URL + "/rest/v1/" + table, {
       method: "post",
       contentType: "application/json",
       headers: {
@@ -40,8 +40,18 @@ function pushToSupabase_(table, row) {
       payload: JSON.stringify(row),
       muteHttpExceptions: true,
     });
+    // muteHttpExceptions means a 4xx/5xx from Supabase (bad payload, RLS
+    // denial, etc.) does NOT throw — without this check it fails completely
+    // silently and nothing ever gets logged.
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      Logger.log("pushToSupabase_(" + table + ") HTTP " + code + ": " + res.getContentText());
+      return false;
+    }
+    return true;
   } catch (e) {
     Logger.log("pushToSupabase_(" + table + ") failed: " + e.message);
+    return false;
   }
 }
 
@@ -117,9 +127,10 @@ function getConfig_() {
 }
 
 function setConfig_(key, value) {
-  pushToSupabase_("config", { key: key, value: value });
+  var pushOk = pushToSupabase_("config", { key: key, value: value });
   mirrorToReportSheet_("_config", SUPABASE_CONFIG_HEADER, "key", { key: key, value: value });
   CacheService.getScriptCache().remove("config_map");
+  return pushOk;
 }
 
 // data: { config: {key1: value1, key2: value2, ...} } — batch update, used by
@@ -132,8 +143,9 @@ function handleSetConfig(data) {
     if (!keys.length) {
       return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing config" })));
     }
-    keys.forEach(function(k) { setConfig_(k, String(cfg[k])); });
-    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, updated: keys.length })));
+    var results = {};
+    keys.forEach(function(k) { results[k] = setConfig_(k, String(cfg[k])); });
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, updated: keys.length, results: results })));
   } catch (err) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
   }
