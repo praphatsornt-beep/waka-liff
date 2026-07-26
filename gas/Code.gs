@@ -1165,12 +1165,13 @@ function handleWakagymRegister(data) {
       var pName = String(pl.playerName || pl.realName || "").trim();
       var rName = String(pl.realName || "").trim();
 
-      regWs.appendRow([
+      var newWakagymRow = [
         regId, now, today, groupId, eventId,
         data.lineUserId || "", data.displayName || "",
         rName, pName, data.phone || "", slipUrl, slipStatus, payMethod,
         data.bank || "", "", "", "", "", "", ""
-      ]);
+      ];
+      regWs.appendRow(newWakagymRow);
 
       var foundRow = -1;
       for (var i = 1; i < statsRows.length; i++) {
@@ -1195,11 +1196,11 @@ function handleWakagymRegister(data) {
         statsRows.push([pName, data.displayName || "", rName, data.lineUserId || "", 1, 0, 0, 0, today]);
       }
 
-      results.push({ regId: regId, playerName: pName, totalTokens: totalTokens });
+      results.push({ regId: regId, playerName: pName, totalTokens: totalTokens, row: newWakagymRow });
     }
 
     lock.releaseLock();
-    results.forEach(function(r) { syncWakagymRegToSupabase_(ss, r.regId); });
+    results.forEach(function(r) { pushToSupabase_("wakagym_registrations", sheetRowToObject_(SUPABASE_WAKAGYM_REG_HEADER, r.row, [])); });
 
     var cfgWs = ss.getSheetByName(TAB_CONFIG);
     var groupStaff = _getConfigValue(cfgWs, "group_staff");
@@ -2101,8 +2102,9 @@ function handleApi(params) {
     for (var ui = 1; ui < tuRows.length; ui++) {
       if (String(tuRows[ui][tuCol("reg_id")]) === regId) {
         var fc = tuCol(field);
-        if (fc >= 0) tuWs.getRange(ui + 1, fc + 1).setValue(value);
-        syncWakagymRegToSupabase_(ss, regId);
+        var updatedTuRow = tuRows[ui].slice();
+        if (fc >= 0) { tuWs.getRange(ui + 1, fc + 1).setValue(value); updatedTuRow[fc] = value; }
+        pushToSupabase_("wakagym_registrations", sheetRowToObject_(SUPABASE_WAKAGYM_REG_HEADER, updatedTuRow, []));
         return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
       }
     }
@@ -2271,10 +2273,10 @@ function handleApi(params) {
 
       for (var rj = 1; rj < regRows.length; rj++) {
         if (String(regRows[rj][rc("reg_id")]) !== regId) continue;
-        if (rc("placement") >= 0) srRegWs.getRange(rj + 1, rc("placement") + 1).setValue(placement);
-        if (rc("wins_3match") >= 0) srRegWs.getRange(rj + 1, rc("wins_3match") + 1).setValue(wins);
-        if (rc("tokens_earned") >= 0) srRegWs.getRange(rj + 1, rc("tokens_earned") + 1).setValue(tokens);
-        if (rc("promo_packs") >= 0) srRegWs.getRange(rj + 1, rc("promo_packs") + 1).setValue(promos);
+        if (rc("placement") >= 0) { srRegWs.getRange(rj + 1, rc("placement") + 1).setValue(placement); regRows[rj][rc("placement")] = placement; }
+        if (rc("wins_3match") >= 0) { srRegWs.getRange(rj + 1, rc("wins_3match") + 1).setValue(wins); regRows[rj][rc("wins_3match")] = wins; }
+        if (rc("tokens_earned") >= 0) { srRegWs.getRange(rj + 1, rc("tokens_earned") + 1).setValue(tokens); regRows[rj][rc("tokens_earned")] = tokens; }
+        if (rc("promo_packs") >= 0) { srRegWs.getRange(rj + 1, rc("promo_packs") + 1).setValue(promos); regRows[rj][rc("promo_packs")] = promos; }
 
         var pName = String(regRows[rj][rc("player_name")] || "").trim();
         var lineUid = String(regRows[rj][rc("line_user_id")] || "");
@@ -2295,7 +2297,7 @@ function handleApi(params) {
         }
 
         processed.push({ reg_id: regId, player_name: pName, placement: placement, tokens: tokens, promo_packs: promos, line_user_id: lineUid });
-        syncWakagymRegToSupabase_(ss, regId);
+        pushToSupabase_("wakagym_registrations", sheetRowToObject_(SUPABASE_WAKAGYM_REG_HEADER, regRows[rj], []));
         break;
       }
     }
@@ -2330,7 +2332,9 @@ function handleApi(params) {
       }
       var givenAt = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
       grWs.getRange(gi + 1, grc("rewards_given") + 1).setValue("TRUE");
-      if (grc("note") >= 0) grWs.getRange(gi + 1, grc("note") + 1).setValue("แจก " + givenAt);
+      var updatedGrRow = grRows[gi].slice();
+      updatedGrRow[grc("rewards_given")] = "TRUE";
+      if (grc("note") >= 0) { grWs.getRange(gi + 1, grc("note") + 1).setValue("แจก " + givenAt); updatedGrRow[grc("note")] = "แจก " + givenAt; }
       var grUid = String(grRows[gi][grc("line_user_id")] || "");
       var grName = String(grRows[gi][grc("player_name")] || "");
       var grTokens = Number(grRows[gi][grc("tokens_earned")]) || 0;
@@ -2341,7 +2345,7 @@ function handleApi(params) {
         if (grPromos > 0) grMsg += "\n📦 Promo Pack: " + grPromos + " ซอง";
         _linePush(grUid, grMsg);
       }
-      syncWakagymRegToSupabase_(ss, grRegId);
+      pushToSupabase_("wakagym_registrations", sheetRowToObject_(SUPABASE_WAKAGYM_REG_HEADER, updatedGrRow, []));
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, already: false })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "not found" })));
@@ -2421,7 +2425,9 @@ function handleApi(params) {
         }
         var givenAt = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
         gcWs.getRange(gi + 1, gcCol("rewards_given") + 1).setValue("TRUE");
-        if (gcCol("note") >= 0) gcWs.getRange(gi + 1, gcCol("note") + 1).setValue("แจก " + givenAt);
+        var updatedGcRow = gcRows[gi].slice();
+        updatedGcRow[gcCol("rewards_given")] = "TRUE";
+        if (gcCol("note") >= 0) { gcWs.getRange(gi + 1, gcCol("note") + 1).setValue("แจก " + givenAt); updatedGcRow[gcCol("note")] = "แจก " + givenAt; }
         var gcUid = String(gcRows[gi][gcCol("line_user_id")] || "");
         var gcName = String(gcRows[gi][gcCol("player_name")] || gcRows[gi][gcCol("real_name")] || "");
         var gcTokens = String(gcRows[gi][gcCol("tokens_earned")] || "0");
@@ -2432,7 +2438,7 @@ function handleApi(params) {
             + "\n🎁 Promo Pack: " + gcPromo + " ซอง";
           _linePush(gcUid, gcMsg);
         }
-        syncWakagymRegToSupabase_(ss, gcRegId);
+        pushToSupabase_("wakagym_registrations", sheetRowToObject_(SUPABASE_WAKAGYM_REG_HEADER, updatedGcRow, []));
         return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, already: false })));
       }
     }
@@ -2659,6 +2665,8 @@ function handleApi(params) {
     for (var turi = 1; turi < turRows.length; turi++) {
       if (String(turRows[turi][turc("reg_id")]) !== turId) continue;
       turWs.getRange(turi + 1, turc(turField) + 1).setValue(turValue);
+      var updatedTurRow = turRows[turi].slice();
+      updatedTurRow[turc(turField)] = turValue;
       if (turField === "slip_status" && turValue === "verified") {
         var turUid = String(turRows[turi][turc("line_user_id")] || "");
         var turPName = String(turRows[turi][turc("player_name")] || "");
@@ -2686,7 +2694,7 @@ function handleApi(params) {
           _linePush(turUid, turMsg);
         }
       }
-      syncTournamentRegToSupabase_(ss, turId);
+      pushToSupabase_("tournament_registrations", sheetRowToObject_(SUPABASE_TOURNAMENT_REG_HEADER, updatedTurRow, ["selected_categories"]));
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "not found" })));
