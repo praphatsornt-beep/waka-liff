@@ -27,7 +27,7 @@ const REPORT_SHEET_ID = PROPS.getProperty("REPORT_SHEET_ID") || "";
 // current for Streamlit + LIFF reads. A Supabase outage must NEVER break a
 // real order — never throws, never retried, just logged and ignored.
 function pushToSupabase_(table, row) {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return false;
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return { ok: false, code: 0, text: "SUPABASE_URL/SUPABASE_SERVICE_KEY not set" };
   try {
     var res = UrlFetchApp.fetch(SUPABASE_URL + "/rest/v1/" + table, {
       method: "post",
@@ -45,13 +45,14 @@ function pushToSupabase_(table, row) {
     // silently and nothing ever gets logged.
     var code = res.getResponseCode();
     if (code < 200 || code >= 300) {
-      Logger.log("pushToSupabase_(" + table + ") HTTP " + code + ": " + res.getContentText());
-      return false;
+      var text = res.getContentText();
+      Logger.log("pushToSupabase_(" + table + ") HTTP " + code + ": " + text);
+      return { ok: false, code: code, text: text };
     }
-    return true;
+    return { ok: true, code: code, text: "" };
   } catch (e) {
     Logger.log("pushToSupabase_(" + table + ") failed: " + e.message);
-    return false;
+    return { ok: false, code: -1, text: e.message };
   }
 }
 
@@ -127,10 +128,10 @@ function getConfig_() {
 }
 
 function setConfig_(key, value) {
-  var pushOk = pushToSupabase_("config", { key: key, value: value });
+  var pushResult = pushToSupabase_("config", { key: key, value: value });
   mirrorToReportSheet_("_config", SUPABASE_CONFIG_HEADER, "key", { key: key, value: value });
   CacheService.getScriptCache().remove("config_map");
-  return pushOk;
+  return pushResult;
 }
 
 // data: { config: {key1: value1, key2: value2, ...} } — batch update, used by
