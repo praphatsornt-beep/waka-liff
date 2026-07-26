@@ -652,7 +652,7 @@ function doPost(e) {
       }
     }
 
-    writeOrder(ss, {
+    var newOrderRow = writeOrder(ss, {
       orderId,
       timestamp:   Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'"),
       lineUserId:  data.lineUserId  || "",
@@ -694,12 +694,16 @@ function doPost(e) {
               }
             }
           }
+          newOrderRow[SUPABASE_ORDERS_HEADER.indexOf("slip_url")] = slipUrl;
         }
       } catch(_) {}
     }
 
     lock.releaseLock();
-    syncOrderToSupabase_(ss, orderId);
+    // Push the row writeOrder() already built (with slip_url patched in above
+    // if applicable) instead of syncOrderToSupabase_, which would re-read the
+    // whole orders sheet a third time just to find the row we just wrote.
+    pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, newOrderRow, ["items_json"]));
 
     // LINE push หลัง release lock — ไม่ block order ถัดไป
     try {
@@ -926,12 +930,19 @@ function writeOrder(ss, d) {
       "fulfillment","fulfilled_at","staff_confirmed_at","customer_confirmed_at",
     ]);
   }
-  ws.appendRow([
+  var row = [
     d.orderId, d.timestamp, d.lineUserId, _sanitize(d.displayName),
     d.itemsJson, d.total, d.branch, _sanitize(d.realName), _sanitize(d.phone), _sanitize(d.address), _sanitize(d.email),
     d.slipStatus, d.slipUrl, d.slipAmount, d.slipTxnId, d.notes,
-  ]);
+  ];
+  ws.appendRow(row);
   _clearDashCache();
+  // Pad out to match SUPABASE_ORDERS_HEADER's length so the caller can sync
+  // this row straight to Supabase without a second full-sheet read to fetch
+  // it back — fulfillment/fulfilled_at/staff_confirmed_at/customer_confirmed_at/
+  // notified_at are genuinely blank at creation time, filled in by later actions.
+  while (row.length < SUPABASE_ORDERS_HEADER.length) row.push("");
+  return row;
 }
 
 function notifyBranch(groupId, order) {
