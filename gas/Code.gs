@@ -3515,6 +3515,9 @@ function handleConfirmSlip(data) {
       ws.getRange(i + 1, col("slip_status") + 1).setValue("ยืนยัน");
       var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
       ws.getRange(i + 1, col("notes") + 1).setValue("Admin confirm " + now);
+      var updatedRow = rows[i].slice();
+      updatedRow[col("slip_status")] = "ยืนยัน";
+      updatedRow[col("notes")] = "Admin confirm " + now;
 
       var uid = rows[i][col("line_user_id")] || "";
       var orderId = String(rows[i][col("order_id")] || "");
@@ -3538,7 +3541,10 @@ function handleConfirmSlip(data) {
         _linePush(uid, message);
       }
 
-      syncOrderToSupabase_(ss, orderId);
+      // Push the row we already have in memory (with this function's own
+      // edits applied) instead of syncOrderToSupabase_, which would re-read
+      // the whole orders sheet a second time just to find this same row.
+      pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
