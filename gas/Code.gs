@@ -1289,16 +1289,21 @@ function handleTournamentRegister(data) {
     }
     var selectedCatsJson = selectedCats.length > 0 ? JSON.stringify(selectedCats) : "";
 
-    regWs.appendRow([
+    var newRegRow = [
       regId, now, eventId, seqNo,
       data.lineUserId || "", data.displayName || "",
       String(data.realName || "").trim(), String(data.playerName || "").trim(),
       String(data.phone || "").trim(), String(data.facebook || "").trim(),
       slipUrl, slipStatus, payMethod, String(data.bank || "").trim(),
       amountPaid, "active", "", "", selectedCatsJson
-    ]);
+    ];
+    regWs.appendRow(newRegRow);
     lock.releaseLock();
-    syncTournamentRegToSupabase_(ss, regId);
+    // Sync straight from the row we just built instead of syncTournamentRegToSupabase_,
+    // which would re-read the entire tournament_reg sheet a second time just to find
+    // the row again — a full-sheet scan we already just did once above for the
+    // duplicate/sequence-number check.
+    pushToSupabase_("tournament_registrations", sheetRowToObject_(SUPABASE_TOURNAMENT_REG_HEADER, newRegRow, ["selected_categories"]));
 
     var statusUrl = "https://waka-liff.vercel.app/treg_status.html?id=" + encodeURIComponent(regId);
     var cfgWs = ss.getSheetByName(TAB_CONFIG);
