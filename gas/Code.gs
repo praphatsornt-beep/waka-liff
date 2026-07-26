@@ -3291,6 +3291,11 @@ function handleHandoverOrder(data) {
       if (oCol("staff_confirmed_at") >= 0) ws.getRange(i + 1, oCol("staff_confirmed_at") + 1).setValue(now);
       _clearDashCache();
 
+      var updatedRow = oRows[i].slice();
+      updatedRow[oCol("items_json")] = JSON.stringify(items);
+      if (oCol("fulfillment") >= 0) updatedRow[oCol("fulfillment")] = newFf;
+      if (oCol("staff_confirmed_at") >= 0) updatedRow[oCol("staff_confirmed_at")] = now;
+
       // แจ้งลูกค้า
       var uid = oRows[i][oCol("line_user_id")] || "";
       if (uid) {
@@ -3306,11 +3311,17 @@ function handleHandoverOrder(data) {
             "\n\nสินค้าที่เหลือจะแจ้งให้ทราบเมื่อพร้อม";
         }
         _linePush(uid, msg);
-        if (oCol("notified_at") >= 0) ws.getRange(i + 1, oCol("notified_at") + 1).setValue(now);
+        if (oCol("notified_at") >= 0) {
+          ws.getRange(i + 1, oCol("notified_at") + 1).setValue(now);
+          updatedRow[oCol("notified_at")] = now;
+        }
       }
 
       lock.releaseLock();
-      syncOrderToSupabase_(ss, data.order_id);
+      // Push the row we already built above instead of syncOrderToSupabase_,
+      // which would re-read the whole orders sheet a second time (this
+      // function already scanned it once above to find/update the row).
+      pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now, fulfillment: newFf })));
     }
     lock.releaseLock();
@@ -3361,6 +3372,11 @@ function handlePartialReady(data) {
       ws.getRange(i + 1, oCol("fulfilled_at") + 1).setValue(now);
       _clearDashCache();
 
+      var updatedRow = oRows[i].slice();
+      updatedRow[oCol("items_json")] = JSON.stringify(items);
+      updatedRow[oCol("fulfillment")] = newFf;
+      updatedRow[oCol("fulfilled_at")] = now;
+
       // LINE แจ้งลูกค้า
       if (uid) {
         var readyItems = items.filter(function(it) { return (!!it.ready_at || !!it.handed_at) && !it.cancelled_at; });
@@ -3380,7 +3396,7 @@ function handlePartialReady(data) {
       }
 
       lock.releaseLock();
-      syncOrderToSupabase_(ss, data.order_id);
+      pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, fulfillment: newFf })));
     }
     lock.releaseLock();
@@ -3643,8 +3659,12 @@ function handleNotifyCustomer(data) {
       }
       _linePush(uid, message);
       var notifyNow = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
-      if (col("notified_at") >= 0) ws.getRange(i + 1, col("notified_at") + 1).setValue(notifyNow);
-      syncOrderToSupabase_(ss, orderId);
+      var updatedRow = rows[i].slice();
+      if (col("notified_at") >= 0) {
+        ws.getRange(i + 1, col("notified_at") + 1).setValue(notifyNow);
+        updatedRow[col("notified_at")] = notifyNow;
+      }
+      pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: notifyNow })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
