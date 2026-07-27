@@ -21,13 +21,18 @@ const SCRIPT_SECRET = PROPS.getProperty("SCRIPT_SECRET") || "";
 const BRANCH_CODES = { "ts01": "ต้นสักคอร์เนอร์", "mt01": "เมืองทองธานี", "sn01": "ศรีนครินทร์" };
 const ADMIN_CODE   = "waka99";
 
+// Thai strings that visually match can still fail === if one side picked up
+// stray formatting during copy/paste (e.g. through the Apps Script editor).
+// normalize() + trim() on both sides makes the compare resilient to that.
+function _norm(s) { return String(s || "").trim().normalize("NFC"); }
+
 // branch === "" means "no specific branch requested" (e.g. warehouse.html's
 // all-branches overview) — left unrestricted, matching existing behavior.
 function _branchAuthorized(code, branch) {
   if (!branch) return true;
   code = String(code || "").trim();
   if (code === ADMIN_CODE) return true;
-  return BRANCH_CODES[code] === branch;
+  return _norm(BRANCH_CODES[code]) === _norm(branch);
 }
 
 const SUPABASE_URL         = PROPS.getProperty("SUPABASE_URL") || "";
@@ -381,6 +386,19 @@ function doGet(e) {
 
     if (!isPublic && SCRIPT_SECRET && (e.parameter._s || "") !== SCRIPT_SECRET) {
       return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+    }
+
+    // TEMP diagnostic — remove once the branch-code mismatch is confirmed
+    // fixed. Gated by the same _s check as everything else above.
+    if (action === "_debug_branch") {
+      var codePoints = function(s) { return Array.from(String(s || "")).map(function(c) { return c.codePointAt(0).toString(16); }); };
+      var dbg = { codes: {} };
+      Object.keys(BRANCH_CODES).forEach(function(k) {
+        dbg.codes[k] = { value: BRANCH_CODES[k], len: BRANCH_CODES[k].length, hex: codePoints(BRANCH_CODES[k]) };
+      });
+      var reqBranch = e.parameter.branch || "";
+      dbg.request_branch = { value: reqBranch, len: reqBranch.length, hex: codePoints(reqBranch) };
+      return _cors(ContentService.createTextOutput(JSON.stringify(dbg)));
     }
 
     if (action === "confirm") {
