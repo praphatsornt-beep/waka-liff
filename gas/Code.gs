@@ -13,6 +13,23 @@ const LINE_TOKEN    = PROPS.getProperty("LINE_TOKEN");
 const SHEET_ID      = PROPS.getProperty("SHEET_ID");
 const SCRIPT_SECRET = PROPS.getProperty("SCRIPT_SECRET") || "";
 
+// Branch login codes (mirrors BRANCH_CODES/PIN_ADMIN in liff/app.html) — kept
+// here too so branch-scoped read/write actions can verify the caller actually
+// knows the code for the branch they're requesting, not just the branch name
+// (the `branch` query/body param alone is not proof of identity — anyone who
+// can reach the API can set it to any value).
+const BRANCH_CODES = { "ts01": "ต้นสักคอร์เนอร์", "mt01": "เมืองทองธานี", "sn01": "ศรีนครินทร์" };
+const ADMIN_CODE   = "waka99";
+
+// branch === "" means "no specific branch requested" (e.g. warehouse.html's
+// all-branches overview) — left unrestricted, matching existing behavior.
+function _branchAuthorized(code, branch) {
+  if (!branch) return true;
+  code = String(code || "").trim();
+  if (code === ADMIN_CODE) return true;
+  return BRANCH_CODES[code] === branch;
+}
+
 const SUPABASE_URL         = PROPS.getProperty("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_KEY = PROPS.getProperty("SUPABASE_SERVICE_KEY") || "";
 
@@ -1601,6 +1618,7 @@ function handleApi(params) {
   if (action === "branch_orders") {
     var branchFilter = params.branch || "";
     if (!branchFilter) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing branch" })));
+    if (!_branchAuthorized(params.code, branchFilter)) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
     var col = function(name) { return hdr.indexOf(name); };
     var orders = [];
     for (var i = 1; i < rows.length; i++) {
@@ -1669,6 +1687,7 @@ function handleApi(params) {
   // ── สต็อกสาขา ──
   if (action === "branch_stock") {
     var branchFilter = params.branch || "";
+    if (!_branchAuthorized(params.code, branchFilter)) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
     var bsWs = ss.getSheetByName(TAB_STOCK_BRANCH);
     if (!bsWs) return _cors(ContentService.createTextOutput(JSON.stringify({ stock: [] })));
     var bsRows = bsWs.getDataRange().getValues();
@@ -1966,6 +1985,7 @@ function handleApi(params) {
     if (!wWs) return _cors(ContentService.createTextOutput(JSON.stringify({ withdrawals: [] })));
     var wRows = wWs.getDataRange().getValues();
     var branchFilter = params.branch || "";
+    if (!_branchAuthorized(params.code, branchFilter)) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
     var wList = [];
     for (var i = 1; i < wRows.length; i++) {
       if (branchFilter && String(wRows[i][1]) !== branchFilter) continue;
@@ -3291,6 +3311,10 @@ function handleHandoverOrder(data) {
     for (var i = 1; i < oRows.length; i++) {
       if (String(oRows[i][oCol("order_id")]) !== data.order_id) continue;
       var branch = oRows[i][oCol("branch")] || "";
+      if (!_branchAuthorized(data.code, branch)) {
+        lock.releaseLock();
+        return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+      }
       var items = [];
       try { items = JSON.parse(oRows[i][oCol("items_json")] || "[]"); } catch(e) {}
 
@@ -3414,6 +3438,10 @@ function handlePartialReady(data) {
       if (String(oRows[i][oCol("order_id")]) !== String(data.order_id)) continue;
 
       var branch = oRows[i][oCol("branch")] || "";
+      if (!_branchAuthorized(data.code, branch)) {
+        lock.releaseLock();
+        return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+      }
       var uid = oRows[i][oCol("line_user_id")] || "";
       var items = [];
       try { items = JSON.parse(oRows[i][oCol("items_json")] || "[]"); } catch(e) {}
@@ -3489,6 +3517,11 @@ function handlePartialCancelItems(data) {
     for (var i = 1; i < oRows.length; i++) {
       if (String(oRows[i][oCol("order_id")]) !== String(data.order_id)) continue;
 
+      var branch = oRows[i][oCol("branch")] || "";
+      if (!_branchAuthorized(data.code, branch)) {
+        lock.releaseLock();
+        return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+      }
       var uid = oRows[i][oCol("line_user_id")] || "";
       var items = [];
       try { items = JSON.parse(oRows[i][oCol("items_json")] || "[]"); } catch(e) {}
@@ -3905,6 +3938,9 @@ function handleWithdrawStock(data) {
 
   if (!branch || !name || qty <= 0) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ข้อมูลไม่ครบ (branch, name, qty)" })));
+  }
+  if (!_branchAuthorized(data.code, branch)) {
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
   }
 
   var lock = LockService.getScriptLock();

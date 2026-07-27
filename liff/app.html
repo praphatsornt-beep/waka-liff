@@ -513,6 +513,7 @@ const LIFF_BASE = 'https://liff.line.me/2010457385-UpJLXxJ0';
 let products = [], centralStock = [], branchSummary = {}, selectedProduct = null;
 let scanner = null, scannerNew = null;
 let userRole = 'staff';
+function _authCode() { return userRole === 'admin' ? PIN_ADMIN : (sessionStorage.getItem('waka_branch_code') || ''); }
 function gid(id) { return document.getElementById(id); }
 function esc(s) { const d=document.createElement('div');d.textContent=s;return d.innerHTML; }
 
@@ -636,6 +637,8 @@ function renderOrders() {
     const ff = o.fulfillment || '';
     const hasPartialPending = items.some(i=>!i.ready_at&&!i.handed_at&&!i.cancelled_at);
     const canPartialReady = ff==='ยืนยัน'||ff===''||ff==='บางส่วน'||ff==='รับบางส่วนแล้ว';
+    const activeItemCount = items.filter(i=>!i.cancelled_at).length;
+    const readyBtnLabel = activeItemCount>1?'📣 แจ้งพร้อมรับ (บางชิ้น)':'📣 แจ้งพร้อมรับ';
     const itemsJson = esc(JSON.stringify(items)).replace(/'/g,'&#39;');
     return `<div class="order-card" style="cursor:pointer;margin-bottom:8px" onclick="this.querySelector('.od').style.display=this.querySelector('.od').style.display==='none'?'block':'none'">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
@@ -654,7 +657,7 @@ function renderOrders() {
         ${itemsHtml||'<div style="font-size:12px;color:#ccc">ไม่มีรายการ</div>'}
         <div style="font-size:11px;color:#9A8878;margin-top:6px">${esc(o.timestamp||'')}</div>
         ${canVerify?`<button class="btn btn-green" style="margin-top:8px;padding:10px" onclick="event.stopPropagation();confirmSlip('${esc(o.order_id)}')">✅ ยืนยันสลิป + แจ้งลูกค้า</button>`:''}
-        ${o.slip_status==='ยืนยัน'&&canPartialReady&&hasPartialPending?`<button class="btn" style="margin-top:6px;padding:8px;background:#d97706;font-size:13px" onclick="event.stopPropagation();showPartialReadyDialog('${esc(o.order_id)}',${itemsJson})">📣 แจ้งพร้อมรับ (บางชิ้น)</button>`:''}
+        ${o.slip_status==='ยืนยัน'&&canPartialReady&&hasPartialPending?`<button class="btn" style="margin-top:6px;padding:8px;background:#d97706;font-size:13px" onclick="event.stopPropagation();showPartialReadyDialog('${esc(o.order_id)}',${itemsJson})">${readyBtnLabel}</button>`:''}
         ${o.slip_status==='ยืนยัน'&&ff!=='รับแล้ว'&&ff!=='ยกเลิก'&&items.some(i=>!i.handed_at&&!i.cancelled_at)?`<button class="btn" style="margin-top:6px;padding:8px;background:#9b59b6;font-size:13px" onclick="event.stopPropagation();showCancelItemsDialog('${esc(o.order_id)}',${itemsJson})">❌ ยกเลิกบางชิ้น</button>`:''}
         ${ff!=='รับแล้ว'&&ff!=='ยกเลิก'?`<button class="btn" style="margin-top:6px;padding:8px;background:#c0392b;font-size:13px" onclick="event.stopPropagation();cancelOrder('${esc(o.order_id)}',this)">❌ ยกเลิกทั้งออเดอร์</button>`:''}
       </div>
@@ -709,7 +712,7 @@ async function submitPartialReady(orderId) {
   const indices = checked.map(cb => +cb.dataset.idx);
   document.getElementById('partialModal').innerHTML = '';
   try {
-    const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'partialReady', order_id: orderId, indices }) });
+    const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'partialReady', order_id: orderId, indices, code: _authCode() }) });
     const d = await r.json();
     if (d.ok) { toast('แจ้งพร้อมรับแล้ว · LINE ส่งลูกค้าแล้ว'); loadDashboard(); loadBrOrders(); }
     else alert(d.error || 'ผิดพลาด');
@@ -755,7 +758,7 @@ async function submitCancelItems(orderId) {
   const reason = document.getElementById('ciReason').value.trim();
   document.getElementById('partialModal').innerHTML = '';
   try {
-    const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'partialCancelItems', order_id: orderId, indices, reason }) });
+    const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'partialCancelItems', order_id: orderId, indices, reason, code: _authCode() }) });
     const d = await r.json();
     if (d.ok) { toast('ยกเลิก ' + d.cancelled + ' รายการแล้ว'); loadDashboard(); loadBrOrders(); }
     else alert(d.error || 'ผิดพลาด');
@@ -1001,7 +1004,7 @@ function onBranchChange() {
 
 async function loadBrOrders() {
   const b=gid('branchSelect').value;if(!b){gid('brOrders').innerHTML='<div class="empty">เลือกสาขาก่อน</div>';return;}
-  try{const r=await fetch(G+'&action=api&do=branch_orders&branch='+encodeURIComponent(b));const d=await r.json();
+  try{const r=await fetch(G+'&action=api&do=branch_orders&branch='+encodeURIComponent(b)+'&code='+encodeURIComponent(_authCode()));const d=await r.json();
     const el=gid('brOrders');if(!d.orders||!d.orders.length){el.innerHTML='<div class="empty">ไม่มีออเดอร์</div>';return;}
     el.innerHTML=d.orders.map(o=>{
       const ff=o.fulfillment||'รอ';
@@ -1015,6 +1018,8 @@ async function loadBrOrders() {
       const canHandover=['พร้อมรับ','บางส่วน','รอเตรียม',''].includes(ff);
       const hasReadyItems=items.some(it=>it.ready_at&&!it.handed_at&&!it.cancelled_at);
       const hasPartialPending=items.some(it=>!it.ready_at&&!it.handed_at&&!it.cancelled_at);
+      const activeItemCount=items.filter(it=>!it.cancelled_at).length;
+      const readyBtnLabel=activeItemCount>1?'📣 แจ้งพร้อมรับ (บางชิ้น)':'📣 แจ้งพร้อมรับ';
       const itemsJson=esc(JSON.stringify(items)).replace(/'/g,'&#39;');
       return`<div class="order-card" style="cursor:pointer" onclick="const d=this.querySelector('.order-detail');d.style.display=d.style.display==='none'?'block':'none'">
         <div style="display:flex;justify-content:space-between;align-items:center">
@@ -1026,7 +1031,7 @@ async function loadBrOrders() {
           <div style="font-weight:600;margin-bottom:6px">รายการสินค้า</div>
           ${itemsHtml}
           <div style="margin-top:8px;font-size:12px;color:var(--text2)">สั่งเมื่อ: ${esc(o.timestamp||'')}</div>
-          ${hasPartialPending?`<button class="btn" style="margin-top:10px;background:#d97706" onclick="event.stopPropagation();showPartialReadyDialog('${o.order_id}',${itemsJson})">📣 แจ้งพร้อมรับ (บางชิ้น)</button>`:''}
+          ${hasPartialPending?`<button class="btn" style="margin-top:10px;background:#d97706" onclick="event.stopPropagation();showPartialReadyDialog('${o.order_id}',${itemsJson})">${readyBtnLabel}</button>`:''}
           ${(canHandover&&hasReadyItems)||(!items.some(it=>it.ready_at)&&canHandover)?`<button class="btn btn-green" style="margin-top:8px" onclick="event.stopPropagation();handoverOrder('${o.order_id}','br')">🤝 ส่งมอบสินค้า</button>`:''}
           ${ff==='รับบางส่วนแล้ว'?'<div style="text-align:center;padding:10px;margin-top:8px;background:#fff8e1;border-radius:8px;color:#d97706;font-weight:600">📦 ส่งมอบบางส่วนแล้ว รอสินค้าที่เหลือ</div>':''}
           ${ff==='สาขายืนยัน'?'<div style="text-align:center;padding:10px;margin-top:8px;background:#f0fbf4;border-radius:8px;color:var(--green);font-weight:600">✅ ส่งมอบแล้ว รอลูกค้ายืนยัน</div>':''}
@@ -1054,6 +1059,8 @@ async function searchOrders() {
       const hasReadyItems=items.some(it=>it.ready_at&&!it.handed_at&&!it.cancelled_at);
       const canHandover=['พร้อมรับ','บางส่วน','รอเตรียม',''].includes(ff);
       const hasPartialPending=items.some(it=>!it.ready_at&&!it.handed_at&&!it.cancelled_at);
+      const activeItemCount=items.filter(it=>!it.cancelled_at).length;
+      const readyBtnLabel=activeItemCount>1?'📣 แจ้งพร้อมรับบางชิ้น':'📣 แจ้งพร้อมรับ';
       const itemsJson=esc(JSON.stringify(items)).replace(/'/g,'&#39;');
       return `<div class="card"><div style="display:flex;justify-content:space-between"><strong>#${esc(o.order_id)}</strong><span class="status ${ff==='รับแล้ว'||ff==='สาขายืนยัน'?'s-done':ff==='พร้อมรับ'||ff==='บางส่วน'?'s-ok':'s-wait'}">${esc(ff)}</span></div>
       <div style="font-size:13px;margin-top:4px">${esc(o.real_name||o.display_name)} · ${esc(o.phone)} · ${esc(o.branch)}</div>
@@ -1061,7 +1068,7 @@ async function searchOrders() {
       <div style="font-size:14px;font-weight:700;color:#2d8f4e">฿${Number(o.total).toLocaleString()}</div>
       <div style="font-size:12px;color:#888;margin-top:2px">สลิป: ${esc(o.slip_status)}</div>
       ${ff==='รับบางส่วนแล้ว'?'<div style="font-size:12px;color:#d97706;margin-top:4px">📦 ส่งมอบบางส่วนแล้ว รอสินค้าที่เหลือ</div>':''}
-      ${hasPartialPending&&o.slip_status==='ยืนยัน'?`<button class="btn btn-sm" style="margin-top:8px;background:#d97706" onclick="showPartialReadyDialog('${o.order_id}',${itemsJson})">📣 แจ้งพร้อมรับบางชิ้น</button>`:''}
+      ${hasPartialPending&&o.slip_status==='ยืนยัน'?`<button class="btn btn-sm" style="margin-top:8px;background:#d97706" onclick="showPartialReadyDialog('${o.order_id}',${itemsJson})">${readyBtnLabel}</button>`:''}
       ${(canHandover&&(hasReadyItems||!items.some(it=>it.ready_at)))?`<button class="btn btn-green btn-sm" style="margin-top:8px" onclick="handoverOrder('${o.order_id}','search')">🤝 ส่งมอบ</button>`:''}
       </div>`;
     }).join('');
@@ -1077,7 +1084,7 @@ async function confirmSlip(oid) {
 
 async function handoverOrder(oid,src) {
   if(!confirm('ส่งมอบออเดอร์ #'+oid+'?'))return;
-  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'handoverOrder',order_id:oid})});const d=await r.json();
+  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'handoverOrder',order_id:oid,code:_authCode()})});const d=await r.json();
     if(d.ok){
       const msg=d.fulfillment==='รับบางส่วนแล้ว'?'ส่งมอบบางส่วนแล้ว — แจ้ง LINE แล้ว':'ส่งมอบครบแล้ว — รอลูกค้ายืนยัน';
       toast(msg);
@@ -1088,7 +1095,7 @@ async function handoverOrder(oid,src) {
 
 async function loadBrStock() {
   const b=gid('branchSelect').value;if(!b){gid('brStock').innerHTML='<div class="empty">เลือกสาขาก่อน</div>';return;}
-  try{const r=await fetch(G+'&action=api&do=branch_stock&branch='+encodeURIComponent(b));const d=await r.json();
+  try{const r=await fetch(G+'&action=api&do=branch_stock&branch='+encodeURIComponent(b)+'&code='+encodeURIComponent(_authCode()));const d=await r.json();
     const el=gid('brStock');if(!d.stock||!d.stock.length){el.innerHTML='<div class="empty">ไม่มีสต็อก</div>';return;}
     let h='<div class="card"><table><tr><th>สินค้า</th><th class="num">Box</th><th class="num">Pack</th></tr>';
     for(const s of d.stock)h+='<tr><td>'+esc(s.name)+'</td><td class="num">'+s.qty_box+'</td><td class="num">'+s.qty_pack+'</td></tr>';
@@ -1102,7 +1109,7 @@ async function submitWithdraw() {
   const name=gid('wdProduct').value;if(!name)return alert('เลือกสินค้า');
   const type=gid('wdType').value,qty=+gid('wdQty').value||0,reason=gid('wdReason').value;
   if(qty<=0)return alert('ใส่จำนวน');
-  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'withdrawStock',branch,name,type,qty,reason})});const d=await r.json();
+  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'withdrawStock',branch,name,type,qty,reason,code:_authCode()})});const d=await r.json();
     if(d.ok){toast('เบิก '+name+' x'+qty);gid('wdQty').value=1;loadBrStock();loadWithdrawals();}
     else alert(d.error||'ผิดพลาด');
   }catch(e){alert('บันทึกไม่ได้');}
@@ -1110,7 +1117,7 @@ async function submitWithdraw() {
 
 async function loadWithdrawals() {
   const b=gid('branchSelect').value;if(!b)return;
-  try{const r=await fetch(G+'&action=api&do=withdrawals&branch='+encodeURIComponent(b));const d=await r.json();
+  try{const r=await fetch(G+'&action=api&do=withdrawals&branch='+encodeURIComponent(b)+'&code='+encodeURIComponent(_authCode()));const d=await r.json();
     const el=gid('wdHistory');if(!d.withdrawals||!d.withdrawals.length){el.innerHTML='<div class="empty">ยังไม่มี</div>';return;}
     let h='<table><tr><th>เวลา</th><th>สินค้า</th><th class="num">จำนวน</th><th>เหตุผล</th></tr>';
     for(const w of d.withdrawals)h+='<tr><td style="font-size:11px">'+esc(w.timestamp)+'</td><td>'+esc(w.name)+'</td><td class="num">'+w.qty+' '+(w.type==='box'?'กล่อง':'ซอง')+'</td><td>'+esc(w.reason)+'</td></tr>';
