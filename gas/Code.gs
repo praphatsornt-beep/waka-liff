@@ -4118,7 +4118,7 @@ function testPartialFlow() {
   Logger.log("✅ สร้าง test order: " + testId);
 
   // 1. แจ้งพร้อมรับ item[0] เท่านั้น
-  var r1 = handlePartialReady({ order_id: testId, indices: [0] });
+  var r1 = handlePartialReady({ order_id: testId, indices: [0], code: ADMIN_CODE });
   var d1 = JSON.parse(r1.getContent());
   Logger.log("partialReady(indices=[0]): " + JSON.stringify(d1));
   if (d1.ok && d1.fulfillment === "บางส่วน") {
@@ -4141,8 +4141,15 @@ function testPartialFlow() {
     else Logger.log("❌ FAIL: ready_at ไม่ถูกต้อง");
   }
 
+  // 2b. เรียกซ้ำ indices=[0] อีกครั้ง — ไม่ควรแจ้งซ้ำ ต้องได้ error กลับมาแทน
+  var r1b = handlePartialReady({ order_id: testId, indices: [0], code: ADMIN_CODE });
+  var d1b = JSON.parse(r1b.getContent());
+  Logger.log("partialReady(indices=[0]) ซ้ำ: " + JSON.stringify(d1b));
+  if (!d1b.ok && d1b.error) Logger.log("✅ PASS: กันแจ้งซ้ำ — ไม่ส่ง LINE ซ้ำ");
+  else Logger.log("❌ FAIL: เรียกซ้ำแล้วควรได้ error แต่ได้ " + JSON.stringify(d1b));
+
   // 3. ส่งมอบ (handover) — ควรหักเฉพาะ item[0]
-  var r2 = handleHandoverOrder({ order_id: testId });
+  var r2 = handleHandoverOrder({ order_id: testId, code: ADMIN_CODE });
   var d2 = JSON.parse(r2.getContent());
   Logger.log("handoverOrder: " + JSON.stringify(d2));
   if (d2.ok && d2.fulfillment === "รับบางส่วนแล้ว") {
@@ -4165,7 +4172,7 @@ function testPartialFlow() {
   }
 
   // 5. ยกเลิก item[1] ที่เหลือ
-  var r3 = handlePartialCancelItems({ order_id: testId, indices: [1], reason: "test" });
+  var r3 = handlePartialCancelItems({ order_id: testId, indices: [1], reason: "test", code: ADMIN_CODE });
   var d3 = JSON.parse(r3.getContent());
   Logger.log("partialCancelItems(indices=[1]): " + JSON.stringify(d3));
   if (d3.ok && d3.cancelled === 1) Logger.log("✅ PASS: ยกเลิก 1 item");
