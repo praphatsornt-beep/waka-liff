@@ -426,6 +426,31 @@ function doGet(e) {
       }
     }
 
+    // TEMP diagnostic — remove once Sheet vs Supabase order counts are
+    // confirmed to match (or the gap is understood). Gated by the same _s.
+    if (action === "_debug_order_counts") {
+      try {
+        var cntWs = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TAB_ORDERS);
+        var cntRows = cntWs ? cntWs.getDataRange().getValues() : [];
+        var sheetOrderIds = [];
+        for (var ci = 1; ci < cntRows.length; ci++) {
+          if (cntRows[ci][0]) sheetOrderIds.push(String(cntRows[ci][0]));
+        }
+        var sbOrderIds = supabaseSelect_("orders", "select=order_id").map(function(r) { return String(r.order_id); });
+        var sbSet = {};
+        sbOrderIds.forEach(function(id) { sbSet[id] = true; });
+        var missingFromSupabase = sheetOrderIds.filter(function(id) { return !sbSet[id]; });
+        return _cors(ContentService.createTextOutput(JSON.stringify({
+          sheet_count: sheetOrderIds.length,
+          supabase_count: sbOrderIds.length,
+          missing_from_supabase_count: missingFromSupabase.length,
+          missing_from_supabase_sample: missingFromSupabase.slice(0, 20),
+        })));
+      } catch (e) {
+        return _cors(ContentService.createTextOutput(JSON.stringify({ error: e.message })));
+      }
+    }
+
     if (action === "confirm") {
       return handleCustomerConfirm(e.parameter.order || "", e);
     }
