@@ -78,6 +78,17 @@ function pushToSupabase_(table, row) {
   }
 }
 
+// Every order write already builds sheetRowToObject_(SUPABASE_ORDERS_HEADER,
+// rowArr, ["items_json"]) before pushing to Supabase — this wraps that same
+// call plus a mirror into the "WAKA export" report sheet's `orders` tab, so
+// every write path gets both for free with one call instead of two.
+function pushOrderToSupabase_(rowArr) {
+  var obj = sheetRowToObject_(SUPABASE_ORDERS_HEADER, rowArr, ["items_json"]);
+  pushToSupabase_("orders", obj);
+  mirrorToReportSheet_("orders", SUPABASE_ORDERS_HEADER, "order_id", obj);
+  return obj;
+}
+
 // ── Supabase-primary tables (config, stock_branch, shipments, tournament_*,
 // wakagym_events, player_stats — migrated one at a time). These tables read
 // and write Supabase directly instead of the Sheet; mirrorToReportSheet_
@@ -399,6 +410,20 @@ function doGet(e) {
       var reqBranch = e.parameter.branch || "";
       dbg.request_branch = { value: reqBranch, len: reqBranch.length, hex: codePoints(reqBranch) };
       return _cors(ContentService.createTextOutput(JSON.stringify(dbg)));
+    }
+
+    // TEMP diagnostic — remove once the live Supabase `orders` schema is
+    // confirmed to match SUPABASE_ORDERS_HEADER. Gated by the same _s check.
+    if (action === "_debug_orders_schema") {
+      try {
+        var sample = supabaseSelect_("orders", "select=*&limit=1&order=timestamp.desc");
+        return _cors(ContentService.createTextOutput(JSON.stringify({
+          columns: sample.length ? Object.keys(sample[0]) : [],
+          sample: sample[0] || null,
+        })));
+      } catch (e) {
+        return _cors(ContentService.createTextOutput(JSON.stringify({ error: e.message })));
+      }
     }
 
     if (action === "confirm") {
@@ -764,7 +789,7 @@ function doPost(e) {
     // Push the row writeOrder() already built (with slip_url patched in above
     // if applicable) instead of syncOrderToSupabase_, which would re-read the
     // whole orders sheet a third time just to find the row we just wrote.
-    pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, newOrderRow, ["items_json"]));
+    pushOrderToSupabase_(newOrderRow);
 
     // LINE push หลัง release lock — ไม่ block order ถัดไป
     try {
@@ -1463,7 +1488,7 @@ function handleStaffPage(orderId, action) {
       }
     }
     if (action === "shipping" || action === "ready" || action === "handover") {
-      pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
+      pushOrderToSupabase_(updatedRow);
     }
 
     var items = [];
@@ -1580,7 +1605,7 @@ function handleApi(params) {
         if (uid) _linePush(uid, "สาขาส่งมอบสินค้าแล้ว กรุณากดยืนยันรับของ\n\nออเดอร์: #" + orderId + "\n\nกดยืนยัน:\n" + trackUrl);
       }
       _clearDashCache();
-      pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
+      pushOrderToSupabase_(updatedRow);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, status: newStatus, time: now })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
@@ -1626,7 +1651,7 @@ function handleApi(params) {
       var updatedRow = rows[m].slice();
       if (col("customer_confirmed_at") >= 0) { ws.getRange(m + 1, col("customer_confirmed_at") + 1).setValue(now); updatedRow[col("customer_confirmed_at")] = now; }
       if (col("fulfillment") >= 0) { ws.getRange(m + 1, col("fulfillment") + 1).setValue("รับแล้ว"); updatedRow[col("fulfillment")] = "รับแล้ว"; }
-      pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
+      pushOrderToSupabase_(updatedRow);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
@@ -1967,7 +1992,7 @@ function handleApi(params) {
         _linePush(uid, cancelMsg);
       }
       _clearDashCache();
-      pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
+      pushOrderToSupabase_(updatedRow);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
@@ -3298,7 +3323,7 @@ function handleReceiveShipment(data) {
         // Avoid an O(n^2) blowup: this loop can touch every pending order for
         // a branch, and syncOrderToSupabase_ would re-scan the whole orders
         // sheet once per match. Push the row we already have instead.
-        pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, oUpdatedRow, ["items_json"]));
+        pushOrderToSupabase_(oUpdatedRow);
         if (uid) {
           var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + oid;
           _linePush(uid, "สินค้าพร้อมรับที่สาขา" + branch + " แล้ว!\n\nออเดอร์: #" + oid + "\n\nดูสถานะ:\n" + trackUrl);
@@ -3428,7 +3453,7 @@ function handleHandoverOrder(data) {
       // Push the row we already built above instead of syncOrderToSupabase_,
       // which would re-read the whole orders sheet a second time (this
       // function already scanned it once above to find/update the row).
-      pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
+      pushOrderToSupabase_(updatedRow);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now, fulfillment: newFf })));
     }
     lock.releaseLock();
@@ -3520,7 +3545,7 @@ function handlePartialReady(data) {
       }
 
       lock.releaseLock();
-      pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
+      pushOrderToSupabase_(updatedRow);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, fulfillment: newFf })));
     }
     lock.releaseLock();
@@ -3604,7 +3629,7 @@ function handlePartialCancelItems(data) {
       }
 
       lock.releaseLock();
-      pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
+      pushOrderToSupabase_(updatedRow);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, cancelled: cancelledItems.length })));
     }
     lock.releaseLock();
@@ -3696,7 +3721,7 @@ function handleConfirmSlip(data) {
       // Push the row we already have in memory (with this function's own
       // edits applied) instead of syncOrderToSupabase_, which would re-read
       // the whole orders sheet a second time just to find this same row.
-      pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
+      pushOrderToSupabase_(updatedRow);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
@@ -3740,7 +3765,7 @@ function handleRejectSlip(data) {
         _linePush(uid, msg);
       }
 
-      pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
+      pushOrderToSupabase_(updatedRow);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
@@ -3796,7 +3821,7 @@ function handleNotifyCustomer(data) {
         ws.getRange(i + 1, col("notified_at") + 1).setValue(notifyNow);
         updatedRow[col("notified_at")] = notifyNow;
       }
-      pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
+      pushOrderToSupabase_(updatedRow);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: notifyNow })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
@@ -4118,7 +4143,7 @@ function backfillPartialReadyNotifiedAt() {
     ws.getRange(i + 1, notifiedCol + 1).setValue(fulfilledAt);
     var updatedRow = rows[i].slice();
     updatedRow[notifiedCol] = fulfilledAt;
-    pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
+    pushOrderToSupabase_(updatedRow);
     updated++;
     Logger.log("✅ " + rows[i][col("order_id")] + " (" + ff + ") → notified_at = " + fulfilledAt);
   }
