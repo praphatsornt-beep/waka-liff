@@ -1558,6 +1558,33 @@ function handleApi(params) {
   if (action === "search") {
     var q = String(params.q || "").toLowerCase().trim();
     if (!q) return _cors(ContentService.createTextOutput(JSON.stringify({ orders: [] })));
+    try {
+      // Deliberately NOT translating this into a PostgREST or=(...ilike...)
+      // filter — with arbitrary staff-typed input that risks corrupting the
+      // filter's own comma/paren/wildcard syntax, and Thai ilike collation
+      // behavior is unverified against .indexOf(). Order volume here is
+      // small (~100s), so fetch once and reuse the exact existing JS match
+      // logic instead — same semantics as the Sheet version, zero new risk.
+      var seSb = supabaseSelect_("orders", "select=*&order=timestamp.desc");
+      var seResults = [];
+      for (var si = 0; si < seSb.length; si++) {
+        var sr = seSb[si];
+        var srow = {};
+        SUPABASE_ORDERS_HEADER.forEach(function(h) {
+          var v = sr[h];
+          if (v === null || v === undefined) { srow[h] = ""; return; }
+          srow[h] = (h === "items_json") ? JSON.stringify(v) : String(v);
+        });
+        var seMatch = srow.order_id.toLowerCase().indexOf(q) >= 0
+          || srow.real_name.toLowerCase().indexOf(q) >= 0
+          || srow.display_name.toLowerCase().indexOf(q) >= 0
+          || srow.phone.indexOf(q) >= 0;
+        if (seMatch) seResults.push(srow);
+      }
+      return _cors(ContentService.createTextOutput(JSON.stringify({ orders: seResults.slice(0, 20) })));
+    } catch (e) {
+      Logger.log("search Supabase read failed, falling back to Sheet: " + e.message);
+    }
     var results = [];
     for (var i = 1; i < rows.length; i++) {
       var row = {};
