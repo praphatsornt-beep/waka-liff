@@ -4089,6 +4089,42 @@ function clearCache() {
   CacheService.getScriptCache().remove("catalog_config");
 }
 
+// ── ONE-TIME: เติม notified_at ย้อนหลังให้ออเดอร์เก่าที่ผ่าน "แจ้งพร้อมรับ" ──
+// ก่อนหน้านี้ handlePartialReady ไม่เคยบันทึก notified_at (เพิ่งเพิ่มวันนี้) ทั้งที่
+// LINE ถูกส่งไปจริงตอนนั้น — ใช้เวลาจาก fulfilled_at (เวลาที่เปลี่ยนเป็น
+// "พร้อมรับ"/"บางส่วน" ซึ่งคือตอนที่ _linePush ถูกเรียก) แทนที่ notified_at
+// ที่ว่างอยู่ ไม่แตะแถวที่มี notified_at อยู่แล้ว รันซ้ำได้ปลอดภัย
+// รันจาก GAS Editor → เลือก backfillPartialReadyNotifiedAt → กด Run → ดู Execution Log
+function backfillPartialReadyNotifiedAt() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var ws = ss.getSheetByName(TAB_ORDERS);
+  var rows = ws.getDataRange().getValues();
+  var hdr = rows[0];
+  var col = function(name) { return hdr.indexOf(name); };
+  var ffCol = col("fulfillment");
+  var notifiedCol = col("notified_at");
+  var fulfilledAtCol = col("fulfilled_at");
+  if (notifiedCol < 0 || fulfilledAtCol < 0) {
+    Logger.log("❌ ไม่พบคอลัมน์ notified_at หรือ fulfilled_at ใน orders — เช็ค header ก่อน");
+    return;
+  }
+  var updated = 0;
+  for (var i = 1; i < rows.length; i++) {
+    var ff = String(rows[i][ffCol] || "");
+    if (ff !== "พร้อมรับ" && ff !== "บางส่วน") continue;
+    if (rows[i][notifiedCol]) continue;
+    var fulfilledAt = rows[i][fulfilledAtCol];
+    if (!fulfilledAt) continue;
+    ws.getRange(i + 1, notifiedCol + 1).setValue(fulfilledAt);
+    var updatedRow = rows[i].slice();
+    updatedRow[notifiedCol] = fulfilledAt;
+    pushToSupabase_("orders", sheetRowToObject_(SUPABASE_ORDERS_HEADER, updatedRow, ["items_json"]));
+    updated++;
+    Logger.log("✅ " + rows[i][col("order_id")] + " (" + ff + ") → notified_at = " + fulfilledAt);
+  }
+  Logger.log("── เสร็จสิ้น: เติม notified_at ย้อนหลัง " + updated + " ออเดอร์ ──");
+}
+
 // ── TEST: ทดสอบ partial fulfillment flow โดยไม่กระทบออเดอร์จริง ─────────────
 // รันจาก GAS Editor → เลือก testPartialFlow → กด Run
 // ดู log ใน Execution Log
