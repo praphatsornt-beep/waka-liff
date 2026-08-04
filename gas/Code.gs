@@ -1614,6 +1614,24 @@ function handleApi(params) {
   if (action === "order_status") {
     var orderId = params.order || "";
     if (!orderId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing order" })));
+    try {
+      var osSb = supabaseSelect_("orders", "select=order_id,branch,slip_status,fulfillment,staff_confirmed_at,customer_confirmed_at,timestamp,total&order_id=eq." + encodeURIComponent(orderId) + "&limit=1");
+      if (osSb.length) {
+        var sr = osSb[0];
+        return _cors(ContentService.createTextOutput(JSON.stringify({
+          order_id: orderId,
+          branch: sr.branch || "",
+          slip_status: sr.slip_status || "",
+          fulfillment: sr.fulfillment || "",
+          staff_confirmed_at: sr.staff_confirmed_at || "",
+          customer_confirmed_at: sr.customer_confirmed_at || "",
+          timestamp: sr.timestamp || "",
+          total: sr.total || 0,
+        })));
+      }
+    } catch (e) {
+      Logger.log("order_status Supabase read failed, falling back to Sheet: " + e.message);
+    }
     var col = function(name) { return hdr.indexOf(name); };
     for (var k = 1; k < rows.length; k++) {
       if (String(rows[k][col("order_id")]) !== orderId) continue;
@@ -1662,6 +1680,27 @@ function handleApi(params) {
     var branchFilter = params.branch || "";
     if (!branchFilter) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing branch" })));
     if (!_branchAuthorized(params.code, branchFilter)) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+    try {
+      var boSb = supabaseSelect_("orders", "select=order_id,real_name,display_name,phone,items_json,total,fulfillment,staff_confirmed_at,customer_confirmed_at,timestamp,notified_at&branch=eq." + encodeURIComponent(branchFilter) + "&slip_status=eq.ยืนยัน&order=timestamp.desc");
+      var boOrders = boSb.map(function(r) {
+        return {
+          order_id: String(r.order_id || ""),
+          real_name: String(r.real_name || ""),
+          display_name: String(r.display_name || ""),
+          phone: String(r.phone || ""),
+          items_json: JSON.stringify(r.items_json || []),
+          total: String(r.total || "0"),
+          fulfillment: String(r.fulfillment || ""),
+          staff_confirmed_at: String(r.staff_confirmed_at || ""),
+          customer_confirmed_at: String(r.customer_confirmed_at || ""),
+          timestamp: String(r.timestamp || ""),
+          notified_at: String(r.notified_at || ""),
+        };
+      });
+      return _cors(ContentService.createTextOutput(JSON.stringify({ orders: boOrders })));
+    } catch (e) {
+      Logger.log("branch_orders Supabase read failed, falling back to Sheet: " + e.message);
+    }
     var col = function(name) { return hdr.indexOf(name); };
     var orders = [];
     for (var i = 1; i < rows.length; i++) {
@@ -1688,6 +1727,36 @@ function handleApi(params) {
 
   // ── สรุปออเดอร์แต่ละสาขา (รวมเป็นรายสินค้า) ──
   if (action === "branch_summary") {
+    try {
+      // Filter fulfillment in JS, not via a SQL not.in — a NULL fulfillment
+      // (brand-new, unprocessed order) must still be INCLUDED here, and SQL's
+      // "NOT IN" treats NULL as unknown/excluded, which would silently drop
+      // exactly the orders this summary most needs to show.
+      var bsSb = supabaseSelect_("orders", "select=branch,items_json,fulfillment&slip_status=eq.ยืนยัน");
+      var bsExcluded = ["กำลังจัดส่งไปสาขา", "พร้อมรับ", "สาขายืนยัน", "รับแล้ว", "จัดส่งแล้ว"];
+      var bsSummary = {};
+      bsSb.forEach(function(r) {
+        if (bsExcluded.indexOf(r.fulfillment || "") >= 0) return;
+        var branch = r.branch || "";
+        var items = r.items_json || [];
+        if (!bsSummary[branch]) bsSummary[branch] = {};
+        for (var x = 0; x < items.length; x++) {
+          var key = items[x].name;
+          if (!bsSummary[branch][key]) bsSummary[branch][key] = { name: key, qty_box: 0, qty_pack: 0, order_count: 0 };
+          if (items[x].type === "box") bsSummary[branch][key].qty_box += (items[x].qty || 1);
+          else bsSummary[branch][key].qty_pack += (items[x].qty || 1);
+          bsSummary[branch][key].order_count++;
+        }
+      });
+      var bsResult = {};
+      for (var bb in bsSummary) {
+        bsResult[bb] = [];
+        for (var kk in bsSummary[bb]) bsResult[bb].push(bsSummary[bb][kk]);
+      }
+      return _cors(ContentService.createTextOutput(JSON.stringify({ branches: bsResult })));
+    } catch (e) {
+      Logger.log("branch_summary Supabase read failed, falling back to Sheet: " + e.message);
+    }
     var col = function(name) { return hdr.indexOf(name); };
     var summary = {};
     for (var i = 1; i < rows.length; i++) {
@@ -1789,6 +1858,63 @@ function handleApi(params) {
     var byProduct = {};
     var byDate = {};
     var totalRevenue = 0, totalCost = 0;
+
+    var reportRows = null;
+    try {
+      var repSb = supabaseSelect_("orders", "select=branch,timestamp,items_json&slip_status=eq.ยืนยัน");
+      reportRows = repSb.map(function(r) {
+        // Supabase's timestamp is UTC — convert to Bangkok-local before using
+        // as the by-date grouping key, same reasoning as the dashboard fix.
+        var localDate = Utilities.formatDate(new Date(r.timestamp), "Asia/Bangkok", "yyyy-MM-dd");
+        return { branch: r.branch || "ไม่ระบุ", dateKey: localDate, items: r.items_json || [] };
+      });
+    } catch (e) {
+      Logger.log("report Supabase read failed, falling back to Sheet: " + e.message);
+    }
+
+    if (reportRows) {
+      reportRows.forEach(function(rr) {
+        var branch = rr.branch, dateKey = rr.dateKey, items = rr.items;
+        var orderRev = 0, orderCost = 0;
+        for (var x = 0; x < items.length; x++) {
+          var it = items[x];
+          var qty = it.qty || 1;
+          var c = costMap[it.name] || {};
+          var rev = (it.price || 0) * qty;
+          var cost = (it.type === "box" ? (c.cost_box || 0) : (c.cost_pack || 0)) * qty;
+          orderRev += rev;
+          orderCost += cost;
+
+          var pKey = it.name + "|" + it.type;
+          if (!byProduct[pKey]) byProduct[pKey] = { name: it.name, type: it.type, qty: 0, revenue: 0, cost: 0 };
+          byProduct[pKey].qty += qty;
+          byProduct[pKey].revenue += rev;
+          byProduct[pKey].cost += cost;
+        }
+
+        if (!byBranch[branch]) byBranch[branch] = { revenue: 0, cost: 0, orders: 0 };
+        byBranch[branch].revenue += orderRev;
+        byBranch[branch].cost += orderCost;
+        byBranch[branch].orders++;
+
+        if (dateKey) {
+          if (!byDate[dateKey]) byDate[dateKey] = { revenue: 0, cost: 0, orders: 0 };
+          byDate[dateKey].revenue += orderRev;
+          byDate[dateKey].cost += orderCost;
+          byDate[dateKey].orders++;
+        }
+
+        totalRevenue += orderRev;
+        totalCost += orderCost;
+      });
+
+      return _cors(ContentService.createTextOutput(JSON.stringify({
+        total: { revenue: totalRevenue, cost: totalCost, profit: totalRevenue - totalCost },
+        by_branch: byBranch,
+        by_product: Object.values(byProduct),
+        by_date: byDate,
+      })));
+    }
 
     for (var i = 1; i < rows.length; i++) {
       var slip = rows[i][col("slip_status")] || "";
@@ -1916,8 +2042,51 @@ function handleApi(params) {
     var cached = dashCache.get("dashboard_v1");
     if (cached) return _cors(ContentService.createTextOutput(cached));
 
-    var col = function(name) { return hdr.indexOf(name); };
     var today = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
+
+    try {
+      var dashSb = supabaseSelect_("orders", "select=order_id,real_name,display_name,phone,items_json,total,slip_status,fulfillment,branch,address,timestamp&order=timestamp.desc");
+      var dOrdersToday = 0, dRevenueToday = 0, dPendingCount = 0;
+      var dRecentOrders = [];
+      var dPendingSlips = ["รอตรวจ", "รอตรวจเพิ่ม", "ยอดไม่ตรง", "สลิปซ้ำ", "บัญชีไม่ตรง", "สงสัยปลอม"];
+      dashSb.forEach(function(r) {
+        var slip = String(r.slip_status || "");
+        // Supabase's timestamp is UTC (e.g. "...+00:00"), unlike the Sheet's
+        // already-Bangkok-local string — must convert before date-comparing,
+        // a naive substring(0,10) here would be off by up to 7 hours.
+        var localDate = Utilities.formatDate(new Date(r.timestamp), "Asia/Bangkok", "yyyy-MM-dd");
+        if (localDate === today) {
+          dOrdersToday++;
+          if (slip === "ยืนยัน") dRevenueToday += Number(r.total) || 0;
+        }
+        if (dPendingSlips.indexOf(slip) >= 0) dPendingCount++;
+        if (dRecentOrders.length < 200) {
+          dRecentOrders.push({
+            order_id: String(r.order_id || ""),
+            real_name: String(r.real_name || ""),
+            display_name: String(r.display_name || ""),
+            phone: String(r.phone || ""),
+            items_json: JSON.stringify(r.items_json || []),
+            total: Number(r.total) || 0,
+            slip_status: slip,
+            fulfillment: String(r.fulfillment || ""),
+            branch: String(r.branch || ""),
+            address: String(r.address || ""),
+            timestamp: String(r.timestamp || ""),
+          });
+        }
+      });
+      var dashJsonSb = JSON.stringify({
+        orders_today: dOrdersToday, revenue_today: dRevenueToday,
+        pending_count: dPendingCount, recent_orders: dRecentOrders,
+      });
+      dashCache.put("dashboard_v1", dashJsonSb, 30);
+      return _cors(ContentService.createTextOutput(dashJsonSb));
+    } catch (e) {
+      Logger.log("dashboard Supabase read failed, falling back to Sheet: " + e.message);
+    }
+
+    var col = function(name) { return hdr.indexOf(name); };
     var ordersToday = 0, revenueToday = 0, pendingCount = 0;
     var recentOrders = [];
     for (var i = rows.length - 1; i >= 1; i--) {
@@ -2000,6 +2169,28 @@ function handleApi(params) {
 
   // ── รายการจัดส่งพัสดุ ──
   if (action === "delivery_orders") {
+    try {
+      var doSb = supabaseSelect_("orders", "select=order_id,real_name,display_name,phone,address,items_json,total,slip_status,fulfillment,timestamp&branch=eq.จัดส่ง&order=timestamp.desc");
+      var doDeliveries = doSb
+        .filter(function(r) { return r.fulfillment !== "จัดส่งแล้ว" && r.fulfillment !== "รับแล้ว"; })
+        .map(function(r) {
+          return {
+            order_id:     String(r.order_id || ""),
+            real_name:    String(r.real_name || ""),
+            display_name: String(r.display_name || ""),
+            phone:        String(r.phone || ""),
+            address:      String(r.address || ""),
+            items_json:   JSON.stringify(r.items_json || []),
+            total:        Number(r.total) || 0,
+            slip_status:  String(r.slip_status || ""),
+            fulfillment:  String(r.fulfillment || ""),
+            timestamp:    String(r.timestamp || ""),
+          };
+        });
+      return _cors(ContentService.createTextOutput(JSON.stringify({ deliveries: doDeliveries })));
+    } catch (e) {
+      Logger.log("delivery_orders Supabase read failed, falling back to Sheet: " + e.message);
+    }
     var col = function(name) { return hdr.indexOf(name); };
     var deliveries = [];
     for (var i = rows.length - 1; i >= 1; i--) {
