@@ -1654,6 +1654,7 @@ function handleApi(params) {
         staff_confirmed_at: String(rows[i][col("staff_confirmed_at")] || ""),
         customer_confirmed_at: String(rows[i][col("customer_confirmed_at")] || ""),
         timestamp: String(rows[i][col("timestamp")] || ""),
+        notified_at: col("notified_at") >= 0 ? String(rows[i][col("notified_at")] || "") : "",
       });
     }
     orders.reverse();

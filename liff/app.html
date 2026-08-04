@@ -1031,6 +1031,7 @@ async function loadBrOrders() {
           <div style="font-weight:600;margin-bottom:6px">รายการสินค้า</div>
           ${itemsHtml}
           <div style="margin-top:8px;font-size:12px;color:var(--text2)">สั่งเมื่อ: ${esc(o.timestamp||'')}</div>
+          ${o.notified_at?`<div style="margin-top:4px;font-size:12px;color:#2d8f4e">📨 แจ้งลูกค้าแล้ว · ${esc(o.notified_at)}</div>`:''}
           ${hasPartialPending?`<button class="btn" style="margin-top:10px;background:#d97706" onclick="event.stopPropagation();showPartialReadyDialog('${o.order_id}',${itemsJson})">${readyBtnLabel}</button>`:''}
           ${(canHandover&&hasReadyItems)||(!items.some(it=>it.ready_at)&&canHandover)?`<button class="btn btn-green" style="margin-top:8px" onclick="event.stopPropagation();handoverOrder('${o.order_id}','br')">🤝 ส่งมอบสินค้า</button>`:''}
           ${ff==='รับบางส่วนแล้ว'?'<div style="text-align:center;padding:10px;margin-top:8px;background:#fff8e1;border-radius:8px;color:#d97706;font-weight:600">📦 ส่งมอบบางส่วนแล้ว รอสินค้าที่เหลือ</div>':''}
@@ -1068,6 +1069,7 @@ async function searchOrders() {
       <div style="font-size:14px;font-weight:700;color:#2d8f4e">฿${Number(o.total).toLocaleString()}</div>
       <div style="font-size:12px;color:#888;margin-top:2px">สลิป: ${esc(o.slip_status)}</div>
       ${ff==='รับบางส่วนแล้ว'?'<div style="font-size:12px;color:#d97706;margin-top:4px">📦 ส่งมอบบางส่วนแล้ว รอสินค้าที่เหลือ</div>':''}
+      ${o.notified_at?`<div style="font-size:12px;color:#2d8f4e;margin-top:4px">📨 แจ้งลูกค้าแล้ว · ${esc(o.notified_at)}</div>`:''}
       ${hasPartialPending&&o.slip_status==='ยืนยัน'?`<button class="btn btn-sm" style="margin-top:8px;background:#d97706" onclick="showPartialReadyDialog('${o.order_id}',${itemsJson})">${readyBtnLabel}</button>`:''}
       ${(canHandover&&(hasReadyItems||!items.some(it=>it.ready_at)))?`<button class="btn btn-green btn-sm" style="margin-top:8px" onclick="handoverOrder('${o.order_id}','search')">🤝 ส่งมอบ</button>`:''}
       </div>`;
