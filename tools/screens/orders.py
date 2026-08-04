@@ -2,6 +2,7 @@
 """Card Game Order Dashboard — admin view"""
 
 import json
+import os
 import sys
 from pathlib import Path
 from datetime import date, datetime, timedelta, timezone
@@ -60,19 +61,31 @@ def get_gc():
     return _gc_client
 
 
+@st.cache_resource
+def get_supabase():
+    from supabase import create_client
+    url = os.environ.get("SUPABASE_URL", "")
+    key = os.environ.get("SUPABASE_SERVICE_KEY", "")
+    if not url or not key:
+        try:
+            url = url or st.secrets["SUPABASE_URL"]
+            key = key or st.secrets["SUPABASE_SERVICE_KEY"]
+        except Exception:
+            pass
+    return create_client(url, key)
+
+
 @st.cache_data(ttl=120)
 def load_orders() -> pd.DataFrame:
     try:
-        ws   = get_gc().open_by_key(SHEET_ID).worksheet("orders")
-        rows = ws.get_all_values()
-        if len(rows) < 2:
-            return pd.DataFrame()
-        df = pd.DataFrame(rows[1:], columns=rows[0])
+        rows = get_supabase().table("orders").select("*").execute().data
+        df = pd.DataFrame(rows)
+        if df.empty:
+            return df
         df["total"]        = pd.to_numeric(df.get("total", 0), errors="coerce").fillna(0)
         df["slip_amount"]  = pd.to_numeric(df.get("slip_amount", 0), errors="coerce").fillna(0)
         df["timestamp_dt"] = pd.to_datetime(df.get("timestamp", ""), errors="coerce", utc=True)
         df["date"]         = df["timestamp_dt"].dt.tz_convert("Asia/Bangkok").dt.date
-        df["row_num"]      = range(2, len(df) + 2)  # แถวจริงใน Sheet (1-indexed + header)
         return df
     except Exception as e:
         st.error(f"โหลด orders ไม่ได้: {e}")
@@ -110,10 +123,13 @@ def sync_order_to_supabase(row_num: int):
         pass
 
 
-def update_slip_status(row_num: int, status: str, amount: str = "", note: str = ""):
+def update_slip_status(order_id: str, status: str, amount: str = "", note: str = ""):
     ws = get_gc().open_by_key(SHEET_ID).worksheet("orders")
-    rows = ws.get_all_values()
-    hdr  = rows[0]
+    cell = ws.find(order_id, in_column=1)
+    if not cell:
+        raise Exception(f"ไม่พบออเดอร์ {order_id} ใน Sheet")
+    row_num = cell.row
+    hdr = ws.row_values(1)
     status_col = hdr.index("slip_status") + 1 if "slip_status" in hdr else None
     amount_col = hdr.index("slip_amount") + 1 if "slip_amount" in hdr else None
     notes_col  = hdr.index("notes")       + 1 if "notes"       in hdr else None
@@ -191,7 +207,11 @@ def gas_post(payload: dict) -> dict:
     return result
 
 
-def parse_items(items_json: str) -> list:
+def parse_items(items_json) -> list:
+    # Supabase's items_json is native jsonb (already a list); the old
+    # Sheet-based read gave a JSON string — accept either.
+    if isinstance(items_json, list):
+        return items_json
     try:
         return json.loads(items_json) if items_json else []
     except Exception:
@@ -701,10 +721,10 @@ for _, row in page_df.iterrows():
                                 if new_status == "ยืนยัน" and cur_status != "ยืนยัน":
                                     confirm_slip_via_gas(order_id)
                                     if new_note:
-                                        update_slip_status(int(row["row_num"]), "", "", new_note)
+                                        update_slip_status(order_id, "", "", new_note)
                                     st.success("บันทึกแล้ว + แจ้ง LINE ลูกค้าแล้ว")
                                 else:
-                                    update_slip_status(int(row["row_num"]), new_status, "", new_note)
+                                    update_slip_status(order_id, new_status, "", new_note)
                                     st.success("บันทึกแล้ว")
                                 st.cache_data.clear()
                                 st.rerun()
