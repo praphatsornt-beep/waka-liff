@@ -714,7 +714,7 @@ async function submitPartialReady(orderId) {
   try {
     const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'partialReady', order_id: orderId, indices, code: _authCode() }) });
     const d = await r.json();
-    if (d.ok) { toast('แจ้งพร้อมรับแล้ว · LINE ส่งลูกค้าแล้ว'); loadDashboard(); loadBrOrders(); }
+    if (d.ok) { toast('แจ้งพร้อมรับแล้ว · LINE ส่งลูกค้าแล้ว'); loadDashboard(); loadBrOrders(); searchOrders(); }
     else alert(d.error || 'ผิดพลาด');
   } catch(e) { alert('ผิดพลาด'); }
 }
@@ -760,7 +760,7 @@ async function submitCancelItems(orderId) {
   try {
     const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'partialCancelItems', order_id: orderId, indices, reason, code: _authCode() }) });
     const d = await r.json();
-    if (d.ok) { toast('ยกเลิก ' + d.cancelled + ' รายการแล้ว'); loadDashboard(); loadBrOrders(); }
+    if (d.ok) { toast('ยกเลิก ' + d.cancelled + ' รายการแล้ว'); loadDashboard(); loadBrOrders(); searchOrders(); }
     else alert(d.error || 'ผิดพลาด');
   } catch(e) { alert('ผิดพลาด'); }
 }

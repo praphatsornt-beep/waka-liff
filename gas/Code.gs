@@ -3464,12 +3464,21 @@ function handlePartialReady(data) {
       var items = [];
       try { items = JSON.parse(oRows[i][oCol("items_json")] || "[]"); } catch(e) {}
 
-      // ตั้ง ready_at บน items ที่เลือก (ที่ยังไม่ handed_at และไม่ cancelled)
+      // ตั้ง ready_at บน items ที่เลือก (ที่ยังไม่ handed_at, ไม่ cancelled, และยังไม่ ready_at มาก่อน)
+      var newlyReady = [];
       for (var ii = 0; ii < indices.length; ii++) {
         var idx = indices[ii];
-        if (idx >= 0 && idx < items.length && !items[idx].handed_at && !items[idx].cancelled_at) {
+        if (idx >= 0 && idx < items.length && !items[idx].handed_at && !items[idx].cancelled_at && !items[idx].ready_at) {
           items[idx].ready_at = now;
+          newlyReady.push(items[idx]);
         }
+      }
+
+      // ไม่มีอะไรเปลี่ยนจริง (รายการที่เลือกแจ้งพร้อมรับไปแล้วทั้งหมด) — ไม่ต้องเขียนซ้ำ
+      // หรือแจ้งลูกค้าซ้ำ กันปุ่มที่กดซ้ำ (เช่นหน้าค้นหาที่ข้อมูลยังไม่ refresh) ส่ง LINE ซ้ำ
+      if (newlyReady.length === 0) {
+        lock.releaseLock();
+        return _cors(ContentService.createTextOutput(JSON.stringify({ error: "รายการที่เลือกแจ้งพร้อมรับไปแล้ว" })));
       }
 
       ws.getRange(i + 1, oCol("items_json") + 1).setValue(JSON.stringify(items));
@@ -3503,6 +3512,10 @@ function handlePartialReady(data) {
         }
         msg += "\n\nกรุณามารับที่สาขา" + branch + " ได้เลยครับ\n" + trackUrl;
         _linePush(uid, msg);
+        if (oCol("notified_at") >= 0) {
+          ws.getRange(i + 1, oCol("notified_at") + 1).setValue(now);
+          updatedRow[oCol("notified_at")] = now;
+        }
       }
 
       lock.releaseLock();
