@@ -113,6 +113,22 @@ function writeSupabaseOrder_(obj) {
   return obj;
 }
 
+// Generic versions of the two helpers above, for migrating the remaining
+// Sheet-primary tables (wakagym_events, tournament_events,
+// tournament_categories, etc.) to Supabase-primary one at a time, same
+// pattern: read/write Supabase directly, mirror to the "WAKA export" sheet,
+// throw on write failure since there's no Sheet fallback once migrated.
+function getSupabaseRow_(table, keyCol, keyValue) {
+  var rows = supabaseSelect_(table, "select=*&" + keyCol + "=eq." + encodeURIComponent(keyValue) + "&limit=1");
+  return rows[0] || null;
+}
+function writeSupabaseRow_(table, obj, header, keyCol) {
+  var res = pushToSupabase_(table, obj);
+  if (!res.ok) throw new Error("Supabase " + table + " write failed: " + res.text);
+  mirrorToReportSheet_(table, header, keyCol, obj);
+  return obj;
+}
+
 // ── Supabase-primary tables (config, stock_branch, shipments, tournament_*,
 // wakagym_events, player_stats — migrated one at a time). These tables read
 // and write Supabase directly instead of the Sheet; mirrorToReportSheet_
@@ -324,16 +340,6 @@ function syncCatalogItemsFromRows_(rows, items) {
     }
   });
 }
-function syncTournamentEventToSupabase_(ss, eventId) {
-  syncRowToSupabase_(ss, TAB_TOURNAMENT_EVENTS, eventId, "tournament_events", SUPABASE_TOURNAMENT_EVENTS_HEADER, []);
-}
-function syncTournamentCategoryToSupabase_(ss, categoryId) {
-  syncRowToSupabase_(ss, TAB_TOURNAMENT_CATEGORIES, categoryId, "tournament_categories", SUPABASE_TOURNAMENT_CATEGORIES_HEADER, []);
-}
-function syncWakagymEventToSupabase_(ss, eventId) {
-  syncRowToSupabase_(ss, TAB_WAKAGYM_EVENTS, eventId, "wakagym_events", SUPABASE_WAKAGYM_EVENTS_HEADER, []);
-}
-
 // stock_branch has no single-column id — matched by (name, branch) together.
 function syncStockBranchToSupabase_(ss, name, branch) {
   try {
@@ -371,9 +377,7 @@ const TAB_SHIPMENTS    = "shipments";
 const TAB_WAKAGYM_REG = "wakagym_reg";
 const TAB_PLAYER_STATS   = "player_stats";
 const TAB_WAKAGYM_EVENTS = "wakagym_events";
-const TAB_TOURNAMENT_EVENTS      = "tournament_events";
 const TAB_TOURNAMENT_REG         = "tournament_reg";
-const TAB_TOURNAMENT_CATEGORIES  = "tournament_categories";
 
 const BRANCHES = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์"];
 
@@ -1115,30 +1119,27 @@ function _ensureTab(ss, tabName, headers) {
 }
 
 function _getActiveEvent(ss, branch) {
-  var evWs = ss.getSheetByName(TAB_WAKAGYM_EVENTS);
-  if (!evWs) return null;
   var today = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
-  var rows = evWs.getDataRange().getValues();
-  var hdr = rows[0];
-  var col = function(n) { return hdr.indexOf(n); };
-  for (var i = rows.length - 1; i >= 1; i--) {
-    var d = String(rows[i][col("date")]);
-    if (d.length > 10) d = d.substring(0, 10);
-    if (d === today && String(rows[i][col("status")]) === "open") {
-      if (!branch || String(rows[i][col("branch")]) === branch) {
-        return {
-          event_id: String(rows[i][col("event_id")]),
-          date: today,
-          branch: String(rows[i][col("branch")] || ""),
-          tier: String(rows[i][col("tier")] || "L"),
-          entry_fee: Number(rows[i][col("entry_fee")]) || 200,
-          status: "open",
-          row_num: i + 1,
-        };
-      }
-    }
-  }
-  return null;
+  var query = "select=event_id,date,branch,tier,entry_fee,status&date=eq." + today + "&status=eq.open";
+  if (branch) query += "&branch=eq." + encodeURIComponent(branch);
+  var rows = supabaseSelect_("wakagym_events", query);
+  if (!rows.length) return null;
+  // "most recently created" — event_id is EV{date}-{n}, a lexical sort would
+  // put "-10" before "-2", so sort by the numeric suffix instead.
+  rows.sort(function(a, b) {
+    var na = Number(String(a.event_id).split("-").pop()) || 0;
+    var nb = Number(String(b.event_id).split("-").pop()) || 0;
+    return na - nb;
+  });
+  var r = rows[rows.length - 1];
+  return {
+    event_id: String(r.event_id),
+    date: today,
+    branch: String(r.branch || ""),
+    tier: String(r.tier || "L"),
+    entry_fee: Number(r.entry_fee) || 200,
+    status: "open",
+  };
 }
 
 function handleWakagymRegister(data) {
@@ -1285,24 +1286,15 @@ function handleTournamentRegister(data) {
     var ss = SpreadsheetApp.openById(SHEET_ID);
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
 
-    var evWs = ss.getSheetByName(TAB_TOURNAMENT_EVENTS);
-    if (!evWs) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no tournament events" }))); }
-    var evRows = evWs.getDataRange().getValues();
-    var evHdr = evRows[0];
-    var ec = function(n) { return evHdr.indexOf(n); };
-
     var eventId = String(data.eventId || "").trim();
-    var eventRow = null;
-    for (var ei = 1; ei < evRows.length; ei++) {
-      if (String(evRows[ei][ec("event_id")]) === eventId) { eventRow = evRows[ei]; break; }
-    }
+    var eventRow = getSupabaseRow_("tournament_events", "event_id", eventId);
     if (!eventRow) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "event not found" }))); }
-    if (String(eventRow[ec("status")]) !== "open") { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "registration closed" }))); }
+    if (String(eventRow.status) !== "open") { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "registration closed" }))); }
 
-    var eventName = String(eventRow[ec("name")] || "");
-    var eventDate = String(eventRow[ec("date")] || "");
-    var entryFee = Number(eventRow[ec("entry_fee")]) || 0;
-    var maxPlayers = Number(eventRow[ec("max_players")]) || 0;
+    var eventName = String(eventRow.name || "");
+    var eventDate = String(eventRow.date || "");
+    var entryFee = Number(eventRow.entry_fee) || 0;
+    var maxPlayers = Number(eventRow.max_players) || 0;
 
     var regWs = _ensureTab(ss, TAB_TOURNAMENT_REG, [
       "reg_id", "timestamp", "event_id", "sequence_no", "line_user_id", "display_name",
@@ -2202,22 +2194,14 @@ function handleApi(params) {
     var evTier = params.tier || "L";
     if (!evBranch) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing branch" })));
     if (!TIER_CONFIG[evTier]) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "invalid tier" })));
-    var evSs = ss;
-    var evWs = _ensureTab(evSs, TAB_WAKAGYM_EVENTS, [
-      "event_id", "date", "branch", "tier", "entry_fee", "status", "created_by"
-    ]);
     var evNow = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
-    var evId = "EV" + evNow.replace(/-/g, "");
-    var evRows = evWs.getDataRange().getValues();
-    var evCount = 0;
-    for (var ei = 1; ei < evRows.length; ei++) {
-      var ed = String(evRows[ei][1]);
-      if (ed.length > 10) ed = ed.substring(0, 10);
-      if (ed === evNow) evCount++;
-    }
-    evId += "-" + (evCount + 1);
-    evWs.appendRow([evId, evNow, evBranch, evTier, TIER_CONFIG[evTier].fee, "open", params.created_by || "staff"]);
-    syncWakagymEventToSupabase_(evSs, evId);
+    var evExisting = supabaseSelect_("wakagym_events", "select=event_id&date=eq." + evNow);
+    var evId = "EV" + evNow.replace(/-/g, "") + "-" + (evExisting.length + 1);
+    var evObj = {
+      event_id: evId, date: evNow, branch: evBranch, tier: evTier,
+      entry_fee: TIER_CONFIG[evTier].fee, status: "open", created_by: params.created_by || "staff",
+    };
+    writeSupabaseRow_("wakagym_events", evObj, SUPABASE_WAKAGYM_EVENTS_HEADER, "event_id");
     return _cors(ContentService.createTextOutput(JSON.stringify({
       ok: true, event_id: evId, tier: evTier, entry_fee: TIER_CONFIG[evTier].fee,
       token_table: TOKEN_TABLE[evTier],
@@ -2238,18 +2222,8 @@ function handleApi(params) {
 
     var srEvent = null;
     if (srEventId) {
-      var evWs2 = srSs.getSheetByName(TAB_WAKAGYM_EVENTS);
-      if (evWs2) {
-        var evRows2 = evWs2.getDataRange().getValues();
-        var evHdr2 = evRows2[0];
-        var evc = function(n) { return evHdr2.indexOf(n); };
-        for (var ei2 = 1; ei2 < evRows2.length; ei2++) {
-          if (String(evRows2[ei2][evc("event_id")]) === srEventId) {
-            srEvent = { tier: String(evRows2[ei2][evc("tier")] || "L") };
-            break;
-          }
-        }
-      }
+      var evRow2 = getSupabaseRow_("wakagym_events", "event_id", srEventId);
+      if (evRow2) srEvent = { tier: String(evRow2.tier || "L") };
     }
     var tier = srEvent ? srEvent.tier : "L";
 
@@ -2449,57 +2423,46 @@ function handleApi(params) {
   if (action === "tournament_status") {
     var tsId = String(params.event || "").trim();
     if (!tsId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing event" })));
-    var tsEvWs = ss.getSheetByName(TAB_TOURNAMENT_EVENTS);
-    if (!tsEvWs) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no events" })));
-    var tsEvRows = tsEvWs.getDataRange().getValues();
-    var tsEvHdr = tsEvRows[0]; var tsec = function(n) { return tsEvHdr.indexOf(n); };
-    for (var tsi = 1; tsi < tsEvRows.length; tsi++) {
-      if (String(tsEvRows[tsi][tsec("event_id")]) !== tsId) continue;
-      var tsRegWs = ss.getSheetByName(TAB_TOURNAMENT_REG);
-      var tsCount = 0; var tsUserReg = null; var tsUid = params.line_user_id || "";
-      if (tsRegWs) {
-        var tsRegRows = tsRegWs.getDataRange().getValues(); var tsRHdr = tsRegRows[0];
-        var tsrc2 = function(n) { return tsRHdr.indexOf(n); };
-        for (var tri = 1; tri < tsRegRows.length; tri++) {
-          if (String(tsRegRows[tri][tsrc2("event_id")]) !== tsId || String(tsRegRows[tri][tsrc2("status")]) === "cancelled") continue;
-          tsCount++;
-          if (tsUid && String(tsRegRows[tri][tsrc2("line_user_id")]) === tsUid) tsUserReg = String(tsRegRows[tri][tsrc2("reg_id")] || "");
-        }
+    var tsEvent = getSupabaseRow_("tournament_events", "event_id", tsId);
+    if (!tsEvent) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "event not found" })));
+
+    var tsRegWs = ss.getSheetByName(TAB_TOURNAMENT_REG);
+    var tsCount = 0; var tsUserReg = null; var tsUid = params.line_user_id || "";
+    if (tsRegWs) {
+      var tsRegRows = tsRegWs.getDataRange().getValues(); var tsRHdr = tsRegRows[0];
+      var tsrc2 = function(n) { return tsRHdr.indexOf(n); };
+      for (var tri = 1; tri < tsRegRows.length; tri++) {
+        if (String(tsRegRows[tri][tsrc2("event_id")]) !== tsId || String(tsRegRows[tri][tsrc2("status")]) === "cancelled") continue;
+        tsCount++;
+        if (tsUid && String(tsRegRows[tri][tsrc2("line_user_id")]) === tsUid) tsUserReg = String(tsRegRows[tri][tsrc2("reg_id")] || "");
       }
-      var tsDateVal = tsEvRows[tsi][tsec("date")];
-      var tsCloseVal = tsEvRows[tsi][tsec("registration_close")];
-      var tsCats = [];
-      var tsCatWs = ss.getSheetByName(TAB_TOURNAMENT_CATEGORIES);
-      if (tsCatWs) {
-        var tsCatRows = tsCatWs.getDataRange().getValues(); var tsCatHdr = tsCatRows[0];
-        var tscc = function(n) { return tsCatHdr.indexOf(n); };
-        for (var tci = 1; tci < tsCatRows.length; tci++) {
-          if (String(tsCatRows[tci][tscc("event_id")]) !== tsId) continue;
-          if (String(tsCatRows[tci][tscc("status")]) === "deleted") continue;
-          tsCats.push({
-            category_id: String(tsCatRows[tci][tscc("category_id")] || ""),
-            name: String(tsCatRows[tci][tscc("name")] || ""),
-            entry_fee: Number(tsCatRows[tci][tscc("entry_fee")]) || 0,
-            max_players: Number(tsCatRows[tci][tscc("max_players")]) || 0,
-            sort_order: Number(tsCatRows[tci][tscc("sort_order")]) || 0,
-            status: String(tsCatRows[tci][tscc("status")] || "open"),
-          });
-        }
-        tsCats.sort(function(a, b) { return a.sort_order - b.sort_order; });
-      }
-      return _cors(ContentService.createTextOutput(JSON.stringify({
-        event_id: tsId, name: String(tsEvRows[tsi][tsec("name")] || ""),
-        date: tsDateVal instanceof Date ? Utilities.formatDate(tsDateVal, "Asia/Bangkok", "yyyy-MM-dd") : String(tsDateVal || ""),
-        entry_fee: Number(tsEvRows[tsi][tsec("entry_fee")]) || 0,
-        max_players: Number(tsEvRows[tsi][tsec("max_players")]) || 0,
-        rules_text: String(tsEvRows[tsi][tsec("rules_text")] || ""),
-        registration_close: tsCloseVal instanceof Date ? Utilities.formatDate(tsCloseVal, "Asia/Bangkok", "yyyy-MM-dd") : String(tsCloseVal || ""),
-        status: String(tsEvRows[tsi][tsec("status")] || ""),
-        current_count: tsCount, already_registered: !!tsUserReg, existing_reg_id: tsUserReg || null,
-        categories: tsCats,
-      })));
     }
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "event not found" })));
+
+    var tsCatsSb = supabaseSelect_("tournament_categories", "select=*&event_id=eq." + encodeURIComponent(tsId) + "&order=sort_order.asc");
+    var tsCats = tsCatsSb
+      .filter(function(c) { return String(c.status || "") !== "deleted"; })
+      .map(function(c) {
+        return {
+          category_id: String(c.category_id || ""),
+          name: String(c.name || ""),
+          entry_fee: Number(c.entry_fee) || 0,
+          max_players: Number(c.max_players) || 0,
+          sort_order: Number(c.sort_order) || 0,
+          status: String(c.status || "open"),
+        };
+      });
+
+    return _cors(ContentService.createTextOutput(JSON.stringify({
+      event_id: tsId, name: String(tsEvent.name || ""),
+      date: String(tsEvent.date || ""),
+      entry_fee: Number(tsEvent.entry_fee) || 0,
+      max_players: Number(tsEvent.max_players) || 0,
+      rules_text: String(tsEvent.rules_text || ""),
+      registration_close: String(tsEvent.registration_close || ""),
+      status: String(tsEvent.status || ""),
+      current_count: tsCount, already_registered: !!tsUserReg, existing_reg_id: tsUserReg || null,
+      categories: tsCats,
+    })));
   }
 
   if (action === "tournament_reg_status") {
@@ -2513,17 +2476,10 @@ function handleApi(params) {
       if (String(trsRows[trsi][trsrc("reg_id")]) !== trsId) continue;
       var trsEvId = String(trsRows[trsi][trsrc("event_id")] || "");
       var trsEvName = "", trsEvDate = "";
-      var trsEvWs = ss.getSheetByName(TAB_TOURNAMENT_EVENTS);
-      if (trsEvWs) {
-        var trsEvRows = trsEvWs.getDataRange().getValues(); var trsEvHdr = trsEvRows[0];
-        var trsec = function(n) { return trsEvHdr.indexOf(n); };
-        for (var trej = 1; trej < trsEvRows.length; trej++) {
-          if (String(trsEvRows[trej][trsec("event_id")]) === trsEvId) {
-            trsEvName = String(trsEvRows[trej][trsec("name")] || "");
-            var trsEvDateVal = trsEvRows[trej][trsec("date")];
-            trsEvDate = trsEvDateVal instanceof Date ? Utilities.formatDate(trsEvDateVal, "Asia/Bangkok", "yyyy-MM-dd") : String(trsEvDateVal || ""); break;
-          }
-        }
+      var trsEvRow = getSupabaseRow_("tournament_events", "event_id", trsEvId);
+      if (trsEvRow) {
+        trsEvName = String(trsEvRow.name || "");
+        trsEvDate = String(trsEvRow.date || "");
       }
       return _cors(ContentService.createTextOutput(JSON.stringify({
         reg_id: trsId, event_id: trsEvId, event_name: trsEvName, event_date: trsEvDate,
@@ -2545,26 +2501,19 @@ function handleApi(params) {
   }
 
   if (action === "tournament_events") {
-    var tevWs = ss.getSheetByName(TAB_TOURNAMENT_EVENTS);
-    if (!tevWs) return _cors(ContentService.createTextOutput(JSON.stringify({ events: [] })));
-    var tevRows = tevWs.getDataRange().getValues(); var tevHdr = tevRows[0];
-    var tevc = function(n) { return tevHdr.indexOf(n); };
-    var tevList = [];
-    for (var tevi = 1; tevi < tevRows.length; tevi++) {
-      var tevDate = tevRows[tevi][tevc("date")];
-      var tevClose = tevRows[tevi][tevc("registration_close")];
-      tevList.push({
-        event_id: String(tevRows[tevi][tevc("event_id")] || ""),
-        name: String(tevRows[tevi][tevc("name")] || ""),
-        date: tevDate instanceof Date ? Utilities.formatDate(tevDate, "Asia/Bangkok", "yyyy-MM-dd") : String(tevDate || ""),
-        entry_fee: Number(tevRows[tevi][tevc("entry_fee")]) || 0,
-        max_players: Number(tevRows[tevi][tevc("max_players")]) || 0,
-        registration_close: tevClose instanceof Date ? Utilities.formatDate(tevClose, "Asia/Bangkok", "yyyy-MM-dd") : String(tevClose || ""),
-        status: String(tevRows[tevi][tevc("status")] || ""),
-        created_at: String(tevRows[tevi][tevc("created_at")] || ""),
-      });
-    }
-    tevList.reverse();
+    var tevSb = supabaseSelect_("tournament_events", "select=*&order=created_at.desc");
+    var tevList = tevSb.map(function(r) {
+      return {
+        event_id: String(r.event_id || ""),
+        name: String(r.name || ""),
+        date: String(r.date || ""),
+        entry_fee: Number(r.entry_fee) || 0,
+        max_players: Number(r.max_players) || 0,
+        registration_close: String(r.registration_close || ""),
+        status: String(r.status || ""),
+        created_at: String(r.created_at || ""),
+      };
+    });
     return _cors(ContentService.createTextOutput(JSON.stringify({ events: tevList })));
   }
 
@@ -2603,21 +2552,16 @@ function handleApi(params) {
     var tceName = String(params.name || "").trim();
     var tceDate = String(params.date || "").trim();
     if (!tceName || !tceDate) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing name or date" })));
-    var tceWs = _ensureTab(ss, TAB_TOURNAMENT_EVENTS, [
-      "event_id", "name", "date", "entry_fee", "max_players", "rules_text",
-      "registration_close", "status", "created_at"
-    ]);
     var tceDateStr = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyyMMdd");
-    var tceExRows = tceWs.getDataRange().getValues(); var tceCount = 0;
-    for (var tcei = 1; tcei < tceExRows.length; tcei++) {
-      if (String(tceExRows[tcei][0]).indexOf("EVT" + tceDateStr) === 0) tceCount++;
-    }
-    var tceId = "EVT" + tceDateStr + "-" + (tceCount + 1);
+    var tceExisting = supabaseSelect_("tournament_events", "select=event_id&event_id=like.EVT" + tceDateStr + "*");
+    var tceId = "EVT" + tceDateStr + "-" + (tceExisting.length + 1);
     var tceNow = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
-    tceWs.appendRow([tceId, tceName, tceDate, Number(params.entry_fee) || 0,
-      Number(params.max_players) || 0, String(params.rules_text || "").trim(),
-      String(params.registration_close || "").trim(), "open", tceNow]);
-    syncTournamentEventToSupabase_(ss, tceId);
+    var tceObj = {
+      event_id: tceId, name: tceName, date: tceDate, entry_fee: Number(params.entry_fee) || 0,
+      max_players: Number(params.max_players) || 0, rules_text: String(params.rules_text || "").trim(),
+      registration_close: String(params.registration_close || "").trim(), status: "open", created_at: tceNow,
+    };
+    writeSupabaseRow_("tournament_events", tceObj, SUPABASE_TOURNAMENT_EVENTS_HEADER, "event_id");
     return _cors(ContentService.createTextOutput(JSON.stringify({
       ok: true, event_id: tceId,
       reg_link: "https://liff.line.me/2010457385-JHbMDl5I?event=" + tceId,
@@ -2627,28 +2571,20 @@ function handleApi(params) {
   if (action === "tournament_update_event") {
     var tueId = String(params.event || "").trim();
     if (!tueId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing event" })));
-    var tueWs = ss.getSheetByName(TAB_TOURNAMENT_EVENTS);
-    if (!tueWs) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no events" })));
-    var tueRows = tueWs.getDataRange().getValues(); var tueHdr = tueRows[0];
-    var tuec = function(n) { return tueHdr.indexOf(n); };
     var tueSt = String(params.status || "").trim();
     if (tueSt && ["draft","open","closed","completed"].indexOf(tueSt) < 0)
       return _cors(ContentService.createTextOutput(JSON.stringify({ error: "invalid status" })));
-    for (var tuei = 1; tuei < tueRows.length; tuei++) {
-      if (String(tueRows[tuei][tuec("event_id")]) !== tueId) continue;
-      var tueR = tuei + 1;
-      var tueSet = function(col, val) { if (col >= 0) tueWs.getRange(tueR, col + 1).setValue(val); };
-      if (tueSt) tueSet(tuec("status"), tueSt);
-      if (params.name !== undefined) tueSet(tuec("name"), String(params.name).trim());
-      if (params.date !== undefined) tueSet(tuec("date"), String(params.date).trim());
-      if (params.entry_fee !== undefined) tueSet(tuec("entry_fee"), Number(params.entry_fee) || 0);
-      if (params.max_players !== undefined) tueSet(tuec("max_players"), Number(params.max_players) || 0);
-      if (params.rules_text !== undefined) tueSet(tuec("rules_text"), String(params.rules_text).trim());
-      if (params.registration_close !== undefined) tueSet(tuec("registration_close"), String(params.registration_close).trim());
-      syncTournamentEventToSupabase_(ss, tueId);
-      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
-    }
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "not found" })));
+    var tueRow = getSupabaseRow_("tournament_events", "event_id", tueId);
+    if (!tueRow) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "not found" })));
+    if (tueSt) tueRow.status = tueSt;
+    if (params.name !== undefined) tueRow.name = String(params.name).trim();
+    if (params.date !== undefined) tueRow.date = String(params.date).trim();
+    if (params.entry_fee !== undefined) tueRow.entry_fee = Number(params.entry_fee) || 0;
+    if (params.max_players !== undefined) tueRow.max_players = Number(params.max_players) || 0;
+    if (params.rules_text !== undefined) tueRow.rules_text = String(params.rules_text).trim();
+    if (params.registration_close !== undefined) tueRow.registration_close = String(params.registration_close).trim();
+    writeSupabaseRow_("tournament_events", tueRow, SUPABASE_TOURNAMENT_EVENTS_HEADER, "event_id");
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   }
 
   if (action === "tournament_update_reg") {
@@ -2672,17 +2608,10 @@ function handleApi(params) {
         var turSeq = Number(turRows[turi][turc("sequence_no")]) || 0;
         var turEvId = String(turRows[turi][turc("event_id")] || "");
         var turEvName = "", turEvDate = "";
-        var turEvWs = ss.getSheetByName(TAB_TOURNAMENT_EVENTS);
-        if (turEvWs) {
-          var turEvRows = turEvWs.getDataRange().getValues(); var turEvHdr = turEvRows[0];
-          var turec = function(n) { return turEvHdr.indexOf(n); };
-          for (var turej = 1; turej < turEvRows.length; turej++) {
-            if (String(turEvRows[turej][turec("event_id")]) === turEvId) {
-              turEvName = String(turEvRows[turej][turec("name")] || "");
-              var turEvDateVal = turEvRows[turej][turec("date")];
-              turEvDate = turEvDateVal instanceof Date ? Utilities.formatDate(turEvDateVal, "Asia/Bangkok", "yyyy-MM-dd") : String(turEvDateVal || ""); break;
-            }
-          }
+        var turEvRow = getSupabaseRow_("tournament_events", "event_id", turEvId);
+        if (turEvRow) {
+          turEvName = String(turEvRow.name || "");
+          turEvDate = String(turEvRow.date || "");
         }
         if (turUid && turUid !== "dev_user") {
           var turStatusUrl = "https://waka-liff.vercel.app/treg_status.html?id=" + encodeURIComponent(turId);
@@ -2764,23 +2693,18 @@ function handleApi(params) {
   if (action === "tournament_categories") {
     var tcEvId = String(params.event || "").trim();
     if (!tcEvId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing event" })));
-    var tcWs = ss.getSheetByName(TAB_TOURNAMENT_CATEGORIES);
-    if (!tcWs) return _cors(ContentService.createTextOutput(JSON.stringify({ categories: [] })));
-    var tcRows = tcWs.getDataRange().getValues(); var tcHdr = tcRows[0];
-    var tcc = function(n) { return tcHdr.indexOf(n); };
-    var cats = [];
-    for (var tci = 1; tci < tcRows.length; tci++) {
-      if (String(tcRows[tci][tcc("event_id")]) !== tcEvId) continue;
-      if (String(tcRows[tci][tcc("status")]) === "deleted") continue;
-      cats.push({
-        category_id: String(tcRows[tci][tcc("category_id")] || ""),
-        name: String(tcRows[tci][tcc("name")] || ""),
-        entry_fee: Number(tcRows[tci][tcc("entry_fee")]) || 0,
-        sort_order: Number(tcRows[tci][tcc("sort_order")]) || 0,
-        status: String(tcRows[tci][tcc("status")] || "open"),
+    var tcSb = supabaseSelect_("tournament_categories", "select=*&event_id=eq." + encodeURIComponent(tcEvId) + "&order=sort_order.asc");
+    var cats = tcSb
+      .filter(function(c) { return String(c.status || "") !== "deleted"; })
+      .map(function(c) {
+        return {
+          category_id: String(c.category_id || ""),
+          name: String(c.name || ""),
+          entry_fee: Number(c.entry_fee) || 0,
+          sort_order: Number(c.sort_order) || 0,
+          status: String(c.status || "open"),
+        };
       });
-    }
-    cats.sort(function(a, b) { return a.sort_order - b.sort_order; });
     return _cors(ContentService.createTextOutput(JSON.stringify({ categories: cats })));
   }
 
@@ -2789,31 +2713,24 @@ function handleApi(params) {
     var tacName = String(params.name || "").trim();
     var tacFee = Number(params.fee) || 0;
     if (!tacEvId || !tacName) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing params" })));
-    var tacWs = _ensureTab(ss, TAB_TOURNAMENT_CATEGORIES, [
-      "category_id", "event_id", "name", "entry_fee", "max_players", "sort_order", "status"
-    ]);
-    var tacRows = tacWs.getDataRange().getValues();
-    var tacExisting = tacRows.length - 1;
+    var tacExisting = supabaseSelect_("tournament_categories", "select=category_id&event_id=eq." + encodeURIComponent(tacEvId));
     var tacId = "CAT" + Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyyMMddHHmmss");
-    tacWs.appendRow([tacId, tacEvId, tacName, tacFee, 0, tacExisting + 1, "open"]);
-    syncTournamentCategoryToSupabase_(ss, tacId);
+    var tacObj = {
+      category_id: tacId, event_id: tacEvId, name: tacName, entry_fee: tacFee,
+      max_players: 0, sort_order: tacExisting.length + 1, status: "open",
+    };
+    writeSupabaseRow_("tournament_categories", tacObj, SUPABASE_TOURNAMENT_CATEGORIES_HEADER, "category_id");
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, category_id: tacId })));
   }
 
   if (action === "tournament_delete_category") {
     var tdcId = String(params.category_id || "").trim();
     if (!tdcId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing category_id" })));
-    var tdcWs = ss.getSheetByName(TAB_TOURNAMENT_CATEGORIES);
-    if (!tdcWs) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no categories" })));
-    var tdcRows = tdcWs.getDataRange().getValues(); var tdcHdr = tdcRows[0];
-    var tdcc = function(n) { return tdcHdr.indexOf(n); };
-    for (var tdci = 1; tdci < tdcRows.length; tdci++) {
-      if (String(tdcRows[tdci][tdcc("category_id")]) !== tdcId) continue;
-      tdcWs.getRange(tdci + 1, tdcc("status") + 1).setValue("deleted");
-      syncTournamentCategoryToSupabase_(ss, tdcId);
-      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
-    }
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "not found" })));
+    var tdcRow = getSupabaseRow_("tournament_categories", "category_id", tdcId);
+    if (!tdcRow) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "not found" })));
+    tdcRow.status = "deleted";
+    writeSupabaseRow_("tournament_categories", tdcRow, SUPABASE_TOURNAMENT_CATEGORIES_HEADER, "category_id");
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   }
 
   return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unknown action" })));
