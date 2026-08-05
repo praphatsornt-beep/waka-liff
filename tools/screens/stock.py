@@ -361,6 +361,50 @@ with tab_central:
         })
         st.dataframe(show, use_container_width=True, hide_index=True)
 
+    with st.expander("✏️ แก้ไขสินค้า"):
+        edit_names = sorted(catalog["name"].tolist()) if not catalog.empty else []
+        edit_sel = st.selectbox("เลือกสินค้าที่จะแก้ไข", edit_names, key="edit_product_sel")
+        edit_row = catalog[catalog["name"] == edit_sel].iloc[0] if edit_sel else None
+        if edit_row is not None:
+            def _num(v, default=0.0):
+                n = pd.to_numeric(v, errors="coerce")
+                return float(n) if pd.notna(n) else default
+
+            with st.form(f"edit_product_form_{edit_sel}"):
+                e1, e2 = st.columns(2)
+                e_category = e1.text_input("หมวดหมู่", value=str(edit_row.get("category") or ""))
+                e_active = e2.checkbox("เปิดขาย (active)", value=bool(edit_row.get("active")))
+                e3, e4 = st.columns(2)
+                # Supabase's catalog table names the pack-cost column cost_p, not cost_pack
+                e_cost_box = e3.number_input("ต้นทุน/กล่อง", min_value=0.0, value=_num(edit_row.get("cost_box")), step=1.0)
+                e_cost_pack = e4.number_input("ต้นทุน/ซอง", min_value=0.0, value=_num(edit_row.get("cost_p")), step=1.0)
+                e5, e6 = st.columns(2)
+                e_price_box = e5.number_input("ราคาขาย/กล่อง", min_value=0.0, value=_num(edit_row.get("price_box")), step=1.0)
+                e_price_pack = e6.number_input("ราคาขาย/ซอง", min_value=0.0, value=_num(edit_row.get("price_pack")), step=1.0)
+                e7, e8 = st.columns(2)
+                e_limit_box = e7.number_input("ขั้นต่ำแจ้งเตือน (กล่อง)", min_value=0.0, value=_num(edit_row.get("limit_box")), step=1.0)
+                e_limit_pack = e8.number_input("ขั้นต่ำแจ้งเตือน (ซอง)", min_value=0.0, value=_num(edit_row.get("limit_pack")), step=1.0)
+                e_barcode = st.text_input("บาร์โค้ด", value=str(edit_row.get("barcode") or ""))
+                e_image_url = st.text_input("ลิงก์รูปภาพ", value=str(edit_row.get("image_url") or ""))
+                e_notice = st.text_area("ข้อความแจ้งเตือนในสินค้า (notice)", value=str(edit_row.get("notice") or ""))
+                submitted_e = st.form_submit_button("บันทึกการแก้ไข")
+                if submitted_e:
+                    try:
+                        gas_post({
+                            "_action": "updateProduct", "name": edit_sel,
+                            "category": e_category.strip(), "active": e_active,
+                            "cost_box": e_cost_box, "cost_pack": e_cost_pack,
+                            "price_box": e_price_box, "price_pack": e_price_pack,
+                            "limit_box": e_limit_box, "limit_pack": e_limit_pack,
+                            "barcode": e_barcode.strip(), "image_url": e_image_url.strip(),
+                            "notice": e_notice.strip(),
+                        })
+                        st.success(f"แก้ไข \"{edit_sel}\" แล้ว")
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"บันทึกไม่ได้: {e}")
+
 with tab_branch:
     if stock_branch.empty:
         st.caption("ยังไม่มีข้อมูลสต็อกสาขา")
