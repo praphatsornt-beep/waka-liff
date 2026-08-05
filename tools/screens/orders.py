@@ -107,33 +107,46 @@ ADMIN_CODE = "waka99"  # branch-scoped actions (handoverOrder/partialReady/parti
                         # require this to prove branch ownership, same as liff/app.html's admin bypass —
                         # Streamlit is an admin-only tool so it always passes the admin code
 
-def confirm_slip_via_gas(order_id: str, custom_message: str = ""):
+def _gas_request(payload: dict) -> dict:
+    """POST to GAS with one retry. Apps Script web apps occasionally return a
+    non-JSON error page (a Google Drive "file not found" HTML page) under
+    lock contention or cold start instead of the real JSON response — seen
+    live causing a bulk action to silently no-op with no visible error."""
+    import time
     import requests
+    last_err = None
+    for attempt in range(2):
+        try:
+            resp = requests.post(f"{GAS_URL}?_s={WAKA_S}", json=payload, timeout=30)
+            return resp.json()
+        except (ValueError, requests.RequestException) as e:
+            last_err = e
+            if attempt == 0:
+                time.sleep(1.5)
+    raise Exception(f"GAS ไม่ตอบสนอง (ลองแล้ว 2 ครั้ง): {last_err}")
+
+
+def confirm_slip_via_gas(order_id: str, custom_message: str = ""):
     payload = {"_action": "confirmSlip", "order_id": order_id}
     if custom_message.strip():
         payload["custom_message"] = custom_message.strip()
-    resp = requests.post(f"{GAS_URL}?_s={WAKA_S}", json=payload, timeout=30)
-    result = resp.json()
+    result = _gas_request(payload)
     if not result.get("ok"):
         raise Exception(result.get("error", "GAS ตอบผิดพลาด"))
 
 
 def reject_slip_via_gas(order_id: str, reason: str = ""):
-    import requests
     payload = {"_action": "rejectSlip", "order_id": order_id}
     if reason.strip():
         payload["reason"] = reason.strip()
-    resp = requests.post(f"{GAS_URL}?_s={WAKA_S}", json=payload, timeout=30)
-    result = resp.json()
+    result = _gas_request(payload)
     if not result.get("ok"):
         raise Exception(result.get("error", "GAS ตอบผิดพลาด"))
 
 
 def gas_post(payload: dict) -> dict:
-    import requests
     payload = {**payload, "code": ADMIN_CODE}
-    resp = requests.post(f"{GAS_URL}?_s={WAKA_S}", json=payload, timeout=30)
-    result = resp.json()
+    result = _gas_request(payload)
     if not result.get("ok"):
         raise Exception(result.get("error", "GAS ตอบผิดพลาด"))
     return result
@@ -144,6 +157,24 @@ def force_complete_order(order_id: str):
     sending LINE messages or touching branch stock. For orders that were
     actually shipped/handed over before this admin tool existed."""
     gas_post({"_action": "forceCompleteOrder", "order_id": order_id})
+
+
+def run_bulk_action(label: str, order_ids, action_fn) -> None:
+    """Runs action_fn(order_id) for each id and stashes a result summary in
+    session_state instead of calling st.error() directly — the caller always
+    follows this with st.rerun(), which would otherwise wipe a per-order
+    error off the screen before the user ever sees it (confirmed live: a GAS
+    call can transiently fail there with no visible error and silently
+    no-op — see _gas_request's retry, which reduces but can't eliminate this)."""
+    errors = []
+    ok_count = 0
+    for order_id in order_ids:
+        try:
+            action_fn(str(order_id))
+            ok_count += 1
+        except Exception as e:
+            errors.append(f"#{order_id}: {e}")
+    st.session_state["bulk_result"] = {"label": label, "ok": ok_count, "errors": errors}
 
 
 def parse_items(items_json) -> list:
@@ -335,6 +366,16 @@ tab_cards, tab_table, tab_customers = st.tabs(["🗂 การ์ดออเด
 
 # ── Tab: การ์ดออเดอร์ (existing card-based workflow — live actions, sends LINE) ─
 with tab_cards:
+    if "bulk_result" in st.session_state:
+        res = st.session_state.pop("bulk_result")
+        if res["errors"]:
+            st.error(
+                f"{res['label']}: สำเร็จ {res['ok']} รายการ, ล้มเหลว {len(res['errors'])} รายการ — "
+                "ลองกดซ้ำเฉพาะรายการที่ล้มเหลว (GAS ตอบช้า/หลุดเป็นครั้งคราว)\n" + "\n".join(res["errors"])
+            )
+        else:
+            st.success(f"{res['label']}: สำเร็จทั้งหมด {res['ok']} รายการ ✅")
+
     # ── Sort + count + page-size row ─────────────────────────────────────────
     c1, c2, c3 = st.columns([2.2, 1, 1])
     with c1:
@@ -405,42 +446,29 @@ with tab_cards:
                 st.markdown(f"<div style='padding-top:8px;font-weight:600'>เลือกแล้ว {len(st.session_state.selected_orders)} ออเดอร์</div>", unsafe_allow_html=True)
             with b2:
                 if st.button(f"✅ อนุมัติสลิปที่เลือก ({len(sel_pending)})", disabled=sel_pending.empty):
-                    for _, r in sel_pending.iterrows():
-                        try:
-                            confirm_slip_via_gas(r["order_id"])
-                        except Exception as e:
-                            st.error(f"#{r['order_id']}: {e}")
+                    run_bulk_action("อนุมัติสลิปที่เลือก", sel_pending["order_id"], confirm_slip_via_gas)
                     st.session_state.selected_orders = set()
                     st.cache_data.clear()
                     st.rerun()
             with b3:
                 if st.button(f"🤝 ส่งมอบที่เลือก ({len(sel_handover_ids)})", disabled=not sel_handover_ids):
-                    for order_id in sel_handover_ids:
-                        try:
-                            gas_post({"_action": "handoverOrder", "order_id": order_id})
-                        except Exception as e:
-                            st.error(f"#{order_id}: {e}")
+                    run_bulk_action(
+                        "ส่งมอบที่เลือก", sel_handover_ids,
+                        lambda oid: gas_post({"_action": "handoverOrder", "order_id": oid}),
+                    )
                     st.session_state.selected_orders = set()
                     st.cache_data.clear()
                     st.rerun()
             with b4:
                 if st.button(f"🏁 ปิดงาน (เสร็จแล้ว) ({len(sel_not_done)})", disabled=sel_not_done.empty,
                              help="ปิดสถานะย้อนหลังเป็น 'รับแล้ว' แบบเงียบ — ไม่ส่ง LINE แจ้งลูกค้า ไม่ตัดสต็อกสาขา เหมาะกับออเดอร์ที่ส่งมอบจริงไปแล้วนอกระบบ"):
-                    for _, r in sel_not_done.iterrows():
-                        try:
-                            force_complete_order(str(r["order_id"]))
-                        except Exception as e:
-                            st.error(f"#{r['order_id']}: {e}")
+                    run_bulk_action("ปิดงาน (เสร็จแล้ว)", sel_not_done["order_id"], force_complete_order)
                     st.session_state.selected_orders = set()
                     st.cache_data.clear()
                     st.rerun()
             with b5:
                 if st.button("❌ ยกเลิกสลิปที่เลือก"):
-                    for _, r in sel_rows.iterrows():
-                        try:
-                            reject_slip_via_gas(str(r["order_id"]))
-                        except Exception as e:
-                            st.error(f"#{r['order_id']}: {e}")
+                    run_bulk_action("ยกเลิกสลิปที่เลือก", sel_rows["order_id"], reject_slip_via_gas)
                     st.session_state.selected_orders = set()
                     st.cache_data.clear()
                     st.rerun()
