@@ -89,6 +89,30 @@ function pushOrderToSupabase_(rowArr) {
   return obj;
 }
 
+// ── orders: Supabase-primary (Phase 2) ──────────────────────────────────
+// The "WAKA ORDER" Sheet is no longer written to for orders — Supabase is
+// the store of record, and mirrorToReportSheet_ keeps the "WAKA export"
+// sheet's `orders` tab as the human-readable backup/display copy instead.
+
+// Reads the current full order row from Supabase. items_json comes back
+// already parsed (a real array, not a JSON string) since it's a native
+// jsonb column — callers should NOT JSON.parse() it again.
+function getSupabaseOrder_(orderId) {
+  var rows = supabaseSelect_("orders", "select=*&order_id=eq." + encodeURIComponent(orderId) + "&limit=1");
+  return rows[0] || null;
+}
+
+// Upserts the full order object as the authoritative record. Throws on
+// failure — unlike the old best-effort pushToSupabase_/pushOrderToSupabase_,
+// a failed write here must fail the caller's action too, since there's no
+// Sheet write left to fall back on.
+function writeSupabaseOrder_(obj) {
+  var res = pushToSupabase_("orders", obj);
+  if (!res.ok) throw new Error("Supabase orders write failed: " + res.text);
+  mirrorToReportSheet_("orders", SUPABASE_ORDERS_HEADER, "order_id", obj);
+  return obj;
+}
+
 // ── Supabase-primary tables (config, stock_branch, shipments, tournament_*,
 // wakagym_events, player_stats — migrated one at a time). These tables read
 // and write Supabase directly instead of the Sheet; mirrorToReportSheet_
@@ -277,9 +301,6 @@ var SUPABASE_TOURNAMENT_CATEGORIES_HEADER = [
 ];
 var SUPABASE_WAKAGYM_EVENTS_HEADER = ["event_id", "date", "branch", "tier", "entry_fee", "status", "created_by"];
 
-function syncOrderToSupabase_(ss, orderId) {
-  syncRowToSupabase_(ss, TAB_ORDERS, orderId, "orders", SUPABASE_ORDERS_HEADER, ["items_json"]);
-}
 function syncTournamentRegToSupabase_(ss, regId) {
   syncRowToSupabase_(ss, TAB_TOURNAMENT_REG, regId, "tournament_registrations", SUPABASE_TOURNAMENT_REG_HEADER, ["selected_categories"]);
 }
@@ -397,58 +418,6 @@ function doGet(e) {
 
     if (!isPublic && SCRIPT_SECRET && (e.parameter._s || "") !== SCRIPT_SECRET) {
       return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
-    }
-
-    // TEMP diagnostic — remove once the branch-code mismatch is confirmed
-    // fixed. Gated by the same _s check as everything else above.
-    if (action === "_debug_branch") {
-      var codePoints = function(s) { return Array.from(String(s || "")).map(function(c) { return c.codePointAt(0).toString(16); }); };
-      var dbg = { codes: {} };
-      Object.keys(BRANCH_CODES).forEach(function(k) {
-        dbg.codes[k] = { value: BRANCH_CODES[k], len: BRANCH_CODES[k].length, hex: codePoints(BRANCH_CODES[k]) };
-      });
-      var reqBranch = e.parameter.branch || "";
-      dbg.request_branch = { value: reqBranch, len: reqBranch.length, hex: codePoints(reqBranch) };
-      return _cors(ContentService.createTextOutput(JSON.stringify(dbg)));
-    }
-
-    // TEMP diagnostic — remove once the live Supabase `orders` schema is
-    // confirmed to match SUPABASE_ORDERS_HEADER. Gated by the same _s check.
-    if (action === "_debug_orders_schema") {
-      try {
-        var sample = supabaseSelect_("orders", "select=*&limit=1&order=timestamp.desc");
-        return _cors(ContentService.createTextOutput(JSON.stringify({
-          columns: sample.length ? Object.keys(sample[0]) : [],
-          sample: sample[0] || null,
-        })));
-      } catch (e) {
-        return _cors(ContentService.createTextOutput(JSON.stringify({ error: e.message })));
-      }
-    }
-
-    // TEMP diagnostic — remove once Sheet vs Supabase order counts are
-    // confirmed to match (or the gap is understood). Gated by the same _s.
-    if (action === "_debug_order_counts") {
-      try {
-        var cntWs = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TAB_ORDERS);
-        var cntRows = cntWs ? cntWs.getDataRange().getValues() : [];
-        var sheetOrderIds = [];
-        for (var ci = 1; ci < cntRows.length; ci++) {
-          if (cntRows[ci][0]) sheetOrderIds.push(String(cntRows[ci][0]));
-        }
-        var sbOrderIds = supabaseSelect_("orders", "select=order_id").map(function(r) { return String(r.order_id); });
-        var sbSet = {};
-        sbOrderIds.forEach(function(id) { sbSet[id] = true; });
-        var missingFromSupabase = sheetOrderIds.filter(function(id) { return !sbSet[id]; });
-        return _cors(ContentService.createTextOutput(JSON.stringify({
-          sheet_count: sheetOrderIds.length,
-          supabase_count: sbOrderIds.length,
-          missing_from_supabase_count: missingFromSupabase.length,
-          missing_from_supabase_sample: missingFromSupabase.slice(0, 20),
-        })));
-      } catch (e) {
-        return _cors(ContentService.createTextOutput(JSON.stringify({ error: e.message })));
-      }
     }
 
     if (action === "confirm") {
@@ -763,24 +732,34 @@ function doPost(e) {
       }
     }
 
-    var newOrderRow = writeOrder(ss, {
-      orderId,
-      timestamp:   Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'"),
-      lineUserId:  data.lineUserId  || "",
-      displayName: data.displayName || "",
-      itemsJson:   JSON.stringify(data.items || []),
-      total:       data.total       || 0,
-      branch:      data.branch      || "",
-      realName:    data.realName    || "",
-      phone:       data.phone       || "",
-      email:       data.email       || "",
-      address:     data.address     || "",
-      slipStatus,
-      slipUrl,
-      slipAmount,
-      slipTxnId,
-      notes:       slipNote,
-    });
+    // Supabase is the store of record for orders (Phase 2) — writing here is
+    // what makes the order succeed or fail; a throw propagates to doPost's
+    // top-level catch, which releases the lock and reports the error.
+    var newOrder = {
+      order_id: orderId,
+      timestamp: Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'"),
+      line_user_id: data.lineUserId || null,
+      display_name: _sanitize(data.displayName) || null,
+      items_json: data.items || [],
+      total: data.total || 0,
+      branch: data.branch || null,
+      real_name: _sanitize(data.realName) || null,
+      phone: _sanitize(data.phone) || null,
+      address: _sanitize(data.address) || null,
+      email: _sanitize(data.email) || null,
+      slip_status: slipStatus,
+      slip_url: slipUrl || null,
+      slip_amount: slipAmount || null,
+      slip_txn_id: slipTxnId || null,
+      notes: slipNote || null,
+      fulfillment: null,
+      fulfilled_at: null,
+      staff_confirmed_at: null,
+      customer_confirmed_at: null,
+      notified_at: null,
+    };
+    writeSupabaseOrder_(newOrder);
+    _clearDashCache();
 
     if (data.items && data.items.length > 0) {
       // ส่ง rows เดิมให้แชร์กัน — deductCatalogLimits อัปเดต rows ใน memory แล้ว return คืน
@@ -788,33 +767,18 @@ function doPost(e) {
       deductStock(ss, data.items, catWsForOrder, updatedRows || catRowsForOrder);
     }
 
-    // อัปโหลดสลิปหลัง write order — ค้นหา row ด้วย orderId แทน lastRow เพื่อป้องกัน race condition
+    // อัปโหลดสลิปหลัง write order — นอก lock เพราะ Drive upload ช้า
     if (data.slipBase64 && !slipUrl) {
       try {
         slipUrl = saveSlipToDrive(data.slipBase64, orderId);
         if (slipUrl) {
-          var owsUpd = ss.getSheetByName(TAB_ORDERS);
-          var hdrUpd = owsUpd.getRange(1, 1, 1, owsUpd.getLastColumn()).getValues()[0];
-          var slipUrlCol = hdrUpd.indexOf("slip_url");
-          if (slipUrlCol >= 0) {
-            var allRows = owsUpd.getDataRange().getValues();
-            for (var rr = allRows.length - 1; rr >= 1; rr--) {
-              if (String(allRows[rr][0]) === orderId) {
-                owsUpd.getRange(rr + 1, slipUrlCol + 1).setValue(slipUrl);
-                break;
-              }
-            }
-          }
-          newOrderRow[SUPABASE_ORDERS_HEADER.indexOf("slip_url")] = slipUrl;
+          newOrder.slip_url = slipUrl;
+          writeSupabaseOrder_(newOrder);
         }
       } catch(_) {}
     }
 
     lock.releaseLock();
-    // Push the row writeOrder() already built (with slip_url patched in above
-    // if applicable) instead of syncOrderToSupabase_, which would re-read the
-    // whole orders sheet a third time just to find the row we just wrote.
-    pushOrderToSupabase_(newOrderRow);
 
     // LINE push หลัง release lock — ไม่ block order ถัดไป
     try {
@@ -1028,32 +992,6 @@ function restoreCatalogLimits(ss, items) {
 
 function _clearDashCache() {
   try { CacheService.getScriptCache().remove("dashboard_v1"); } catch(_) {}
-}
-
-function writeOrder(ss, d) {
-  let ws = ss.getSheetByName(TAB_ORDERS);
-  if (!ws) {
-    ws = ss.insertSheet(TAB_ORDERS);
-    ws.appendRow([
-      "order_id","timestamp","line_user_id","display_name",
-      "items_json","total","branch","real_name","phone","address","email",
-      "slip_status","slip_url","slip_amount","slip_txn_id","notes",
-      "fulfillment","fulfilled_at","staff_confirmed_at","customer_confirmed_at",
-    ]);
-  }
-  var row = [
-    d.orderId, d.timestamp, d.lineUserId, _sanitize(d.displayName),
-    d.itemsJson, d.total, d.branch, _sanitize(d.realName), _sanitize(d.phone), _sanitize(d.address), _sanitize(d.email),
-    d.slipStatus, d.slipUrl, d.slipAmount, d.slipTxnId, d.notes,
-  ];
-  ws.appendRow(row);
-  _clearDashCache();
-  // Pad out to match SUPABASE_ORDERS_HEADER's length so the caller can sync
-  // this row straight to Supabase without a second full-sheet read to fetch
-  // it back — fulfillment/fulfilled_at/staff_confirmed_at/customer_confirmed_at/
-  // notified_at are genuinely blank at creation time, filled in by later actions.
-  while (row.length < SUPABASE_ORDERS_HEADER.length) row.push("");
-  return row;
 }
 
 function notifyBranch(groupId, order) {
@@ -1469,161 +1407,127 @@ function handleTournamentRegister(data) {
 
 function handleStaffPage(orderId, action) {
   if (!orderId) return HtmlService.createHtmlOutput("<h2>ไม่พบออเดอร์</h2>");
-  var ss = SpreadsheetApp.openById(SHEET_ID);
-  var ws = ss.getSheetByName(TAB_ORDERS);
-  var rows = ws.getDataRange().getValues();
-  var hdr = rows[0];
-  var col = function(name) { return hdr.indexOf(name); };
+  var order = getSupabaseOrder_(orderId);
+  if (!order) return HtmlService.createHtmlOutput("<h2>ไม่พบออเดอร์ #" + orderId + "</h2>");
+
   var gasUrl = ScriptApp.getService().getUrl();
+  var ff = order.fulfillment || "รอเตรียม";
+  var branch = order.branch || "";
+  var isDelivery = branch === "จัดส่ง";
+  var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
 
-  for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][col("order_id")]) !== orderId) continue;
-    var r = rows[i];
-    var ff = r[col("fulfillment")] || "รอเตรียม";
-    var branch = r[col("branch")] || "";
-    var isDelivery = branch === "จัดส่ง";
-    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
-
-    var updatedRow = r.slice();
-    if (action === "shipping") {
-      if (col("fulfillment") >= 0) { ws.getRange(i+1, col("fulfillment")+1).setValue("กำลังจัดส่งไปสาขา"); updatedRow[col("fulfillment")] = "กำลังจัดส่งไปสาขา"; }
-      if (col("fulfilled_at") >= 0) { ws.getRange(i+1, col("fulfilled_at")+1).setValue(now); updatedRow[col("fulfilled_at")] = now; }
-      ff = "กำลังจัดส่งไปสาขา";
-      _clearDashCache();
-    } else if (action === "ready") {
-      if (col("fulfillment") >= 0) { ws.getRange(i+1, col("fulfillment")+1).setValue("พร้อมรับ"); updatedRow[col("fulfillment")] = "พร้อมรับ"; }
-      if (col("fulfilled_at") >= 0) { ws.getRange(i+1, col("fulfilled_at")+1).setValue(now); updatedRow[col("fulfilled_at")] = now; }
-      ff = "พร้อมรับ";
-      _clearDashCache();
-      var uid2 = r[col("line_user_id")];
-      if (uid2) {
-        var trackUrl2 = "https://waka-liff.vercel.app/confirm.html?order=" + orderId;
-        _linePush(uid2, "สินค้าพร้อมรับที่สาขา" + branch + " แล้ว!\n\nออเดอร์: #" + orderId + "\n\nดูสถานะ:\n" + trackUrl2);
-      }
-    } else if (action === "handover") {
-      var ffValue = isDelivery ? "จัดส่งแล้ว" : "สาขายืนยัน";
-      if (col("fulfillment") >= 0) { ws.getRange(i+1, col("fulfillment")+1).setValue(ffValue); updatedRow[col("fulfillment")] = ffValue; }
-      if (col("staff_confirmed_at") >= 0) { ws.getRange(i+1, col("staff_confirmed_at")+1).setValue(now); updatedRow[col("staff_confirmed_at")] = now; }
-      ff = ffValue;
-      _clearDashCache();
-      var uid3 = r[col("line_user_id")];
-      if (uid3) {
-        var trackUrl3 = "https://waka-liff.vercel.app/confirm.html?order=" + orderId;
-        _linePush(uid3, "สาขาส่งมอบสินค้าแล้ว กรุณากดยืนยันรับของ\n\nออเดอร์: #" + orderId + "\n\nกดยืนยัน:\n" + trackUrl3);
-      }
+  if (action === "shipping") {
+    order.fulfillment = "กำลังจัดส่งไปสาขา";
+    order.fulfilled_at = now;
+    ff = order.fulfillment;
+    writeSupabaseOrder_(order);
+    _clearDashCache();
+  } else if (action === "ready") {
+    order.fulfillment = "พร้อมรับ";
+    order.fulfilled_at = now;
+    ff = order.fulfillment;
+    writeSupabaseOrder_(order);
+    _clearDashCache();
+    if (order.line_user_id) {
+      var trackUrl2 = "https://waka-liff.vercel.app/confirm.html?order=" + orderId;
+      _linePush(order.line_user_id, "สินค้าพร้อมรับที่สาขา" + branch + " แล้ว!\n\nออเดอร์: #" + orderId + "\n\nดูสถานะ:\n" + trackUrl2);
     }
-    if (action === "shipping" || action === "ready" || action === "handover") {
-      pushOrderToSupabase_(updatedRow);
+  } else if (action === "handover") {
+    var ffValue = isDelivery ? "จัดส่งแล้ว" : "สาขายืนยัน";
+    order.fulfillment = ffValue;
+    order.staff_confirmed_at = now;
+    ff = ffValue;
+    writeSupabaseOrder_(order);
+    _clearDashCache();
+    if (order.line_user_id) {
+      var trackUrl3 = "https://waka-liff.vercel.app/confirm.html?order=" + orderId;
+      _linePush(order.line_user_id, "สาขาส่งมอบสินค้าแล้ว กรุณากดยืนยันรับของ\n\nออเดอร์: #" + orderId + "\n\nกดยืนยัน:\n" + trackUrl3);
     }
-
-    var items = [];
-    try { items = JSON.parse(r[col("items_json")] || "[]"); } catch(e) {}
-    var itemsHtml = "";
-    for (var idx = 0; idx < items.length; idx++) {
-      var it = items[idx];
-      var unit = it.type === "box" ? "กล่อง" : "ซอง";
-      var badge = "";
-      if (it.cancelled_at) badge = ' <span style="color:#d64545;font-size:11px">[ยกเลิก]</span>';
-      else if (it.handed_at) badge = ' <span style="color:#2d8f4e;font-size:11px">✅ ส่งมอบแล้ว</span>';
-      else if (it.ready_at) badge = ' <span style="color:#d97706;font-size:11px">⏳ พร้อมรับ</span>';
-      itemsHtml += "<div style='margin:4px 0'>" + it.name + " (" + unit + ") x" + it.qty + badge + "</div>";
-    }
-
-    var baseUrl = gasUrl + "?action=staff&order=" + orderId + "&do=";
-    var btnStyle = "display:block;width:100%;padding:14px;border:none;border-radius:10px;font-size:16px;font-weight:bold;color:#fff;cursor:pointer;margin:8px 0;text-decoration:none;text-align:center";
-
-    var buttonsHtml = "";
-    if (ff === "รอเตรียม" && !isDelivery) {
-      buttonsHtml = '<a href="' + baseUrl + 'shipping" style="' + btnStyle + ';background:#2196F3">📤 จัดส่งไปสาขาแล้ว</a>';
-    } else if (ff === "กำลังจัดส่งไปสาขา") {
-      buttonsHtml = '<a href="' + baseUrl + 'ready" style="' + btnStyle + ';background:#FF9800">📍 ถึงสาขาแล้ว / พร้อมรับ</a>';
-    } else if (ff === "พร้อมรับ" || ff === "บางส่วน") {
-      buttonsHtml = '<a href="' + baseUrl + 'handover" style="' + btnStyle + ';background:#06c755">🤝 ส่งมอบสินค้าแล้ว</a>';
-    } else if (ff === "รับบางส่วนแล้ว") {
-      buttonsHtml = '<div style="text-align:center;padding:12px;background:#fff8e1;border-radius:10px;color:#d97706;font-weight:bold;margin-bottom:8px">📦 ส่งมอบบางส่วนแล้ว รอสินค้าที่เหลือ</div>';
-    } else if (ff === "รอเตรียม" && isDelivery) {
-      buttonsHtml = '<a href="' + baseUrl + 'handover" style="' + btnStyle + ';background:#06c755">🚚 จัดส่งพัสดุแล้ว</a>';
-    } else if (ff === "สาขายืนยัน" || ff === "รับแล้ว") {
-      buttonsHtml = '<div style="text-align:center;padding:16px;background:#f0fbf4;border-radius:10px;color:#06c755;font-weight:bold">✅ ดำเนินการแล้ว</div>';
-    }
-
-    if (action) {
-      buttonsHtml = '<div style="text-align:center;padding:16px;background:#f0fbf4;border-radius:10px;margin-bottom:12px"><b style="color:#06c755">✅ อัปเดตแล้ว!</b><br><span style="color:#888">' + now + '</span></div>' + buttonsHtml;
-    }
-
-    var html = '<div style="max-width:420px;margin:0 auto;padding:20px;font-family:sans-serif">'
-      + '<h2 style="text-align:center;color:#333">📋 ออเดอร์ #' + orderId + '</h2>'
-      + '<div style="background:#f9f9f9;border-radius:10px;padding:14px;margin:12px 0">'
-      + '<div><b>ลูกค้า:</b> ' + (r[col("display_name")] || "") + ' (' + (r[col("real_name")] || "") + ')</div>'
-      + '<div><b>โทร:</b> ' + (r[col("phone")] || "") + '</div>'
-      + '<div><b>' + (isDelivery ? '🚚 จัดส่งพัสดุ' : '📦 รับที่สาขา: ' + branch) + '</b></div>'
-      + (isDelivery && r[col("address")] ? '<div><b>ที่อยู่:</b> ' + r[col("address")] + '</div>' : '')
-      + '</div>'
-      + '<div style="background:#fff;border:1px solid #eee;border-radius:10px;padding:14px;margin:12px 0">'
-      + '<div style="font-weight:bold;margin-bottom:8px">🎴 รายการ</div>' + itemsHtml
-      + '<div style="margin-top:8px;font-weight:bold;color:#06c755">ยอดรวม: ' + r[col("total")] + ' บาท</div>'
-      + '</div>'
-      + '<div style="text-align:center;margin:12px 0;color:#888">สถานะ: <b>' + ff + '</b></div>'
-      + buttonsHtml
-      + '</div>';
-
-    return HtmlService.createHtmlOutput(html);
   }
-  return HtmlService.createHtmlOutput("<h2>ไม่พบออเดอร์ #" + orderId + "</h2>");
+
+  var items = Array.isArray(order.items_json) ? order.items_json : [];
+  var itemsHtml = "";
+  for (var idx = 0; idx < items.length; idx++) {
+    var it = items[idx];
+    var unit = it.type === "box" ? "กล่อง" : "ซอง";
+    var badge = "";
+    if (it.cancelled_at) badge = ' <span style="color:#d64545;font-size:11px">[ยกเลิก]</span>';
+    else if (it.handed_at) badge = ' <span style="color:#2d8f4e;font-size:11px">✅ ส่งมอบแล้ว</span>';
+    else if (it.ready_at) badge = ' <span style="color:#d97706;font-size:11px">⏳ พร้อมรับ</span>';
+    itemsHtml += "<div style='margin:4px 0'>" + it.name + " (" + unit + ") x" + it.qty + badge + "</div>";
+  }
+
+  var baseUrl = gasUrl + "?action=staff&order=" + orderId + "&do=";
+  var btnStyle = "display:block;width:100%;padding:14px;border:none;border-radius:10px;font-size:16px;font-weight:bold;color:#fff;cursor:pointer;margin:8px 0;text-decoration:none;text-align:center";
+
+  var buttonsHtml = "";
+  if (ff === "รอเตรียม" && !isDelivery) {
+    buttonsHtml = '<a href="' + baseUrl + 'shipping" style="' + btnStyle + ';background:#2196F3">📤 จัดส่งไปสาขาแล้ว</a>';
+  } else if (ff === "กำลังจัดส่งไปสาขา") {
+    buttonsHtml = '<a href="' + baseUrl + 'ready" style="' + btnStyle + ';background:#FF9800">📍 ถึงสาขาแล้ว / พร้อมรับ</a>';
+  } else if (ff === "พร้อมรับ" || ff === "บางส่วน") {
+    buttonsHtml = '<a href="' + baseUrl + 'handover" style="' + btnStyle + ';background:#06c755">🤝 ส่งมอบสินค้าแล้ว</a>';
+  } else if (ff === "รับบางส่วนแล้ว") {
+    buttonsHtml = '<div style="text-align:center;padding:12px;background:#fff8e1;border-radius:10px;color:#d97706;font-weight:bold;margin-bottom:8px">📦 ส่งมอบบางส่วนแล้ว รอสินค้าที่เหลือ</div>';
+  } else if (ff === "รอเตรียม" && isDelivery) {
+    buttonsHtml = '<a href="' + baseUrl + 'handover" style="' + btnStyle + ';background:#06c755">🚚 จัดส่งพัสดุแล้ว</a>';
+  } else if (ff === "สาขายืนยัน" || ff === "รับแล้ว") {
+    buttonsHtml = '<div style="text-align:center;padding:16px;background:#f0fbf4;border-radius:10px;color:#06c755;font-weight:bold">✅ ดำเนินการแล้ว</div>';
+  }
+
+  if (action) {
+    buttonsHtml = '<div style="text-align:center;padding:16px;background:#f0fbf4;border-radius:10px;margin-bottom:12px"><b style="color:#06c755">✅ อัปเดตแล้ว!</b><br><span style="color:#888">' + now + '</span></div>' + buttonsHtml;
+  }
+
+  var html = '<div style="max-width:420px;margin:0 auto;padding:20px;font-family:sans-serif">'
+    + '<h2 style="text-align:center;color:#333">📋 ออเดอร์ #' + orderId + '</h2>'
+    + '<div style="background:#f9f9f9;border-radius:10px;padding:14px;margin:12px 0">'
+    + '<div><b>ลูกค้า:</b> ' + (order.display_name || "") + ' (' + (order.real_name || "") + ')</div>'
+    + '<div><b>โทร:</b> ' + (order.phone || "") + '</div>'
+    + '<div><b>' + (isDelivery ? '🚚 จัดส่งพัสดุ' : '📦 รับที่สาขา: ' + branch) + '</b></div>'
+    + (isDelivery && order.address ? '<div><b>ที่อยู่:</b> ' + order.address + '</div>' : '')
+    + '</div>'
+    + '<div style="background:#fff;border:1px solid #eee;border-radius:10px;padding:14px;margin:12px 0">'
+    + '<div style="font-weight:bold;margin-bottom:8px">🎴 รายการ</div>' + itemsHtml
+    + '<div style="margin-top:8px;font-weight:bold;color:#06c755">ยอดรวม: ' + order.total + ' บาท</div>'
+    + '</div>'
+    + '<div style="text-align:center;margin:12px 0;color:#888">สถานะ: <b>' + ff + '</b></div>'
+    + buttonsHtml
+    + '</div>';
+
+  return HtmlService.createHtmlOutput(html);
 }
 
 function handleApi(params) {
   var action = params.do || "";
   var ss = SpreadsheetApp.openById(SHEET_ID);
-  var ws = ss.getSheetByName(TAB_ORDERS);
-  if (!ws) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no orders tab" })));
-  var rows = ws.getDataRange().getValues();
-  var hdr = rows[0];
 
   if (action === "search") {
     var q = String(params.q || "").toLowerCase().trim();
     if (!q) return _cors(ContentService.createTextOutput(JSON.stringify({ orders: [] })));
-    try {
-      // Deliberately NOT translating this into a PostgREST or=(...ilike...)
-      // filter — with arbitrary staff-typed input that risks corrupting the
-      // filter's own comma/paren/wildcard syntax, and Thai ilike collation
-      // behavior is unverified against .indexOf(). Order volume here is
-      // small (~100s), so fetch once and reuse the exact existing JS match
-      // logic instead — same semantics as the Sheet version, zero new risk.
-      var seSb = supabaseSelect_("orders", "select=*&order=timestamp.desc");
-      var seResults = [];
-      for (var si = 0; si < seSb.length; si++) {
-        var sr = seSb[si];
-        var srow = {};
-        SUPABASE_ORDERS_HEADER.forEach(function(h) {
-          var v = sr[h];
-          if (v === null || v === undefined) { srow[h] = ""; return; }
-          srow[h] = (h === "items_json") ? JSON.stringify(v) : String(v);
-        });
-        var seMatch = srow.order_id.toLowerCase().indexOf(q) >= 0
-          || srow.real_name.toLowerCase().indexOf(q) >= 0
-          || srow.display_name.toLowerCase().indexOf(q) >= 0
-          || srow.phone.indexOf(q) >= 0;
-        if (seMatch) seResults.push(srow);
-      }
-      return _cors(ContentService.createTextOutput(JSON.stringify({ orders: seResults.slice(0, 20) })));
-    } catch (e) {
-      Logger.log("search Supabase read failed, falling back to Sheet: " + e.message);
+    // Deliberately NOT translating this into a PostgREST or=(...ilike...)
+    // filter — with arbitrary staff-typed input that risks corrupting the
+    // filter's own comma/paren/wildcard syntax, and Thai ilike collation
+    // behavior is unverified against .indexOf(). Order volume here is
+    // small (~100s), so fetch once and reuse the exact existing JS match
+    // logic instead — same semantics as the old Sheet version.
+    var seSb = supabaseSelect_("orders", "select=*&order=timestamp.desc");
+    var seResults = [];
+    for (var si = 0; si < seSb.length; si++) {
+      var sr = seSb[si];
+      var srow = {};
+      SUPABASE_ORDERS_HEADER.forEach(function(h) {
+        var v = sr[h];
+        if (v === null || v === undefined) { srow[h] = ""; return; }
+        srow[h] = (h === "items_json") ? JSON.stringify(v) : String(v);
+      });
+      var seMatch = srow.order_id.toLowerCase().indexOf(q) >= 0
+        || srow.real_name.toLowerCase().indexOf(q) >= 0
+        || srow.display_name.toLowerCase().indexOf(q) >= 0
+        || srow.phone.indexOf(q) >= 0;
+      if (seMatch) seResults.push(srow);
     }
-    var results = [];
-    for (var i = 1; i < rows.length; i++) {
-      var row = {};
-      for (var c = 0; c < hdr.length; c++) {
-        row[hdr[c]] = rows[i][c] != null ? String(rows[i][c]) : "";
-      }
-      var match = row.order_id.toLowerCase().indexOf(q) >= 0
-        || row.real_name.toLowerCase().indexOf(q) >= 0
-        || row.display_name.toLowerCase().indexOf(q) >= 0
-        || row.phone.indexOf(q) >= 0;
-      if (match) results.push(row);
-    }
-    results.reverse();
-    return _cors(ContentService.createTextOutput(JSON.stringify({ orders: results.slice(0, 20) })));
+    return _cors(ContentService.createTextOutput(JSON.stringify({ orders: seResults.slice(0, 20) })));
   }
 
   if (action === "update") {
@@ -1631,100 +1535,70 @@ function handleApi(params) {
     var newStatus = params.status || "";
     if (!orderId || !newStatus) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing params" })));
 
-    var col = function(name) { return hdr.indexOf(name); };
-    var gasUrl = ScriptApp.getService().getUrl();
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
+    var order = getSupabaseOrder_(orderId);
+    if (!order) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
 
-    for (var j = 1; j < rows.length; j++) {
-      if (String(rows[j][col("order_id")]) !== orderId) continue;
-      var branch = rows[j][col("branch")] || "";
-      var isDelivery = branch === "จัดส่ง";
-      var uid = rows[j][col("line_user_id")] || "";
-      var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + orderId;
+    var branch = order.branch || "";
+    var isDelivery = branch === "จัดส่ง";
+    var uid = order.line_user_id || "";
+    var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + orderId;
 
-      var updatedRow = rows[j].slice();
-      if (newStatus === "shipping") {
-        if (col("fulfillment") >= 0) { ws.getRange(j+1, col("fulfillment")+1).setValue("กำลังจัดส่งไปสาขา"); updatedRow[col("fulfillment")] = "กำลังจัดส่งไปสาขา"; }
-        if (col("fulfilled_at") >= 0) { ws.getRange(j+1, col("fulfilled_at")+1).setValue(now); updatedRow[col("fulfilled_at")] = now; }
-      } else if (newStatus === "ready") {
-        if (col("fulfillment") >= 0) { ws.getRange(j+1, col("fulfillment")+1).setValue("พร้อมรับ"); updatedRow[col("fulfillment")] = "พร้อมรับ"; }
-        if (col("fulfilled_at") >= 0) { ws.getRange(j+1, col("fulfilled_at")+1).setValue(now); updatedRow[col("fulfilled_at")] = now; }
-        if (uid) _linePush(uid, "สินค้าพร้อมรับที่สาขา" + branch + " แล้ว!\n\nออเดอร์: #" + orderId + "\n\nดูสถานะ:\n" + trackUrl);
-      } else if (newStatus === "handover") {
-        var ffVal = isDelivery ? "จัดส่งแล้ว" : "สาขายืนยัน";
-        if (col("fulfillment") >= 0) { ws.getRange(j+1, col("fulfillment")+1).setValue(ffVal); updatedRow[col("fulfillment")] = ffVal; }
-        if (col("staff_confirmed_at") >= 0) { ws.getRange(j+1, col("staff_confirmed_at")+1).setValue(now); updatedRow[col("staff_confirmed_at")] = now; }
-        if (uid) _linePush(uid, "สาขาส่งมอบสินค้าแล้ว กรุณากดยืนยันรับของ\n\nออเดอร์: #" + orderId + "\n\nกดยืนยัน:\n" + trackUrl);
-      }
-      _clearDashCache();
-      pushOrderToSupabase_(updatedRow);
-      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, status: newStatus, time: now })));
+    if (newStatus === "shipping") {
+      order.fulfillment = "กำลังจัดส่งไปสาขา";
+      order.fulfilled_at = now;
+    } else if (newStatus === "ready") {
+      order.fulfillment = "พร้อมรับ";
+      order.fulfilled_at = now;
+      if (uid) _linePush(uid, "สินค้าพร้อมรับที่สาขา" + branch + " แล้ว!\n\nออเดอร์: #" + orderId + "\n\nดูสถานะ:\n" + trackUrl);
+    } else if (newStatus === "handover") {
+      order.fulfillment = isDelivery ? "จัดส่งแล้ว" : "สาขายืนยัน";
+      order.staff_confirmed_at = now;
+      if (uid) _linePush(uid, "สาขาส่งมอบสินค้าแล้ว กรุณากดยืนยันรับของ\n\nออเดอร์: #" + orderId + "\n\nกดยืนยัน:\n" + trackUrl);
     }
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
+    _clearDashCache();
+    writeSupabaseOrder_(order);
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, status: newStatus, time: now })));
   }
 
   if (action === "order_status") {
     var orderId = params.order || "";
     if (!orderId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing order" })));
-    try {
-      var osSb = supabaseSelect_("orders", "select=order_id,branch,slip_status,fulfillment,staff_confirmed_at,customer_confirmed_at,timestamp,total&order_id=eq." + encodeURIComponent(orderId) + "&limit=1");
-      if (osSb.length) {
-        var sr = osSb[0];
-        return _cors(ContentService.createTextOutput(JSON.stringify({
-          order_id: orderId,
-          branch: sr.branch || "",
-          slip_status: sr.slip_status || "",
-          fulfillment: sr.fulfillment || "",
-          staff_confirmed_at: sr.staff_confirmed_at || "",
-          customer_confirmed_at: sr.customer_confirmed_at || "",
-          timestamp: sr.timestamp || "",
-          total: sr.total || 0,
-        })));
-      }
-    } catch (e) {
-      Logger.log("order_status Supabase read failed, falling back to Sheet: " + e.message);
-    }
-    var col = function(name) { return hdr.indexOf(name); };
-    for (var k = 1; k < rows.length; k++) {
-      if (String(rows[k][col("order_id")]) !== orderId) continue;
-      var r = rows[k];
-      return _cors(ContentService.createTextOutput(JSON.stringify({
-        order_id: orderId,
-        branch: r[col("branch")] || "",
-        slip_status: r[col("slip_status")] || "",
-        fulfillment: r[col("fulfillment")] || "",
-        staff_confirmed_at: r[col("staff_confirmed_at")] || "",
-        customer_confirmed_at: r[col("customer_confirmed_at")] || "",
-        timestamp: r[col("timestamp")] || "",
-        total: r[col("total")] || 0,
-      })));
-    }
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
+    var osSb = supabaseSelect_("orders", "select=order_id,branch,slip_status,fulfillment,staff_confirmed_at,customer_confirmed_at,timestamp,total&order_id=eq." + encodeURIComponent(orderId) + "&limit=1");
+    if (!osSb.length) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
+    var sr = osSb[0];
+    return _cors(ContentService.createTextOutput(JSON.stringify({
+      order_id: orderId,
+      branch: sr.branch || "",
+      slip_status: sr.slip_status || "",
+      fulfillment: sr.fulfillment || "",
+      staff_confirmed_at: sr.staff_confirmed_at || "",
+      customer_confirmed_at: sr.customer_confirmed_at || "",
+      timestamp: sr.timestamp || "",
+      total: sr.total || 0,
+    })));
   }
 
   if (action === "customer_confirm") {
     var orderId = params.order || "";
     if (!orderId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing order" })));
-    var col = function(name) { return hdr.indexOf(name); };
-    for (var m = 1; m < rows.length; m++) {
-      if (String(rows[m][col("order_id")]) !== orderId) continue;
-      var staffAt = rows[m][col("staff_confirmed_at")] || "";
-      var custAt = rows[m][col("customer_confirmed_at")] || "";
-      var ff = String(rows[m][col("fulfillment")] || "");
-      if (custAt && ff === "รับแล้ว") return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, already: true })));
-      if (!staffAt) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "staff ยังไม่ส่งมอบ" })));
-      // ถ้าออเดอร์ยังมีสินค้าค้างอยู่ → บอกลูกค้าแต่ไม่ปิด order
-      if (ff === "รับบางส่วนแล้ว") {
-        return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, partial: true, msg: "รับของบางส่วนเรียบร้อยแล้ว สินค้าที่เหลือจะแจ้งให้ทราบเมื่อพร้อม" })));
-      }
-      var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
-      var updatedRow = rows[m].slice();
-      if (col("customer_confirmed_at") >= 0) { ws.getRange(m + 1, col("customer_confirmed_at") + 1).setValue(now); updatedRow[col("customer_confirmed_at")] = now; }
-      if (col("fulfillment") >= 0) { ws.getRange(m + 1, col("fulfillment") + 1).setValue("รับแล้ว"); updatedRow[col("fulfillment")] = "รับแล้ว"; }
-      pushOrderToSupabase_(updatedRow);
-      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now })));
+    var order = getSupabaseOrder_(orderId);
+    if (!order) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
+
+    var staffAt = order.staff_confirmed_at || "";
+    var custAt = order.customer_confirmed_at || "";
+    var ff = String(order.fulfillment || "");
+    if (custAt && ff === "รับแล้ว") return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, already: true })));
+    if (!staffAt) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "staff ยังไม่ส่งมอบ" })));
+    // ถ้าออเดอร์ยังมีสินค้าค้างอยู่ → บอกลูกค้าแต่ไม่ปิด order
+    if (ff === "รับบางส่วนแล้ว") {
+      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, partial: true, msg: "รับของบางส่วนเรียบร้อยแล้ว สินค้าที่เหลือจะแจ้งให้ทราบเมื่อพร้อม" })));
     }
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
+    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
+    order.customer_confirmed_at = now;
+    order.fulfillment = "รับแล้ว";
+    writeSupabaseOrder_(order);
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now })));
   }
 
   // ── ออเดอร์ของสาขา ──
@@ -1732,108 +1606,53 @@ function handleApi(params) {
     var branchFilter = params.branch || "";
     if (!branchFilter) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing branch" })));
     if (!_branchAuthorized(params.code, branchFilter)) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
-    try {
-      var boSb = supabaseSelect_("orders", "select=order_id,real_name,display_name,phone,items_json,total,fulfillment,staff_confirmed_at,customer_confirmed_at,timestamp,notified_at&branch=eq." + encodeURIComponent(branchFilter) + "&slip_status=eq.ยืนยัน&order=timestamp.desc");
-      var boOrders = boSb.map(function(r) {
-        return {
-          order_id: String(r.order_id || ""),
-          real_name: String(r.real_name || ""),
-          display_name: String(r.display_name || ""),
-          phone: String(r.phone || ""),
-          items_json: JSON.stringify(r.items_json || []),
-          total: String(r.total || "0"),
-          fulfillment: String(r.fulfillment || ""),
-          staff_confirmed_at: String(r.staff_confirmed_at || ""),
-          customer_confirmed_at: String(r.customer_confirmed_at || ""),
-          timestamp: String(r.timestamp || ""),
-          notified_at: String(r.notified_at || ""),
-        };
-      });
-      return _cors(ContentService.createTextOutput(JSON.stringify({ orders: boOrders })));
-    } catch (e) {
-      Logger.log("branch_orders Supabase read failed, falling back to Sheet: " + e.message);
-    }
-    var col = function(name) { return hdr.indexOf(name); };
-    var orders = [];
-    for (var i = 1; i < rows.length; i++) {
-      if (String(rows[i][col("branch")] || "") !== branchFilter) continue;
-      var slip = String(rows[i][col("slip_status")] || "");
-      if (slip !== "ยืนยัน") continue;
-      orders.push({
-        order_id: String(rows[i][col("order_id")] || ""),
-        real_name: String(rows[i][col("real_name")] || ""),
-        display_name: String(rows[i][col("display_name")] || ""),
-        phone: String(rows[i][col("phone")] || ""),
-        items_json: String(rows[i][col("items_json")] || "[]"),
-        total: String(rows[i][col("total")] || "0"),
-        fulfillment: String(rows[i][col("fulfillment")] || ""),
-        staff_confirmed_at: String(rows[i][col("staff_confirmed_at")] || ""),
-        customer_confirmed_at: String(rows[i][col("customer_confirmed_at")] || ""),
-        timestamp: String(rows[i][col("timestamp")] || ""),
-        notified_at: col("notified_at") >= 0 ? String(rows[i][col("notified_at")] || "") : "",
-      });
-    }
-    orders.reverse();
-    return _cors(ContentService.createTextOutput(JSON.stringify({ orders: orders })));
+    var boSb = supabaseSelect_("orders", "select=order_id,real_name,display_name,phone,items_json,total,fulfillment,staff_confirmed_at,customer_confirmed_at,timestamp,notified_at&branch=eq." + encodeURIComponent(branchFilter) + "&slip_status=eq.ยืนยัน&order=timestamp.desc");
+    var boOrders = boSb.map(function(r) {
+      return {
+        order_id: String(r.order_id || ""),
+        real_name: String(r.real_name || ""),
+        display_name: String(r.display_name || ""),
+        phone: String(r.phone || ""),
+        items_json: JSON.stringify(r.items_json || []),
+        total: String(r.total || "0"),
+        fulfillment: String(r.fulfillment || ""),
+        staff_confirmed_at: String(r.staff_confirmed_at || ""),
+        customer_confirmed_at: String(r.customer_confirmed_at || ""),
+        timestamp: String(r.timestamp || ""),
+        notified_at: String(r.notified_at || ""),
+      };
+    });
+    return _cors(ContentService.createTextOutput(JSON.stringify({ orders: boOrders })));
   }
 
   // ── สรุปออเดอร์แต่ละสาขา (รวมเป็นรายสินค้า) ──
   if (action === "branch_summary") {
-    try {
-      // Filter fulfillment in JS, not via a SQL not.in — a NULL fulfillment
-      // (brand-new, unprocessed order) must still be INCLUDED here, and SQL's
-      // "NOT IN" treats NULL as unknown/excluded, which would silently drop
-      // exactly the orders this summary most needs to show.
-      var bsSb = supabaseSelect_("orders", "select=branch,items_json,fulfillment&slip_status=eq.ยืนยัน");
-      var bsExcluded = ["กำลังจัดส่งไปสาขา", "พร้อมรับ", "สาขายืนยัน", "รับแล้ว", "จัดส่งแล้ว"];
-      var bsSummary = {};
-      bsSb.forEach(function(r) {
-        if (bsExcluded.indexOf(r.fulfillment || "") >= 0) return;
-        var branch = r.branch || "";
-        var items = r.items_json || [];
-        if (!bsSummary[branch]) bsSummary[branch] = {};
-        for (var x = 0; x < items.length; x++) {
-          var key = items[x].name;
-          if (!bsSummary[branch][key]) bsSummary[branch][key] = { name: key, qty_box: 0, qty_pack: 0, order_count: 0 };
-          if (items[x].type === "box") bsSummary[branch][key].qty_box += (items[x].qty || 1);
-          else bsSummary[branch][key].qty_pack += (items[x].qty || 1);
-          bsSummary[branch][key].order_count++;
-        }
-      });
-      var bsResult = {};
-      for (var bb in bsSummary) {
-        bsResult[bb] = [];
-        for (var kk in bsSummary[bb]) bsResult[bb].push(bsSummary[bb][kk]);
-      }
-      return _cors(ContentService.createTextOutput(JSON.stringify({ branches: bsResult })));
-    } catch (e) {
-      Logger.log("branch_summary Supabase read failed, falling back to Sheet: " + e.message);
-    }
-    var col = function(name) { return hdr.indexOf(name); };
-    var summary = {};
-    for (var i = 1; i < rows.length; i++) {
-      var branch = rows[i][col("branch")] || "";
-      var slip = rows[i][col("slip_status")] || "";
-      var ff = rows[i][col("fulfillment")] || "";
-      if (slip !== "ยืนยัน") continue;
-      if (["กำลังจัดส่งไปสาขา","พร้อมรับ","สาขายืนยัน","รับแล้ว","จัดส่งแล้ว"].indexOf(ff) >= 0) continue;
-      var items = [];
-      try { items = JSON.parse(rows[i][col("items_json")] || "[]"); } catch(e) {}
-      if (!summary[branch]) summary[branch] = {};
+    // Filter fulfillment in JS, not via a SQL not.in — a NULL fulfillment
+    // (brand-new, unprocessed order) must still be INCLUDED here, and SQL's
+    // "NOT IN" treats NULL as unknown/excluded, which would silently drop
+    // exactly the orders this summary most needs to show.
+    var bsSb = supabaseSelect_("orders", "select=branch,items_json,fulfillment&slip_status=eq.ยืนยัน");
+    var bsExcluded = ["กำลังจัดส่งไปสาขา", "พร้อมรับ", "สาขายืนยัน", "รับแล้ว", "จัดส่งแล้ว"];
+    var bsSummary = {};
+    bsSb.forEach(function(r) {
+      if (bsExcluded.indexOf(r.fulfillment || "") >= 0) return;
+      var branch = r.branch || "";
+      var items = r.items_json || [];
+      if (!bsSummary[branch]) bsSummary[branch] = {};
       for (var x = 0; x < items.length; x++) {
         var key = items[x].name;
-        if (!summary[branch][key]) summary[branch][key] = { name: key, qty_box: 0, qty_pack: 0, order_count: 0 };
-        if (items[x].type === "box") summary[branch][key].qty_box += (items[x].qty || 1);
-        else summary[branch][key].qty_pack += (items[x].qty || 1);
-        summary[branch][key].order_count++;
+        if (!bsSummary[branch][key]) bsSummary[branch][key] = { name: key, qty_box: 0, qty_pack: 0, order_count: 0 };
+        if (items[x].type === "box") bsSummary[branch][key].qty_box += (items[x].qty || 1);
+        else bsSummary[branch][key].qty_pack += (items[x].qty || 1);
+        bsSummary[branch][key].order_count++;
       }
+    });
+    var bsResult = {};
+    for (var bb in bsSummary) {
+      bsResult[bb] = [];
+      for (var kk in bsSummary[bb]) bsResult[bb].push(bsSummary[bb][kk]);
     }
-    var result = {};
-    for (var b in summary) {
-      result[b] = [];
-      for (var k in summary[b]) result[b].push(summary[b][k]);
-    }
-    return _cors(ContentService.createTextOutput(JSON.stringify({ branches: result })));
+    return _cors(ContentService.createTextOutput(JSON.stringify({ branches: bsResult })));
   }
 
   // ── สต็อกกลาง ──
@@ -1888,8 +1707,6 @@ function handleApi(params) {
 
   // ── รายงานยอดขาย ──
   if (action === "report") {
-    var col = function(name) { return hdr.indexOf(name); };
-
     // อ่าน cost จาก _catalog
     var catWs = ss.getSheetByName(TAB_CATALOG);
     var costMap = {};
@@ -1911,73 +1728,16 @@ function handleApi(params) {
     var byDate = {};
     var totalRevenue = 0, totalCost = 0;
 
-    var reportRows = null;
-    try {
-      var repSb = supabaseSelect_("orders", "select=branch,timestamp,items_json&slip_status=eq.ยืนยัน");
-      reportRows = repSb.map(function(r) {
-        // Supabase's timestamp is UTC — convert to Bangkok-local before using
-        // as the by-date grouping key, same reasoning as the dashboard fix.
-        var localDate = Utilities.formatDate(new Date(r.timestamp), "Asia/Bangkok", "yyyy-MM-dd");
-        return { branch: r.branch || "ไม่ระบุ", dateKey: localDate, items: r.items_json || [] };
-      });
-    } catch (e) {
-      Logger.log("report Supabase read failed, falling back to Sheet: " + e.message);
-    }
+    var repSb = supabaseSelect_("orders", "select=branch,timestamp,items_json&slip_status=eq.ยืนยัน");
+    var reportRows = repSb.map(function(r) {
+      // Supabase's timestamp is UTC — convert to Bangkok-local before using
+      // as the by-date grouping key, same reasoning as the dashboard fix.
+      var localDate = Utilities.formatDate(new Date(r.timestamp), "Asia/Bangkok", "yyyy-MM-dd");
+      return { branch: r.branch || "ไม่ระบุ", dateKey: localDate, items: r.items_json || [] };
+    });
 
-    if (reportRows) {
-      reportRows.forEach(function(rr) {
-        var branch = rr.branch, dateKey = rr.dateKey, items = rr.items;
-        var orderRev = 0, orderCost = 0;
-        for (var x = 0; x < items.length; x++) {
-          var it = items[x];
-          var qty = it.qty || 1;
-          var c = costMap[it.name] || {};
-          var rev = (it.price || 0) * qty;
-          var cost = (it.type === "box" ? (c.cost_box || 0) : (c.cost_pack || 0)) * qty;
-          orderRev += rev;
-          orderCost += cost;
-
-          var pKey = it.name + "|" + it.type;
-          if (!byProduct[pKey]) byProduct[pKey] = { name: it.name, type: it.type, qty: 0, revenue: 0, cost: 0 };
-          byProduct[pKey].qty += qty;
-          byProduct[pKey].revenue += rev;
-          byProduct[pKey].cost += cost;
-        }
-
-        if (!byBranch[branch]) byBranch[branch] = { revenue: 0, cost: 0, orders: 0 };
-        byBranch[branch].revenue += orderRev;
-        byBranch[branch].cost += orderCost;
-        byBranch[branch].orders++;
-
-        if (dateKey) {
-          if (!byDate[dateKey]) byDate[dateKey] = { revenue: 0, cost: 0, orders: 0 };
-          byDate[dateKey].revenue += orderRev;
-          byDate[dateKey].cost += orderCost;
-          byDate[dateKey].orders++;
-        }
-
-        totalRevenue += orderRev;
-        totalCost += orderCost;
-      });
-
-      return _cors(ContentService.createTextOutput(JSON.stringify({
-        total: { revenue: totalRevenue, cost: totalCost, profit: totalRevenue - totalCost },
-        by_branch: byBranch,
-        by_product: Object.values(byProduct),
-        by_date: byDate,
-      })));
-    }
-
-    for (var i = 1; i < rows.length; i++) {
-      var slip = rows[i][col("slip_status")] || "";
-      if (slip !== "ยืนยัน") continue;
-
-      var branch = rows[i][col("branch")] || "ไม่ระบุ";
-      var ts = String(rows[i][col("timestamp")] || "");
-      var dateKey = ts.substring(0, 10);
-      var items = [];
-      try { items = JSON.parse(rows[i][col("items_json")] || "[]"); } catch(e) {}
-
+    reportRows.forEach(function(rr) {
+      var branch = rr.branch, dateKey = rr.dateKey, items = rr.items;
       var orderRev = 0, orderCost = 0;
       for (var x = 0; x < items.length; x++) {
         var it = items[x];
@@ -2009,7 +1769,7 @@ function handleApi(params) {
 
       totalRevenue += orderRev;
       totalCost += orderCost;
-    }
+    });
 
     return _cors(ContentService.createTextOutput(JSON.stringify({
       total: { revenue: totalRevenue, cost: totalCost, profit: totalRevenue - totalCost },
@@ -2096,174 +1856,106 @@ function handleApi(params) {
 
     var today = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
 
-    try {
-      var dashSb = supabaseSelect_("orders", "select=order_id,real_name,display_name,phone,items_json,total,slip_status,fulfillment,branch,address,timestamp&order=timestamp.desc");
-      var dOrdersToday = 0, dRevenueToday = 0, dPendingCount = 0;
-      var dRecentOrders = [];
-      var dPendingSlips = ["รอตรวจ", "รอตรวจเพิ่ม", "ยอดไม่ตรง", "สลิปซ้ำ", "บัญชีไม่ตรง", "สงสัยปลอม"];
-      dashSb.forEach(function(r) {
-        var slip = String(r.slip_status || "");
-        // Supabase's timestamp is UTC (e.g. "...+00:00"), unlike the Sheet's
-        // already-Bangkok-local string — must convert before date-comparing,
-        // a naive substring(0,10) here would be off by up to 7 hours.
-        var localDate = Utilities.formatDate(new Date(r.timestamp), "Asia/Bangkok", "yyyy-MM-dd");
-        if (localDate === today) {
-          dOrdersToday++;
-          if (slip === "ยืนยัน") dRevenueToday += Number(r.total) || 0;
-        }
-        if (dPendingSlips.indexOf(slip) >= 0) dPendingCount++;
-        if (dRecentOrders.length < 200) {
-          dRecentOrders.push({
-            order_id: String(r.order_id || ""),
-            real_name: String(r.real_name || ""),
-            display_name: String(r.display_name || ""),
-            phone: String(r.phone || ""),
-            items_json: JSON.stringify(r.items_json || []),
-            total: Number(r.total) || 0,
-            slip_status: slip,
-            fulfillment: String(r.fulfillment || ""),
-            branch: String(r.branch || ""),
-            address: String(r.address || ""),
-            timestamp: String(r.timestamp || ""),
-          });
-        }
-      });
-      var dashJsonSb = JSON.stringify({
-        orders_today: dOrdersToday, revenue_today: dRevenueToday,
-        pending_count: dPendingCount, recent_orders: dRecentOrders,
-      });
-      dashCache.put("dashboard_v1", dashJsonSb, 30);
-      return _cors(ContentService.createTextOutput(dashJsonSb));
-    } catch (e) {
-      Logger.log("dashboard Supabase read failed, falling back to Sheet: " + e.message);
-    }
-
-    var col = function(name) { return hdr.indexOf(name); };
-    var ordersToday = 0, revenueToday = 0, pendingCount = 0;
-    var recentOrders = [];
-    for (var i = rows.length - 1; i >= 1; i--) {
-      var ts = String(rows[i][col("timestamp")] || "");
-      var slip = String(rows[i][col("slip_status")] || "");
-      if (ts.substring(0, 10) === today) {
-        ordersToday++;
-        if (slip === "ยืนยัน") revenueToday += Number(rows[i][col("total")]) || 0;
+    var dashSb = supabaseSelect_("orders", "select=order_id,real_name,display_name,phone,items_json,total,slip_status,fulfillment,branch,address,timestamp&order=timestamp.desc");
+    var dOrdersToday = 0, dRevenueToday = 0, dPendingCount = 0;
+    var dRecentOrders = [];
+    var dPendingSlips = ["รอตรวจ", "รอตรวจเพิ่ม", "ยอดไม่ตรง", "สลิปซ้ำ", "บัญชีไม่ตรง", "สงสัยปลอม"];
+    dashSb.forEach(function(r) {
+      var slip = String(r.slip_status || "");
+      // Supabase's timestamp is UTC (e.g. "...+00:00"), unlike the Sheet's
+      // already-Bangkok-local string — must convert before date-comparing,
+      // a naive substring(0,10) here would be off by up to 7 hours.
+      var localDate = Utilities.formatDate(new Date(r.timestamp), "Asia/Bangkok", "yyyy-MM-dd");
+      if (localDate === today) {
+        dOrdersToday++;
+        if (slip === "ยืนยัน") dRevenueToday += Number(r.total) || 0;
       }
-      if (["รอตรวจ","รอตรวจเพิ่ม","ยอดไม่ตรง","สลิปซ้ำ","บัญชีไม่ตรง","สงสัยปลอม"].indexOf(slip) >= 0) pendingCount++;
-      if (recentOrders.length < 200) {
-        recentOrders.push({
-          order_id: String(rows[i][col("order_id")] || ""),
-          real_name: String(rows[i][col("real_name")] || ""),
-          display_name: String(rows[i][col("display_name")] || ""),
-          phone: String(rows[i][col("phone")] || ""),
-          items_json: String(rows[i][col("items_json")] || "[]"),
-          total: Number(rows[i][col("total")]) || 0,
+      if (dPendingSlips.indexOf(slip) >= 0) dPendingCount++;
+      if (dRecentOrders.length < 200) {
+        dRecentOrders.push({
+          order_id: String(r.order_id || ""),
+          real_name: String(r.real_name || ""),
+          display_name: String(r.display_name || ""),
+          phone: String(r.phone || ""),
+          items_json: JSON.stringify(r.items_json || []),
+          total: Number(r.total) || 0,
           slip_status: slip,
-          fulfillment: String(rows[i][col("fulfillment")] || ""),
-          branch: String(rows[i][col("branch")] || ""),
-          address: String(rows[i][col("address")] || ""),
-          timestamp: ts,
+          fulfillment: String(r.fulfillment || ""),
+          branch: String(r.branch || ""),
+          address: String(r.address || ""),
+          timestamp: String(r.timestamp || ""),
         });
       }
-    }
-    var dashJson = JSON.stringify({
-      orders_today: ordersToday, revenue_today: revenueToday,
-      pending_count: pendingCount, recent_orders: recentOrders,
     });
-    dashCache.put("dashboard_v1", dashJson, 30);
-    return _cors(ContentService.createTextOutput(dashJson));
+    var dashJsonSb = JSON.stringify({
+      orders_today: dOrdersToday, revenue_today: dRevenueToday,
+      pending_count: dPendingCount, recent_orders: dRecentOrders,
+    });
+    dashCache.put("dashboard_v1", dashJsonSb, 30);
+    return _cors(ContentService.createTextOutput(dashJsonSb));
   }
 
   // ── ยกเลิกออเดอร์ (admin) ──
   if (action === "cancel_order") {
     var orderId = params.order || "";
     if (!orderId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing order" })));
-    var col = function(name) { return hdr.indexOf(name); };
     var cancelReason = String(params.reason || "");
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
-    for (var i = 1; i < rows.length; i++) {
-      if (String(rows[i][col("order_id")]) !== orderId) continue;
-      var ff = String(rows[i][col("fulfillment")] || "");
-      if (ff === "รับแล้ว" || ff === "ยกเลิก") {
-        return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่สามารถยกเลิกออเดอร์นี้ได้" })));
-      }
-      var items = [];
-      try { items = JSON.parse(String(rows[i][col("items_json")] || "[]")); } catch(_) {}
-      // คืนเฉพาะ item ที่ยังไม่ได้ส่งมอบลูกค้า (ป้องกัน double restore)
-      var itemsToRestore = items.filter(function(it) { return !it.handed_at; });
-      if (itemsToRestore.length > 0) {
-        restoreStock(ss, itemsToRestore);
-        restoreCatalogLimits(ss, itemsToRestore);
-      }
-      ws.getRange(i + 1, col("fulfillment") + 1).setValue("ยกเลิก");
-      var updatedRow = rows[i].slice();
-      updatedRow[col("fulfillment")] = "ยกเลิก";
-      var uid = String(rows[i][col("line_user_id")] || "");
-      if (uid) {
-        var cancelMsg;
-        if (cancelReason === "duplicate") {
-          cancelMsg = "❌ ออเดอร์ #" + orderId + " ถูกยกเลิก\n\n" +
-            "ทีมงาน WAKA ได้รับออเดอร์แรกของคุณเรียบร้อยแล้วค่ะ\n" +
-            "ออเดอร์นี้จึงขอยกเลิกเพื่อให้สิทธิ์ลูกค้าท่านอื่น\n" +
-            "(สินค้ามีจำกัด)\n\n" +
-            "หากมีข้อสงสัยกรุณาติดต่อทีมงาน 🙏";
-        } else {
-          var reasonLine = cancelReason ? "\nเหตุผล: " + cancelReason + "\n" : "";
-          cancelMsg = "❌ ออเดอร์ #" + orderId + " ถูกยกเลิก\n" + reasonLine + "\nหากมีข้อสงสัยหรือต้องการสั่งใหม่ กรุณาติดต่อทีมงาน 🙏";
-        }
-        _linePush(uid, cancelMsg);
-      }
-      _clearDashCache();
-      pushOrderToSupabase_(updatedRow);
-      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+    var order = getSupabaseOrder_(orderId);
+    if (!order) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
+
+    var ff = String(order.fulfillment || "");
+    if (ff === "รับแล้ว" || ff === "ยกเลิก") {
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่สามารถยกเลิกออเดอร์นี้ได้" })));
     }
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
+    var items = Array.isArray(order.items_json) ? order.items_json : [];
+    // คืนเฉพาะ item ที่ยังไม่ได้ส่งมอบลูกค้า (ป้องกัน double restore)
+    var itemsToRestore = items.filter(function(it) { return !it.handed_at; });
+    if (itemsToRestore.length > 0) {
+      restoreStock(ss, itemsToRestore);
+      restoreCatalogLimits(ss, itemsToRestore);
+    }
+    order.fulfillment = "ยกเลิก";
+    var uid = String(order.line_user_id || "");
+    if (uid) {
+      var cancelMsg;
+      if (cancelReason === "duplicate") {
+        cancelMsg = "❌ ออเดอร์ #" + orderId + " ถูกยกเลิก\n\n" +
+          "ทีมงาน WAKA ได้รับออเดอร์แรกของคุณเรียบร้อยแล้วค่ะ\n" +
+          "ออเดอร์นี้จึงขอยกเลิกเพื่อให้สิทธิ์ลูกค้าท่านอื่น\n" +
+          "(สินค้ามีจำกัด)\n\n" +
+          "หากมีข้อสงสัยกรุณาติดต่อทีมงาน 🙏";
+      } else {
+        var reasonLine = cancelReason ? "\nเหตุผล: " + cancelReason + "\n" : "";
+        cancelMsg = "❌ ออเดอร์ #" + orderId + " ถูกยกเลิก\n" + reasonLine + "\nหากมีข้อสงสัยหรือต้องการสั่งใหม่ กรุณาติดต่อทีมงาน 🙏";
+      }
+      _linePush(uid, cancelMsg);
+    }
+    _clearDashCache();
+    writeSupabaseOrder_(order);
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   }
 
   // ── รายการจัดส่งพัสดุ ──
   if (action === "delivery_orders") {
-    try {
-      var doSb = supabaseSelect_("orders", "select=order_id,real_name,display_name,phone,address,items_json,total,slip_status,fulfillment,timestamp&branch=eq.จัดส่ง&order=timestamp.desc");
-      var doDeliveries = doSb
-        .filter(function(r) { return r.fulfillment !== "จัดส่งแล้ว" && r.fulfillment !== "รับแล้ว"; })
-        .map(function(r) {
-          return {
-            order_id:     String(r.order_id || ""),
-            real_name:    String(r.real_name || ""),
-            display_name: String(r.display_name || ""),
-            phone:        String(r.phone || ""),
-            address:      String(r.address || ""),
-            items_json:   JSON.stringify(r.items_json || []),
-            total:        Number(r.total) || 0,
-            slip_status:  String(r.slip_status || ""),
-            fulfillment:  String(r.fulfillment || ""),
-            timestamp:    String(r.timestamp || ""),
-          };
-        });
-      return _cors(ContentService.createTextOutput(JSON.stringify({ deliveries: doDeliveries })));
-    } catch (e) {
-      Logger.log("delivery_orders Supabase read failed, falling back to Sheet: " + e.message);
-    }
-    var col = function(name) { return hdr.indexOf(name); };
-    var deliveries = [];
-    for (var i = rows.length - 1; i >= 1; i--) {
-      var branch = String(rows[i][col("branch")] || "");
-      if (branch !== "จัดส่ง") continue;
-      var ff = String(rows[i][col("fulfillment")] || "");
-      if (ff === "จัดส่งแล้ว" || ff === "รับแล้ว") continue;
-      deliveries.push({
-        order_id:    String(rows[i][col("order_id")]    || ""),
-        real_name:   String(rows[i][col("real_name")]   || ""),
-        display_name:String(rows[i][col("display_name")]|| ""),
-        phone:       String(rows[i][col("phone")]       || ""),
-        address:     String(rows[i][col("address")]     || ""),
-        items_json:  String(rows[i][col("items_json")]  || "[]"),
-        total:       Number(rows[i][col("total")])      || 0,
-        slip_status: String(rows[i][col("slip_status")] || ""),
-        fulfillment: ff,
-        timestamp:   String(rows[i][col("timestamp")]   || ""),
+    var doSb = supabaseSelect_("orders", "select=order_id,real_name,display_name,phone,address,items_json,total,slip_status,fulfillment,timestamp&branch=eq.จัดส่ง&order=timestamp.desc");
+    var doDeliveries = doSb
+      .filter(function(r) { return r.fulfillment !== "จัดส่งแล้ว" && r.fulfillment !== "รับแล้ว"; })
+      .map(function(r) {
+        return {
+          order_id:     String(r.order_id || ""),
+          real_name:    String(r.real_name || ""),
+          display_name: String(r.display_name || ""),
+          phone:        String(r.phone || ""),
+          address:      String(r.address || ""),
+          items_json:   JSON.stringify(r.items_json || []),
+          total:        Number(r.total) || 0,
+          slip_status:  String(r.slip_status || ""),
+          fulfillment:  String(r.fulfillment || ""),
+          timestamp:    String(r.timestamp || ""),
+        };
       });
-    }
-    return _cors(ContentService.createTextOutput(JSON.stringify({ deliveries: deliveries })));
+    return _cors(ContentService.createTextOutput(JSON.stringify({ deliveries: doDeliveries })));
   }
 
   // ── รายการเบิกสินค้า ──
@@ -3149,19 +2841,10 @@ function isDuplicateSlip(ss, ref) {
   var cacheKey = "slip_ref_" + String(ref).trim();
   if (cache.get(cacheKey)) return true;
 
-  var ws = ss.getSheetByName(TAB_ORDERS);
-  if (!ws) return false;
-  var lastRow = ws.getLastRow();
-  if (lastRow < 2) return false;
-  var hdr = ws.getRange(1, 1, 1, ws.getLastColumn()).getValues()[0];
-  var refCol = hdr.indexOf("slip_txn_id");
-  if (refCol < 0) return false;
-  var refs = ws.getRange(2, refCol + 1, lastRow - 1, 1).getValues();
-  for (var i = 0; i < refs.length; i++) {
-    if (String(refs[i][0]).trim() === String(ref).trim()) {
-      cache.put(cacheKey, "1", 3600);
-      return true;
-    }
+  var rows = supabaseSelect_("orders", "select=order_id&slip_txn_id=eq." + encodeURIComponent(String(ref).trim()) + "&limit=1");
+  if (rows.length > 0) {
+    cache.put(cacheKey, "1", 3600);
+    return true;
   }
   return false;
 }
@@ -3546,31 +3229,22 @@ function handleReceiveShipment(data) {
     syncStockBranchItemsFromRows_(bsRows, bsMap, items, branch);
 
     // แจ้ง LINE ลูกค้าทุกคนที่มีออเดอร์ยืนยัน + สาขานี้ + ยังไม่ส่ง
-    var ws = ss.getSheetByName(TAB_ORDERS);
-    if (ws) {
-      var oRows = ws.getDataRange().getValues();
-      var oHdr = oRows[0];
-      var oCol = function(name) { return oHdr.indexOf(name); };
-      for (var j = 1; j < oRows.length; j++) {
-        var oBranch = oRows[j][oCol("branch")] || "";
-        var oSlip = oRows[j][oCol("slip_status")] || "";
-        var oFf = oRows[j][oCol("fulfillment")] || "";
-        if (oBranch !== branch || oSlip !== "ยืนยัน") continue;
-        if (["พร้อมรับ","บางส่วน","รับบางส่วนแล้ว","สาขายืนยัน","รับแล้ว"].indexOf(oFf) >= 0) continue;
-        // อัปเดต fulfillment เป็น "พร้อมรับ"
-        var oUpdatedRow = oRows[j].slice();
-        if (oCol("fulfillment") >= 0) { ws.getRange(j + 1, oCol("fulfillment") + 1).setValue("พร้อมรับ"); oUpdatedRow[oCol("fulfillment")] = "พร้อมรับ"; }
-        if (oCol("fulfilled_at") >= 0) { ws.getRange(j + 1, oCol("fulfilled_at") + 1).setValue(now); oUpdatedRow[oCol("fulfilled_at")] = now; }
-        var uid = oRows[j][oCol("line_user_id")] || "";
-        var oid = String(oRows[j][oCol("order_id")] || "");
-        // Avoid an O(n^2) blowup: this loop can touch every pending order for
-        // a branch, and syncOrderToSupabase_ would re-scan the whole orders
-        // sheet once per match. Push the row we already have instead.
-        pushOrderToSupabase_(oUpdatedRow);
-        if (uid) {
-          var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + oid;
-          _linePush(uid, "สินค้าพร้อมรับที่สาขา" + branch + " แล้ว!\n\nออเดอร์: #" + oid + "\n\nดูสถานะ:\n" + trackUrl);
-        }
+    // fulfillment=not.in.(...) ทำใน PostgREST ไม่ได้เพราะ NULL (ออเดอร์ใหม่ยัง
+    // ไม่เคยตั้ง fulfillment) จะหลุด filter ไปด้วย — กรองใน JS แทน
+    var excludedFf = ["พร้อมรับ", "บางส่วน", "รับบางส่วนแล้ว", "สาขายืนยัน", "รับแล้ว"];
+    var oMatches = supabaseSelect_("orders", "select=*&branch=eq." + encodeURIComponent(branch) + "&slip_status=eq.ยืนยัน");
+    for (var j = 0; j < oMatches.length; j++) {
+      var ord = oMatches[j];
+      var oFf = ord.fulfillment || "";
+      if (excludedFf.indexOf(oFf) >= 0) continue;
+      ord.fulfillment = "พร้อมรับ";
+      ord.fulfilled_at = now;
+      writeSupabaseOrder_(ord);
+      var uid = ord.line_user_id || "";
+      var oid = String(ord.order_id || "");
+      if (uid) {
+        var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + oid;
+        _linePush(uid, "สินค้าพร้อมรับที่สาขา" + branch + " แล้ว!\n\nออเดอร์: #" + oid + "\n\nดูสถานะ:\n" + trackUrl);
       }
     }
 
@@ -3589,118 +3263,102 @@ function handleHandoverOrder(data) {
   lock.waitLock(15000);
   try {
     var ss = SpreadsheetApp.openById(SHEET_ID);
-    var ws = ss.getSheetByName(TAB_ORDERS);
-    var oRows = ws.getDataRange().getValues();
-    var oHdr = oRows[0];
-    var oCol = function(name) { return oHdr.indexOf(name); };
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
 
-    for (var i = 1; i < oRows.length; i++) {
-      if (String(oRows[i][oCol("order_id")]) !== data.order_id) continue;
-      var branch = oRows[i][oCol("branch")] || "";
-      if (!_branchAuthorized(data.code, branch)) {
-        lock.releaseLock();
-        return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
-      }
-      var items = [];
-      try { items = JSON.parse(oRows[i][oCol("items_json")] || "[]"); } catch(e) {}
-
-      // หา item ที่จะส่งมอบรอบนี้:
-      // ถ้ามี ready_at (partial flow) → เอาเฉพาะที่ ready_at set แต่ยังไม่ handed_at
-      // ถ้าไม่มี ready_at เลย (old order) → เอา item ทั้งหมดที่ยังไม่ handed_at
-      var hasReadyAt = items.some(function(it) { return !!it.ready_at; });
-      var itemsToHandover = items.filter(function(it) {
-        if (it.cancelled_at) return false;
-        if (it.handed_at) return false;
-        return hasReadyAt ? !!it.ready_at : true;
-      });
-
-      if (itemsToHandover.length === 0) {
-        lock.releaseLock();
-        return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่มีสินค้าที่พร้อมส่งมอบ" })));
-      }
-
-      // ตัดสต็อกสาขาเฉพาะ itemsToHandover — batch write
-      var bsWs = ss.getSheetByName(TAB_STOCK_BRANCH);
-      if (bsWs) {
-        var bsRange = bsWs.getDataRange();
-        var bsRows = bsRange.getValues();
-        var bsMap = {};
-        for (var r = 1; r < bsRows.length; r++) {
-          bsMap[String(bsRows[r][0]).trim() + "||" + String(bsRows[r][2]).trim()] = r;
-        }
-        var bsChanged = false;
-        for (var idx = 0; idx < itemsToHandover.length; idx++) {
-          var it = itemsToHandover[idx];
-          var bsKey = String(it.name).trim() + "||" + branch;
-          var bsIdx = bsMap[bsKey];
-          if (bsIdx === undefined) continue;
-          if (it.type === "box") {
-            bsRows[bsIdx][3] = Math.max(0, (Number(bsRows[bsIdx][3]) || 0) - (it.qty || 1));
-          } else {
-            bsRows[bsIdx][4] = Math.max(0, (Number(bsRows[bsIdx][4]) || 0) - (it.qty || 1));
-          }
-          bsChanged = true;
-        }
-        if (bsChanged) bsRange.setValues(bsRows);
-        syncStockBranchItemsFromRows_(bsRows, bsMap, itemsToHandover, branch);
-      }
-
-      // ตั้ง handed_at บน item ที่เพิ่งส่งมอบ
-      var handoverNames = [];
-      for (var idx = 0; idx < items.length; idx++) {
-        for (var jj = 0; jj < itemsToHandover.length; jj++) {
-          if (items[idx] === itemsToHandover[jj]) {
-            items[idx].handed_at = now;
-            handoverNames.push(items[idx].name + " x" + items[idx].qty + (items[idx].type === "box" ? " กล่อง" : " ซอง"));
-            break;
-          }
-        }
-      }
-      ws.getRange(i + 1, oCol("items_json") + 1).setValue(JSON.stringify(items));
-
-      // กำหนด fulfillment ใหม่
-      var allDone = items.every(function(it) { return !!it.handed_at || !!it.cancelled_at; });
-      var newFf = allDone ? "สาขายืนยัน" : "รับบางส่วนแล้ว";
-      if (oCol("fulfillment") >= 0) ws.getRange(i + 1, oCol("fulfillment") + 1).setValue(newFf);
-      if (oCol("staff_confirmed_at") >= 0) ws.getRange(i + 1, oCol("staff_confirmed_at") + 1).setValue(now);
-      _clearDashCache();
-
-      var updatedRow = oRows[i].slice();
-      updatedRow[oCol("items_json")] = JSON.stringify(items);
-      if (oCol("fulfillment") >= 0) updatedRow[oCol("fulfillment")] = newFf;
-      if (oCol("staff_confirmed_at") >= 0) updatedRow[oCol("staff_confirmed_at")] = now;
-
-      // แจ้งลูกค้า
-      var uid = oRows[i][oCol("line_user_id")] || "";
-      if (uid) {
-        var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + data.order_id;
-        var pendingItems = items.filter(function(it) { return !it.handed_at && !it.cancelled_at; });
-        var msg;
-        if (allDone) {
-          msg = "สาขาส่งมอบสินค้าครบแล้ว กรุณากดยืนยันรับของ\n\nออเดอร์: #" + data.order_id + "\n\nกดยืนยัน:\n" + trackUrl;
-        } else {
-          msg = "📦 ส่งมอบสินค้าบางส่วนแล้ว\nออเดอร์: #" + data.order_id + "\n\n✅ รับแล้ว:\n" +
-            handoverNames.map(function(n) { return "- " + n; }).join("\n") +
-            "\n\n⏳ รอสินค้า:\n" + pendingItems.map(function(it) { return "- " + it.name + " x" + it.qty; }).join("\n") +
-            "\n\nสินค้าที่เหลือจะแจ้งให้ทราบเมื่อพร้อม";
-        }
-        _linePush(uid, msg);
-        if (oCol("notified_at") >= 0) {
-          ws.getRange(i + 1, oCol("notified_at") + 1).setValue(now);
-          updatedRow[oCol("notified_at")] = now;
-        }
-      }
-
+    var order = getSupabaseOrder_(data.order_id);
+    if (!order) {
       lock.releaseLock();
-      // Push the row we already built above instead of syncOrderToSupabase_,
-      // which would re-read the whole orders sheet a second time (this
-      // function already scanned it once above to find/update the row).
-      pushOrderToSupabase_(updatedRow);
-      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now, fulfillment: newFf })));
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
     }
+    var branch = order.branch || "";
+    if (!_branchAuthorized(data.code, branch)) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+    }
+    var items = Array.isArray(order.items_json) ? order.items_json : [];
+
+    // หา item ที่จะส่งมอบรอบนี้:
+    // ถ้ามี ready_at (partial flow) → เอาเฉพาะที่ ready_at set แต่ยังไม่ handed_at
+    // ถ้าไม่มี ready_at เลย (old order) → เอา item ทั้งหมดที่ยังไม่ handed_at
+    var hasReadyAt = items.some(function(it) { return !!it.ready_at; });
+    var itemsToHandover = items.filter(function(it) {
+      if (it.cancelled_at) return false;
+      if (it.handed_at) return false;
+      return hasReadyAt ? !!it.ready_at : true;
+    });
+
+    if (itemsToHandover.length === 0) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่มีสินค้าที่พร้อมส่งมอบ" })));
+    }
+
+    // ตัดสต็อกสาขาเฉพาะ itemsToHandover — batch write
+    var bsWs = ss.getSheetByName(TAB_STOCK_BRANCH);
+    if (bsWs) {
+      var bsRange = bsWs.getDataRange();
+      var bsRows = bsRange.getValues();
+      var bsMap = {};
+      for (var r = 1; r < bsRows.length; r++) {
+        bsMap[String(bsRows[r][0]).trim() + "||" + String(bsRows[r][2]).trim()] = r;
+      }
+      var bsChanged = false;
+      for (var idx = 0; idx < itemsToHandover.length; idx++) {
+        var it = itemsToHandover[idx];
+        var bsKey = String(it.name).trim() + "||" + branch;
+        var bsIdx = bsMap[bsKey];
+        if (bsIdx === undefined) continue;
+        if (it.type === "box") {
+          bsRows[bsIdx][3] = Math.max(0, (Number(bsRows[bsIdx][3]) || 0) - (it.qty || 1));
+        } else {
+          bsRows[bsIdx][4] = Math.max(0, (Number(bsRows[bsIdx][4]) || 0) - (it.qty || 1));
+        }
+        bsChanged = true;
+      }
+      if (bsChanged) bsRange.setValues(bsRows);
+      syncStockBranchItemsFromRows_(bsRows, bsMap, itemsToHandover, branch);
+    }
+
+    // ตั้ง handed_at บน item ที่เพิ่งส่งมอบ
+    var handoverNames = [];
+    for (var idx = 0; idx < items.length; idx++) {
+      for (var jj = 0; jj < itemsToHandover.length; jj++) {
+        if (items[idx] === itemsToHandover[jj]) {
+          items[idx].handed_at = now;
+          handoverNames.push(items[idx].name + " x" + items[idx].qty + (items[idx].type === "box" ? " กล่อง" : " ซอง"));
+          break;
+        }
+      }
+    }
+    order.items_json = items;
+
+    // กำหนด fulfillment ใหม่
+    var allDone = items.every(function(it) { return !!it.handed_at || !!it.cancelled_at; });
+    var newFf = allDone ? "สาขายืนยัน" : "รับบางส่วนแล้ว";
+    order.fulfillment = newFf;
+    order.staff_confirmed_at = now;
+    _clearDashCache();
+
+    // แจ้งลูกค้า
+    var uid = order.line_user_id || "";
+    if (uid) {
+      var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + data.order_id;
+      var pendingItems = items.filter(function(it) { return !it.handed_at && !it.cancelled_at; });
+      var msg;
+      if (allDone) {
+        msg = "สาขาส่งมอบสินค้าครบแล้ว กรุณากดยืนยันรับของ\n\nออเดอร์: #" + data.order_id + "\n\nกดยืนยัน:\n" + trackUrl;
+      } else {
+        msg = "📦 ส่งมอบสินค้าบางส่วนแล้ว\nออเดอร์: #" + data.order_id + "\n\n✅ รับแล้ว:\n" +
+          handoverNames.map(function(n) { return "- " + n; }).join("\n") +
+          "\n\n⏳ รอสินค้า:\n" + pendingItems.map(function(it) { return "- " + it.name + " x" + it.qty; }).join("\n") +
+          "\n\nสินค้าที่เหลือจะแจ้งให้ทราบเมื่อพร้อม";
+      }
+      _linePush(uid, msg);
+      order.notified_at = now;
+    }
+
+    writeSupabaseOrder_(order);
     lock.releaseLock();
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now, fulfillment: newFf })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
@@ -3713,86 +3371,71 @@ function handlePartialReady(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
-    var ss = SpreadsheetApp.openById(SHEET_ID);
-    var ws = ss.getSheetByName(TAB_ORDERS);
-    var oRows = ws.getDataRange().getValues();
-    var oHdr = oRows[0];
-    var oCol = function(name) { return oHdr.indexOf(name); };
     var indices = data.indices || [];
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
 
-    for (var i = 1; i < oRows.length; i++) {
-      if (String(oRows[i][oCol("order_id")]) !== String(data.order_id)) continue;
+    var order = getSupabaseOrder_(data.order_id);
+    if (!order) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
+    }
+    var branch = order.branch || "";
+    if (!_branchAuthorized(data.code, branch)) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+    }
+    var uid = order.line_user_id || "";
+    var items = Array.isArray(order.items_json) ? order.items_json : [];
 
-      var branch = oRows[i][oCol("branch")] || "";
-      if (!_branchAuthorized(data.code, branch)) {
-        lock.releaseLock();
-        return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+    // ตั้ง ready_at บน items ที่เลือก (ที่ยังไม่ handed_at, ไม่ cancelled, และยังไม่ ready_at มาก่อน)
+    var newlyReady = [];
+    for (var ii = 0; ii < indices.length; ii++) {
+      var idx = indices[ii];
+      if (idx >= 0 && idx < items.length && !items[idx].handed_at && !items[idx].cancelled_at && !items[idx].ready_at) {
+        items[idx].ready_at = now;
+        newlyReady.push(items[idx]);
       }
-      var uid = oRows[i][oCol("line_user_id")] || "";
-      var items = [];
-      try { items = JSON.parse(oRows[i][oCol("items_json")] || "[]"); } catch(e) {}
+    }
 
-      // ตั้ง ready_at บน items ที่เลือก (ที่ยังไม่ handed_at, ไม่ cancelled, และยังไม่ ready_at มาก่อน)
-      var newlyReady = [];
-      for (var ii = 0; ii < indices.length; ii++) {
-        var idx = indices[ii];
-        if (idx >= 0 && idx < items.length && !items[idx].handed_at && !items[idx].cancelled_at && !items[idx].ready_at) {
-          items[idx].ready_at = now;
-          newlyReady.push(items[idx]);
-        }
-      }
+    // ไม่มีอะไรเปลี่ยนจริง (รายการที่เลือกแจ้งพร้อมรับไปแล้วทั้งหมด) — ไม่ต้องเขียนซ้ำ
+    // หรือแจ้งลูกค้าซ้ำ กันปุ่มที่กดซ้ำ (เช่นหน้าค้นหาที่ข้อมูลยังไม่ refresh) ส่ง LINE ซ้ำ
+    if (newlyReady.length === 0) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "รายการที่เลือกแจ้งพร้อมรับไปแล้ว" })));
+    }
 
-      // ไม่มีอะไรเปลี่ยนจริง (รายการที่เลือกแจ้งพร้อมรับไปแล้วทั้งหมด) — ไม่ต้องเขียนซ้ำ
-      // หรือแจ้งลูกค้าซ้ำ กันปุ่มที่กดซ้ำ (เช่นหน้าค้นหาที่ข้อมูลยังไม่ refresh) ส่ง LINE ซ้ำ
-      if (newlyReady.length === 0) {
-        lock.releaseLock();
-        return _cors(ContentService.createTextOutput(JSON.stringify({ error: "รายการที่เลือกแจ้งพร้อมรับไปแล้ว" })));
-      }
+    order.items_json = items;
 
-      ws.getRange(i + 1, oCol("items_json") + 1).setValue(JSON.stringify(items));
+    // fulfillment ใหม่
+    var activeItems = items.filter(function(it) { return !it.cancelled_at; });
+    var allReady = activeItems.length > 0 && activeItems.every(function(it) { return !!it.ready_at || !!it.handed_at; });
+    var newFf = allReady ? "พร้อมรับ" : "บางส่วน";
+    order.fulfillment = newFf;
+    order.fulfilled_at = now;
+    _clearDashCache();
 
-      // fulfillment ใหม่
-      var activeItems = items.filter(function(it) { return !it.cancelled_at; });
-      var allReady = activeItems.length > 0 && activeItems.every(function(it) { return !!it.ready_at || !!it.handed_at; });
-      var newFf = allReady ? "พร้อมรับ" : "บางส่วน";
-      ws.getRange(i + 1, oCol("fulfillment") + 1).setValue(newFf);
-      ws.getRange(i + 1, oCol("fulfilled_at") + 1).setValue(now);
-      _clearDashCache();
-
-      var updatedRow = oRows[i].slice();
-      updatedRow[oCol("items_json")] = JSON.stringify(items);
-      updatedRow[oCol("fulfillment")] = newFf;
-      updatedRow[oCol("fulfilled_at")] = now;
-
-      // LINE แจ้งลูกค้า
-      if (uid) {
-        var readyItems = items.filter(function(it) { return (!!it.ready_at || !!it.handed_at) && !it.cancelled_at; });
-        var pendingItems = items.filter(function(it) { return !it.ready_at && !it.handed_at && !it.cancelled_at; });
-        var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + data.order_id;
-        var msg = "📦 สินค้า" + (allReady ? "พร้อมรับแล้ว!" : "บางส่วนพร้อมรับแล้ว!") + "\nออเดอร์: #" + data.order_id + "\n";
-        msg += "\n✅ พร้อมรับ:\n" + readyItems.map(function(it) {
+    // LINE แจ้งลูกค้า
+    if (uid) {
+      var readyItems = items.filter(function(it) { return (!!it.ready_at || !!it.handed_at) && !it.cancelled_at; });
+      var pendingItems = items.filter(function(it) { return !it.ready_at && !it.handed_at && !it.cancelled_at; });
+      var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + data.order_id;
+      var msg = "📦 สินค้า" + (allReady ? "พร้อมรับแล้ว!" : "บางส่วนพร้อมรับแล้ว!") + "\nออเดอร์: #" + data.order_id + "\n";
+      msg += "\n✅ พร้อมรับ:\n" + readyItems.map(function(it) {
+        return "- " + it.name + " x" + it.qty + (it.type === "box" ? " กล่อง" : " ซอง");
+      }).join("\n");
+      if (pendingItems.length > 0) {
+        msg += "\n\n⏳ รอสินค้า:\n" + pendingItems.map(function(it) {
           return "- " + it.name + " x" + it.qty + (it.type === "box" ? " กล่อง" : " ซอง");
         }).join("\n");
-        if (pendingItems.length > 0) {
-          msg += "\n\n⏳ รอสินค้า:\n" + pendingItems.map(function(it) {
-            return "- " + it.name + " x" + it.qty + (it.type === "box" ? " กล่อง" : " ซอง");
-          }).join("\n");
-        }
-        msg += "\n\nกรุณามารับที่สาขา" + branch + " ได้เลยครับ\n" + trackUrl;
-        _linePush(uid, msg);
-        if (oCol("notified_at") >= 0) {
-          ws.getRange(i + 1, oCol("notified_at") + 1).setValue(now);
-          updatedRow[oCol("notified_at")] = now;
-        }
       }
-
-      lock.releaseLock();
-      pushOrderToSupabase_(updatedRow);
-      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, fulfillment: newFf })));
+      msg += "\n\nกรุณามารับที่สาขา" + branch + " ได้เลยครับ\n" + trackUrl;
+      _linePush(uid, msg);
+      order.notified_at = now;
     }
+
+    writeSupabaseOrder_(order);
     lock.releaseLock();
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, fulfillment: newFf })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
@@ -3806,77 +3449,66 @@ function handlePartialCancelItems(data) {
   lock.waitLock(15000);
   try {
     var ss = SpreadsheetApp.openById(SHEET_ID);
-    var ws = ss.getSheetByName(TAB_ORDERS);
-    var oRows = ws.getDataRange().getValues();
-    var oHdr = oRows[0];
-    var oCol = function(name) { return oHdr.indexOf(name); };
     var indices = data.indices || [];
     var reason = String(data.reason || "");
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
 
-    for (var i = 1; i < oRows.length; i++) {
-      if (String(oRows[i][oCol("order_id")]) !== String(data.order_id)) continue;
-
-      var branch = oRows[i][oCol("branch")] || "";
-      if (!_branchAuthorized(data.code, branch)) {
-        lock.releaseLock();
-        return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
-      }
-      var uid = oRows[i][oCol("line_user_id")] || "";
-      var items = [];
-      try { items = JSON.parse(oRows[i][oCol("items_json")] || "[]"); } catch(e) {}
-
-      // mark items ที่ยังไม่ handed_at เป็น cancelled
-      var cancelledItems = [];
-      for (var ii = 0; ii < indices.length; ii++) {
-        var idx = indices[ii];
-        if (idx >= 0 && idx < items.length && !items[idx].handed_at && !items[idx].cancelled_at) {
-          items[idx].cancelled_at = now;
-          items[idx].cancel_reason = reason;
-          cancelledItems.push(items[idx]);
-        }
-      }
-      if (cancelledItems.length === 0) {
-        lock.releaseLock();
-        return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่มีรายการที่ยกเลิกได้" })));
-      }
-
-      // คืน stock + limits
-      restoreStock(ss, cancelledItems);
-      restoreCatalogLimits(ss, cancelledItems);
-
-      ws.getRange(i + 1, oCol("items_json") + 1).setValue(JSON.stringify(items));
-      var updatedRow = oRows[i].slice();
-      updatedRow[oCol("items_json")] = JSON.stringify(items);
-
-      // ถ้าทุก item cancelled → ปิด order
-      var allCancelled = items.every(function(it) { return !!it.cancelled_at || !!it.handed_at; });
-      var onlyHandedRemain = items.every(function(it) { return !!it.handed_at || !!it.cancelled_at; });
-      if (items.every(function(it) { return !!it.cancelled_at; })) {
-        ws.getRange(i + 1, oCol("fulfillment") + 1).setValue("ยกเลิก");
-        updatedRow[oCol("fulfillment")] = "ยกเลิก";
-      }
-      _clearDashCache();
-
-      // LINE แจ้งลูกค้า
-      if (uid) {
-        var cancelText = cancelledItems.map(function(it) {
-          return "- " + it.name + " x" + it.qty + (it.type === "box" ? " กล่อง" : " ซอง");
-        }).join("\n");
-        var reasonLine = reason ? "\nเหตุผล: " + reason : "";
-        _linePush(uid,
-          "❌ ยกเลิกสินค้าบางรายการ\nออเดอร์: #" + data.order_id + "\n\n" +
-          "รายการที่ยกเลิก:\n" + cancelText + reasonLine +
-          "\n\nหากมีข้อสงสัยกรุณาติดต่อทีมงาน 🙏"
-        );
-      }
-
+    var order = getSupabaseOrder_(data.order_id);
+    if (!order) {
       lock.releaseLock();
-      pushOrderToSupabase_(updatedRow);
-      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, cancelled: cancelledItems.length })));
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
     }
+    var branch = order.branch || "";
+    if (!_branchAuthorized(data.code, branch)) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+    }
+    var uid = order.line_user_id || "";
+    var items = Array.isArray(order.items_json) ? order.items_json : [];
+
+    // mark items ที่ยังไม่ handed_at เป็น cancelled
+    var cancelledItems = [];
+    for (var ii = 0; ii < indices.length; ii++) {
+      var idx = indices[ii];
+      if (idx >= 0 && idx < items.length && !items[idx].handed_at && !items[idx].cancelled_at) {
+        items[idx].cancelled_at = now;
+        items[idx].cancel_reason = reason;
+        cancelledItems.push(items[idx]);
+      }
+    }
+    if (cancelledItems.length === 0) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่มีรายการที่ยกเลิกได้" })));
+    }
+
+    // คืน stock + limits
+    restoreStock(ss, cancelledItems);
+    restoreCatalogLimits(ss, cancelledItems);
+
+    order.items_json = items;
+
+    // ถ้าทุก item cancelled → ปิด order
+    if (items.every(function(it) { return !!it.cancelled_at; })) {
+      order.fulfillment = "ยกเลิก";
+    }
+    _clearDashCache();
+
+    // LINE แจ้งลูกค้า
+    if (uid) {
+      var cancelText = cancelledItems.map(function(it) {
+        return "- " + it.name + " x" + it.qty + (it.type === "box" ? " กล่อง" : " ซอง");
+      }).join("\n");
+      var reasonLine = reason ? "\nเหตุผล: " + reason : "";
+      _linePush(uid,
+        "❌ ยกเลิกสินค้าบางรายการ\nออเดอร์: #" + data.order_id + "\n\n" +
+        "รายการที่ยกเลิก:\n" + cancelText + reasonLine +
+        "\n\nหากมีข้อสงสัยกรุณาติดต่อทีมงาน 🙏"
+      );
+    }
+
+    writeSupabaseOrder_(order);
     lock.releaseLock();
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, cancelled: cancelledItems.length })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
@@ -3921,53 +3553,39 @@ function handleConfirmSlip(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var ss = SpreadsheetApp.openById(SHEET_ID);
-    var ws = ss.getSheetByName(TAB_ORDERS);
-    var rows = ws.getDataRange().getValues();
-    var hdr = rows[0];
-    var col = function(name) { return hdr.indexOf(name); };
+    var order = getSupabaseOrder_(data.order_id);
+    if (!order) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
 
-    for (var i = 1; i < rows.length; i++) {
-      if (String(rows[i][col("order_id")]) !== data.order_id) continue;
-      var currentSlip = rows[i][col("slip_status")] || "";
-      if (currentSlip === "ยืนยัน") return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, already: true })));
+    var currentSlip = order.slip_status || "";
+    if (currentSlip === "ยืนยัน") return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, already: true })));
 
-      ws.getRange(i + 1, col("slip_status") + 1).setValue("ยืนยัน");
-      var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
-      ws.getRange(i + 1, col("notes") + 1).setValue("Admin confirm " + now);
-      var updatedRow = rows[i].slice();
-      updatedRow[col("slip_status")] = "ยืนยัน";
-      updatedRow[col("notes")] = "Admin confirm " + now;
+    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
+    order.slip_status = "ยืนยัน";
+    order.notes = "Admin confirm " + now;
 
-      var uid = rows[i][col("line_user_id")] || "";
-      var orderId = String(rows[i][col("order_id")] || "");
-      var branch = rows[i][col("branch")] || "";
-      var total = rows[i][col("total")] || 0;
-      var items = [];
-      try { items = JSON.parse(rows[i][col("items_json")] || "[]"); } catch(_) {}
+    var uid = order.line_user_id || "";
+    var orderId = String(order.order_id || "");
+    var branch = order.branch || "";
+    var total = order.total || 0;
+    var items = Array.isArray(order.items_json) ? order.items_json : [];
 
-      if (uid) {
-        var message;
-        if (data.custom_message && String(data.custom_message).trim()) {
-          message = String(data.custom_message).trim();
-        } else {
-          var itemsText = items.map(function(it) {
-            var unit = it.type === "box" ? "กล่อง" : "ซอง";
-            return "  - " + it.name + " (" + unit + ") x" + it.qty;
-          }).join("\n");
-          var isDelivery = branch === "จัดส่ง";
-          message = "ยืนยันการชำระเงินแล้ว ✅\n\nออเดอร์: #" + orderId + "\n\n" + itemsText + "\n\nยอดรวม: " + total + " บาท\n" + (isDelivery ? "จัดส่งพัสดุ" : "รับที่สาขา: " + branch) + "\n\nทีมงานจะแจ้งเมื่อสินค้าพร้อมรับครับ";
-        }
-        _linePush(uid, message);
+    if (uid) {
+      var message;
+      if (data.custom_message && String(data.custom_message).trim()) {
+        message = String(data.custom_message).trim();
+      } else {
+        var itemsText = items.map(function(it) {
+          var unit = it.type === "box" ? "กล่อง" : "ซอง";
+          return "  - " + it.name + " (" + unit + ") x" + it.qty;
+        }).join("\n");
+        var isDelivery = branch === "จัดส่ง";
+        message = "ยืนยันการชำระเงินแล้ว ✅\n\nออเดอร์: #" + orderId + "\n\n" + itemsText + "\n\nยอดรวม: " + total + " บาท\n" + (isDelivery ? "จัดส่งพัสดุ" : "รับที่สาขา: " + branch) + "\n\nทีมงานจะแจ้งเมื่อสินค้าพร้อมรับครับ";
       }
-
-      // Push the row we already have in memory (with this function's own
-      // edits applied) instead of syncOrderToSupabase_, which would re-read
-      // the whole orders sheet a second time just to find this same row.
-      pushOrderToSupabase_(updatedRow);
-      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+      _linePush(uid, message);
     }
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
+
+    writeSupabaseOrder_(order);
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
   } finally {
@@ -3981,37 +3599,27 @@ function handleRejectSlip(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var ss = SpreadsheetApp.openById(SHEET_ID);
-    var ws = ss.getSheetByName(TAB_ORDERS);
-    var rows = ws.getDataRange().getValues();
-    var hdr = rows[0];
-    var col = function(name) { return hdr.indexOf(name); };
+    var order = getSupabaseOrder_(data.order_id);
+    if (!order) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
 
-    for (var i = 1; i < rows.length; i++) {
-      if (String(rows[i][col("order_id")]) !== String(data.order_id)) continue;
-      var orderId = String(rows[i][col("order_id")] || "");
-      var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
-      var reason = String(data.reason || "").trim();
-      var note = "Admin reject " + now + (reason ? " (" + reason + ")" : "");
+    var orderId = String(order.order_id || "");
+    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
+    var reason = String(data.reason || "").trim();
+    var note = "Admin reject " + now + (reason ? " (" + reason + ")" : "");
 
-      ws.getRange(i + 1, col("slip_status") + 1).setValue("ยกเลิก");
-      ws.getRange(i + 1, col("notes") + 1).setValue(note);
-      var updatedRow = rows[i].slice();
-      updatedRow[col("slip_status")] = "ยกเลิก";
-      updatedRow[col("notes")] = note;
+    order.slip_status = "ยกเลิก";
+    order.notes = note;
 
-      var uid = rows[i][col("line_user_id")] || "";
-      if (uid && uid !== "dev_user") {
-        var reasonLine = reason ? "\nเหตุผล: " + reason : "";
-        var msg = "🙏 แอดมินขออนุญาตยกเลิกออเดอร์ #" + orderId + " หากมีข้อสงสัยหรือต้องการสอบถามเพิ่มเติม ติดต่อแอดมินได้เลยนะคะ" + reasonLine +
-          "\n\nขออภัยลูกค้าด้วยนะคะ ขอบคุณค่ะ 💛";
-        _linePush(uid, msg);
-      }
-
-      pushOrderToSupabase_(updatedRow);
-      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+    var uid = order.line_user_id || "";
+    if (uid && uid !== "dev_user") {
+      var reasonLine = reason ? "\nเหตุผล: " + reason : "";
+      var msg = "🙏 แอดมินขออนุญาตยกเลิกออเดอร์ #" + orderId + " หากมีข้อสงสัยหรือต้องการสอบถามเพิ่มเติม ติดต่อแอดมินได้เลยนะคะ" + reasonLine +
+        "\n\nขออภัยลูกค้าด้วยนะคะ ขอบคุณค่ะ 💛";
+      _linePush(uid, msg);
     }
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
+
+    writeSupabaseOrder_(order);
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
   } finally {
@@ -4023,51 +3631,39 @@ function handleRejectSlip(data) {
 // data: { order_id }
 function handleNotifyCustomer(data) {
   try {
-    var ss = SpreadsheetApp.openById(SHEET_ID);
-    var ws = ss.getSheetByName(TAB_ORDERS);
-    var rows = ws.getDataRange().getValues();
-    var hdr = rows[0];
-    var col = function(name) { return hdr.indexOf(name); };
+    var order = getSupabaseOrder_(data.order_id);
+    if (!order) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
 
-    for (var i = 1; i < rows.length; i++) {
-      if (String(rows[i][col("order_id")]) !== data.order_id) continue;
-      var uid = rows[i][col("line_user_id")] || "";
-      if (!uid) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ออเดอร์นี้ไม่มี LINE user id" })));
+    var uid = order.line_user_id || "";
+    if (!uid) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ออเดอร์นี้ไม่มี LINE user id" })));
 
-      var orderId = String(rows[i][col("order_id")] || "");
-      var branch = rows[i][col("branch")] || "";
-      var total = rows[i][col("total")] || 0;
-      var slipStatus = rows[i][col("slip_status")] || "";
-      var fulfillment = rows[i][col("fulfillment")] || "รอเตรียม";
-      var items = [];
-      try { items = JSON.parse(rows[i][col("items_json")] || "[]"); } catch(_) {}
+    var orderId = String(order.order_id || "");
+    var branch = order.branch || "";
+    var total = order.total || 0;
+    var slipStatus = order.slip_status || "";
+    var fulfillment = order.fulfillment || "รอเตรียม";
+    var items = Array.isArray(order.items_json) ? order.items_json : [];
 
-      var message;
-      if (data.custom_message && String(data.custom_message).trim()) {
-        message = String(data.custom_message).trim();
-      } else {
-        var itemsText = items.map(function(it) {
-          var unit = it.type === "box" ? "กล่อง" : "ซอง";
-          return "  - " + it.name + " (" + unit + ") x" + it.qty;
-        }).join("\n");
-        var isDelivery = branch === "จัดส่ง";
-        message = "แจ้งเตือนสถานะออเดอร์ #" + orderId + "\n\n" + itemsText +
-          "\n\nยอดรวม: " + total + " บาท\n" +
-          (isDelivery ? "จัดส่งพัสดุ" : "รับที่สาขา: " + branch) +
-          "\n\nสถานะสลิป: " + (slipStatus || "รอตรวจ") +
-          "\nสถานะจัดส่ง: " + fulfillment;
-      }
-      _linePush(uid, message);
-      var notifyNow = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
-      var updatedRow = rows[i].slice();
-      if (col("notified_at") >= 0) {
-        ws.getRange(i + 1, col("notified_at") + 1).setValue(notifyNow);
-        updatedRow[col("notified_at")] = notifyNow;
-      }
-      pushOrderToSupabase_(updatedRow);
-      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: notifyNow })));
+    var message;
+    if (data.custom_message && String(data.custom_message).trim()) {
+      message = String(data.custom_message).trim();
+    } else {
+      var itemsText = items.map(function(it) {
+        var unit = it.type === "box" ? "กล่อง" : "ซอง";
+        return "  - " + it.name + " (" + unit + ") x" + it.qty;
+      }).join("\n");
+      var isDelivery = branch === "จัดส่ง";
+      message = "แจ้งเตือนสถานะออเดอร์ #" + orderId + "\n\n" + itemsText +
+        "\n\nยอดรวม: " + total + " บาท\n" +
+        (isDelivery ? "จัดส่งพัสดุ" : "รับที่สาขา: " + branch) +
+        "\n\nสถานะสลิป: " + (slipStatus || "รอตรวจ") +
+        "\nสถานะจัดส่ง: " + fulfillment;
     }
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
+    _linePush(uid, message);
+    var notifyNow = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
+    order.notified_at = notifyNow;
+    writeSupabaseOrder_(order);
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: notifyNow })));
   } catch (err) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
   }

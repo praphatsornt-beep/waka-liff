@@ -20,45 +20,10 @@ from theme import (
     PENDING_TEXT, SUCCESS_TEXT, DANGER_TEXT,
 )
 
-try:
-    import gspread
-    from google.oauth2.service_account import Credentials
-except ImportError as e:
-    st.error(f"ติดตั้ง packages ก่อน: `pip install -r requirements.txt`\n\n{e}")
-    st.stop()
-
-SCOPES   = ["https://www.googleapis.com/auth/spreadsheets"]
-SA_PATH  = Path("service_account.json")
-SHEET_ID = "1aUHbSt3qlQ4uMIzlCGbF-iFm0AqSeqx12nxk5ny1JoY"
-
 BRANCHES   = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์", "จัดส่ง"]
 ALL_STATUS = ["รอตรวจ", "รอตรวจเพิ่ม", "ยืนยัน", "ยอดไม่ตรง", "สลิปซ้ำ", "บัญชีไม่ตรง", "สงสัยปลอม", "ยกเลิก", "ไม่มีสลิป"]
 
 TH_TZ = timezone(timedelta(hours=7))
-
-
-# ── Auth ──────────────────────────────────────────────────────────────────────
-def _build_creds():
-    try:
-        if "GOOGLE_SERVICE_ACCOUNT" in st.secrets:
-            info = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
-            return Credentials.from_service_account_info(info, scopes=SCOPES)
-    except Exception:
-        pass
-    return Credentials.from_service_account_file(str(SA_PATH), scopes=SCOPES)
-
-_gc_client = None
-
-def get_gc():
-    global _gc_client
-    if _gc_client is not None:
-        try:
-            _gc_client.open_by_key(SHEET_ID)
-            return _gc_client
-        except Exception:
-            _gc_client = None
-    _gc_client = gspread.authorize(_build_creds())
-    return _gc_client
 
 
 @st.cache_resource
@@ -92,81 +57,26 @@ def load_orders() -> pd.DataFrame:
         return pd.DataFrame()
 
 
-ORDERS_HEADER = [
-    "order_id", "timestamp", "line_user_id", "display_name",
-    "items_json", "total", "branch", "real_name", "phone", "address", "email",
-    "slip_status", "slip_url", "slip_amount", "slip_txn_id", "notes",
-    "fulfillment", "fulfilled_at", "staff_confirmed_at", "customer_confirmed_at",
-    "notified_at",
-]
-
-
-def sync_order_to_supabase(row_num: int):
-    """Best-effort mirror to Supabase after a direct Sheets write from this
-    dashboard (bypasses gas/Code.gs entirely, so its dual-write can't cover
-    this path — must push here instead). Never raises; a Supabase hiccup
-    must never block the actual approve/reject action."""
-    try:
-        import os
-        from supabase import create_client
-        url, key = os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_SERVICE_KEY")
-        if not url or not key:
-            return
-        ws = get_gc().open_by_key(SHEET_ID).worksheet("orders")
-        values = ws.row_values(row_num)
-        row = {ORDERS_HEADER[i]: (values[i] if i < len(values) and values[i] != "" else None)
-               for i in range(len(ORDERS_HEADER))}
-        if row.get("items_json"):
-            row["items_json"] = json.loads(row["items_json"])
-        create_client(url, key).table("orders").upsert(row, on_conflict="order_id").execute()
-    except Exception:
-        pass
-
 
 def update_slip_status(order_id: str, status: str, amount: str = "", note: str = ""):
-    ws = get_gc().open_by_key(SHEET_ID).worksheet("orders")
-    cell = ws.find(order_id, in_column=1)
-    if not cell:
-        raise Exception(f"ไม่พบออเดอร์ {order_id} ใน Sheet")
-    row_num = cell.row
-    hdr = ws.row_values(1)
-    status_col = hdr.index("slip_status") + 1 if "slip_status" in hdr else None
-    amount_col = hdr.index("slip_amount") + 1 if "slip_amount" in hdr else None
-    notes_col  = hdr.index("notes")       + 1 if "notes"       in hdr else None
-    if status_col and status:
-        ws.update_cell(row_num, status_col, status)
-    if amount_col and amount:
-        ws.update_cell(row_num, amount_col, amount)
-    if notes_col and note:
-        ws.update_cell(row_num, notes_col, note)
-    sync_order_to_supabase(row_num)
+    """orders is Supabase-primary now (gas/Code.gs no longer reads/writes the
+    Sheet for orders) — patch Supabase directly instead of the old gspread
+    Sheet write, otherwise this would silently no-op on any order created
+    after the cutover (never found in the now-frozen Sheet)."""
+    updates = {}
+    if status:
+        updates["slip_status"] = status
+    if amount:
+        updates["slip_amount"] = amount
+    if note:
+        updates["notes"] = note
+    if not updates:
+        return
+    get_supabase().table("orders").update(updates).eq("order_id", order_id).execute()
 
 
 def _now_th():
     return datetime.now(TH_TZ).strftime("%Y-%m-%d %H:%M")
-
-def update_fulfillment(row_num: int, status: str):
-    ws = get_gc().open_by_key(SHEET_ID).worksheet("orders")
-    hdr = ws.row_values(1)
-    ff_col = hdr.index("fulfillment") + 1 if "fulfillment" in hdr else None
-    at_col = hdr.index("fulfilled_at") + 1 if "fulfilled_at" in hdr else None
-    if ff_col:
-        ws.update_cell(row_num, ff_col, status)
-    if at_col:
-        ws.update_cell(row_num, at_col, _now_th())
-
-
-def staff_confirm_handover(row_num: int):
-    ws = get_gc().open_by_key(SHEET_ID).worksheet("orders")
-    hdr = ws.row_values(1)
-    col = hdr.index("staff_confirmed_at") + 1 if "staff_confirmed_at" in hdr else None
-    ff_col = hdr.index("fulfillment") + 1 if "fulfillment" in hdr else None
-    now = _now_th()
-    if col:
-        ws.update_cell(row_num, col, now)
-    if ff_col:
-        ws.update_cell(row_num, ff_col, "สาขายืนยัน")
-    return now
 
 
 GAS_URL = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
