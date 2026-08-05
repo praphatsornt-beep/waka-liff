@@ -431,36 +431,26 @@ function doGet(e) {
     var cached = cache.get("catalog_config");
     if (cached) return _cors(ContentService.createTextOutput(cached));
 
-    var ss    = SpreadsheetApp.openById(SHEET_ID);
-    var catWs = ss.getSheetByName(TAB_CATALOG);
-
-    var catRows = catWs ? catWs.getDataRange().getValues() : [];
+    var catSbRows = supabaseSelect_("catalog", "select=*");
     var catalog = [];
-    for (var i = 1; i < catRows.length; i++) {
-      var name = catRows[i][0], category = catRows[i][1], price_box = catRows[i][5];
-      var price_pack = catRows[i][6], active = catRows[i][11], image_url = catRows[i][12];
-      if (!name) continue;
+    for (var i = 0; i < catSbRows.length; i++) {
+      var cr = catSbRows[i];
+      if (!cr.name) continue;
+      var active = cr.active;
       if (active === false || active === "FALSE" || active === 0) continue;
-      var slug = catRows[i][2] || "";
-      var limit_box  = catRows[i][9];
-      var limit_pack = catRows[i][10];
-      var barcode    = catRows[i][13] || "";
-      var notice     = catRows[i][14] || "";
-      var qty_box    = catRows[i][7];
-      var qty_pack   = catRows[i][8];
       catalog.push({
-        name:       String(name),
-        category:   String(category || ""),
-        price_box:  Number(price_box)  || 0,
-        price_pack: Number(price_pack) || 0,
-        imageUrl:   _driveUrl(String(image_url || "")),
-        slug:       String(slug),
-        limit_box:  (limit_box === "" || limit_box === undefined || limit_box === null) ? -1 : Number(limit_box),
-        limit_pack: (limit_pack === "" || limit_pack === undefined || limit_pack === null) ? -1 : Number(limit_pack),
-        barcode:    String(barcode),
-        notice:     String(notice),
-        qty_box:    Number(qty_box)  || 0,
-        qty_pack:   Number(qty_pack) || 0,
+        name:       String(cr.name),
+        category:   String(cr.category || ""),
+        price_box:  Number(cr.price_box)  || 0,
+        price_pack: Number(cr.price_pack) || 0,
+        imageUrl:   _driveUrl(String(cr.image_url || "")),
+        slug:       String(cr.slug || ""),
+        limit_box:  (cr.limit_box === "" || cr.limit_box === undefined || cr.limit_box === null) ? -1 : Number(cr.limit_box),
+        limit_pack: (cr.limit_pack === "" || cr.limit_pack === undefined || cr.limit_pack === null) ? -1 : Number(cr.limit_pack),
+        barcode:    String(cr.barcode || ""),
+        notice:     String(cr.notice || ""),
+        qty_box:    Number(cr.qty_box)  || 0,
+        qty_pack:   Number(cr.qty_pack) || 0,
       });
     }
 
@@ -1620,14 +1610,10 @@ function handleApi(params) {
 
   // ── สต็อกกลาง ──
   if (action === "central_stock") {
-    var csWs = ss.getSheetByName(TAB_CATALOG);
-    if (!csWs) return _cors(ContentService.createTextOutput(JSON.stringify({ stock: [] })));
-    var sRows = csWs.getDataRange().getValues();
-    var stock = [];
-    for (var i = 1; i < sRows.length; i++) {
-      if (!sRows[i][0]) continue;
-      stock.push({ name: String(sRows[i][0]), category: String(sRows[i][1] || ""), qty_box: Number(sRows[i][7]) || 0, qty_pack: Number(sRows[i][8]) || 0 });
-    }
+    var csRows = supabaseSelect_("catalog", "select=name,category,qty_box,qty_pack");
+    var stock = csRows.filter(function(r) { return r.name; }).map(function(r) {
+      return { name: String(r.name), category: String(r.category || ""), qty_box: Number(r.qty_box) || 0, qty_pack: Number(r.qty_pack) || 0 };
+    });
     return _cors(ContentService.createTextOutput(JSON.stringify({ stock: stock })));
   }
 
@@ -1635,15 +1621,11 @@ function handleApi(params) {
   if (action === "branch_stock") {
     var branchFilter = params.branch || "";
     if (!_branchAuthorized(params.code, branchFilter)) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
-    var bsWs = ss.getSheetByName(TAB_STOCK_BRANCH);
-    if (!bsWs) return _cors(ContentService.createTextOutput(JSON.stringify({ stock: [] })));
-    var bsRows = bsWs.getDataRange().getValues();
-    var bStock = [];
-    for (var i = 1; i < bsRows.length; i++) {
-      if (!bsRows[i][0]) continue;
-      if (branchFilter && String(bsRows[i][2]) !== branchFilter) continue;
-      bStock.push({ name: String(bsRows[i][0]), category: String(bsRows[i][1] || ""), branch: String(bsRows[i][2] || ""), qty_box: Number(bsRows[i][3]) || 0, qty_pack: Number(bsRows[i][4]) || 0 });
-    }
+    var bsQuery = "select=name,category,branch,qty_box,qty_pack" + (branchFilter ? "&branch=eq." + encodeURIComponent(branchFilter) : "");
+    var bsRows = supabaseSelect_("stock_branch", bsQuery);
+    var bStock = bsRows.filter(function(r) { return r.name; }).map(function(r) {
+      return { name: String(r.name), category: String(r.category || ""), branch: String(r.branch || ""), qty_box: Number(r.qty_box) || 0, qty_pack: Number(r.qty_pack) || 0 };
+    });
     return _cors(ContentService.createTextOutput(JSON.stringify({ stock: bStock })));
   }
 
@@ -1670,21 +1652,18 @@ function handleApi(params) {
 
   // ── รายงานยอดขาย ──
   if (action === "report") {
-    // อ่าน cost จาก _catalog
-    var catWs = ss.getSheetByName(TAB_CATALOG);
+    // อ่าน cost จาก catalog
+    var costCatRows = supabaseSelect_("catalog", "select=name,cost_box,cost_pack,price_box,price_pack");
     var costMap = {};
-    if (catWs) {
-      var catRows = catWs.getDataRange().getValues();
-      for (var ci = 1; ci < catRows.length; ci++) {
-        if (!catRows[ci][0]) continue;
-        costMap[String(catRows[ci][0])] = {
-          cost_box: Number(catRows[ci][3]) || 0,
-          cost_pack: Number(catRows[ci][4]) || 0,
-          price_box: Number(catRows[ci][5]) || 0,
-          price_pack: Number(catRows[ci][6]) || 0,
-        };
-      }
-    }
+    costCatRows.forEach(function(r) {
+      if (!r.name) return;
+      costMap[String(r.name)] = {
+        cost_box: Number(r.cost_box) || 0,
+        cost_pack: Number(r.cost_pack) || 0,
+        price_box: Number(r.price_box) || 0,
+        price_pack: Number(r.price_pack) || 0,
+      };
+    });
 
     var byBranch = {};
     var byProduct = {};
@@ -1746,68 +1725,56 @@ function handleApi(params) {
   if (action === "lookup_barcode") {
     var barcode = String(params.barcode || "").trim();
     if (!barcode) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing barcode" })));
-    var catWs = ss.getSheetByName(TAB_CATALOG);
-    if (!catWs) return _cors(ContentService.createTextOutput(JSON.stringify({ found: false })));
-    var catRows = catWs.getDataRange().getValues();
-    for (var i = 1; i < catRows.length; i++) {
-      if (String(catRows[i][13] || "").trim() === barcode) {
-        return _cors(ContentService.createTextOutput(JSON.stringify({
-          found: true,
-          product: {
-            name: String(catRows[i][0]), category: String(catRows[i][1] || ""),
-            price_box: Number(catRows[i][5]) || 0, price_pack: Number(catRows[i][6]) || 0,
-            cost_box: Number(catRows[i][3]) || 0, cost_pack: Number(catRows[i][4]) || 0,
-            barcode: barcode, stock_box: Number(catRows[i][7]) || 0, stock_pack: Number(catRows[i][8]) || 0,
-          }
-        })));
-      }
+    var lbRows = supabaseSelect_("catalog", "select=*&barcode=eq." + encodeURIComponent(barcode) + "&limit=1");
+    if (lbRows.length) {
+      var lr = lbRows[0];
+      return _cors(ContentService.createTextOutput(JSON.stringify({
+        found: true,
+        product: {
+          name: String(lr.name), category: String(lr.category || ""),
+          price_box: Number(lr.price_box) || 0, price_pack: Number(lr.price_pack) || 0,
+          cost_box: Number(lr.cost_box) || 0, cost_pack: Number(lr.cost_pack) || 0,
+          barcode: barcode, stock_box: Number(lr.qty_box) || 0, stock_pack: Number(lr.qty_pack) || 0,
+        }
+      })));
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ found: false })));
   }
 
   // ── รายการสินค้าทั้งหมด (สำหรับหน้ารับสต็อก) ──
   if (action === "product_list") {
-    var catWs = ss.getSheetByName(TAB_CATALOG);
-    if (!catWs) return _cors(ContentService.createTextOutput(JSON.stringify({ products: [] })));
-    var catRows = catWs.getDataRange().getValues();
-    var products = [];
-    for (var i = 1; i < catRows.length; i++) {
-      if (!catRows[i][0]) continue;
-      var n = String(catRows[i][0]).trim();
-      products.push({
-        name: n, category: String(catRows[i][1] || ""),
-        price_box: Number(catRows[i][5]) || 0, price_pack: Number(catRows[i][6]) || 0,
-        cost_box: Number(catRows[i][3]) || 0, cost_pack: Number(catRows[i][4]) || 0,
-        barcode: String(catRows[i][13] || ""),
-        limit_box: (catRows[i][9] === "" || catRows[i][9] === undefined || catRows[i][9] === null) ? -1 : Number(catRows[i][9]),
-        limit_pack: (catRows[i][10] === "" || catRows[i][10] === undefined || catRows[i][10] === null) ? -1 : Number(catRows[i][10]),
-        stock_box: Number(catRows[i][7]) || 0, stock_pack: Number(catRows[i][8]) || 0,
-      });
-    }
+    var plRows = supabaseSelect_("catalog", "select=*");
+    var products = plRows.filter(function(r) { return r.name; }).map(function(r) {
+      return {
+        name: String(r.name).trim(), category: String(r.category || ""),
+        price_box: Number(r.price_box) || 0, price_pack: Number(r.price_pack) || 0,
+        cost_box: Number(r.cost_box) || 0, cost_pack: Number(r.cost_pack) || 0,
+        barcode: String(r.barcode || ""),
+        limit_box: (r.limit_box === "" || r.limit_box === undefined || r.limit_box === null) ? -1 : Number(r.limit_box),
+        limit_pack: (r.limit_pack === "" || r.limit_pack === undefined || r.limit_pack === null) ? -1 : Number(r.limit_pack),
+        stock_box: Number(r.qty_box) || 0, stock_pack: Number(r.qty_pack) || 0,
+      };
+    });
     return _cors(ContentService.createTextOutput(JSON.stringify({ products: products })));
   }
 
   // ── Admin Catalog (ทุกสินค้า รวม inactive) ──
   if (action === "catalog_admin") {
-    var catWs = ss.getSheetByName(TAB_CATALOG);
-    if (!catWs) return _cors(ContentService.createTextOutput(JSON.stringify({ products: [] })));
-    var catRows = catWs.getDataRange().getValues();
-    var products = [];
-    for (var i = 1; i < catRows.length; i++) {
-      if (!catRows[i][0]) continue;
-      var isActive = !(catRows[i][11] === false || String(catRows[i][11]).toUpperCase() === "FALSE" || catRows[i][11] === 0);
-      products.push({
-        name: String(catRows[i][0] || "").trim(),
-        category: String(catRows[i][1] || ""),
-        cost_box: Number(catRows[i][3]) || 0, cost_pack: Number(catRows[i][4]) || 0,
-        price_box: Number(catRows[i][5]) || 0, price_pack: Number(catRows[i][6]) || 0,
-        qty_box: Number(catRows[i][7]) || 0, qty_pack: Number(catRows[i][8]) || 0,
-        limit_box: (catRows[i][9] === "" || catRows[i][9] === undefined || catRows[i][9] === null) ? -1 : Number(catRows[i][9]),
-        limit_pack: (catRows[i][10] === "" || catRows[i][10] === undefined || catRows[i][10] === null) ? -1 : Number(catRows[i][10]),
+    var caRows = supabaseSelect_("catalog", "select=*");
+    var products = caRows.filter(function(r) { return r.name; }).map(function(r) {
+      var isActive = !(r.active === false || String(r.active).toUpperCase() === "FALSE" || r.active === 0);
+      return {
+        name: String(r.name || "").trim(),
+        category: String(r.category || ""),
+        cost_box: Number(r.cost_box) || 0, cost_pack: Number(r.cost_pack) || 0,
+        price_box: Number(r.price_box) || 0, price_pack: Number(r.price_pack) || 0,
+        qty_box: Number(r.qty_box) || 0, qty_pack: Number(r.qty_pack) || 0,
+        limit_box: (r.limit_box === "" || r.limit_box === undefined || r.limit_box === null) ? -1 : Number(r.limit_box),
+        limit_pack: (r.limit_pack === "" || r.limit_pack === undefined || r.limit_pack === null) ? -1 : Number(r.limit_pack),
         active: isActive,
-        notice: String(catRows[i][14] || "")
-      });
-    }
+        notice: String(r.notice || "")
+      };
+    });
     return _cors(ContentService.createTextOutput(JSON.stringify({ products: products })));
   }
 
