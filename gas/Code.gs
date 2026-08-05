@@ -106,9 +106,21 @@ function getSupabaseOrder_(orderId) {
 // failure — unlike the old best-effort pushToSupabase_/pushOrderToSupabase_,
 // a failed write here must fail the caller's action too, since there's no
 // Sheet write left to fall back on.
-function writeSupabaseOrder_(obj) {
+//
+// Optional `lock`: mirrorToReportSheet_ does a full getDataRange().getValues()
+// scan of the report sheet tab on every call — real latency that grows with
+// row count. Every caller here holds a script-wide LockService lock (shared
+// by EVERY concurrent GAS execution, not just this one), so if the lock is
+// still held during that scan, one slow mirror stalls every other in-flight
+// request system-wide, not just this one (confirmed live: bulk Streamlit
+// actions hitting 30s timeouts under this contention). The mirror is a
+// best-effort backup with no bearing on Supabase correctness, so once the
+// authoritative write succeeds, release the lock — passed in by the caller
+// as the last thing it does under lock — before doing the slow part.
+function writeSupabaseOrder_(obj, lock) {
   var res = pushToSupabase_("orders", obj);
   if (!res.ok) throw new Error("Supabase orders write failed: " + res.text);
+  if (lock) { try { lock.releaseLock(); } catch (_) {} }
   mirrorToReportSheet_("orders", SUPABASE_ORDERS_HEADER, "order_id", obj);
   return obj;
 }
@@ -122,9 +134,11 @@ function getSupabaseRow_(table, keyCol, keyValue) {
   var rows = supabaseSelect_(table, "select=*&" + keyCol + "=eq." + encodeURIComponent(keyValue) + "&limit=1");
   return rows[0] || null;
 }
-function writeSupabaseRow_(table, obj, header, keyCol) {
+// Optional `lock` — see writeSupabaseOrder_'s comment above, same reasoning.
+function writeSupabaseRow_(table, obj, header, keyCol, lock) {
   var res = pushToSupabase_(table, obj);
   if (!res.ok) throw new Error("Supabase " + table + " write failed: " + res.text);
+  if (lock) { try { lock.releaseLock(); } catch (_) {} }
   mirrorToReportSheet_(table, header, keyCol, obj);
   return obj;
 }
@@ -975,9 +989,12 @@ function _findStockBranchRow_(rows, name, branch) {
   }
   return null;
 }
-function _writeStockBranchRow_(row) {
+// Optional `lock` — see writeSupabaseOrder_'s comment (release-before-mirror,
+// same lock-contention reasoning).
+function _writeStockBranchRow_(row, lock) {
   var res = pushToSupabase_("stock_branch", row);
   if (!res.ok) throw new Error("Supabase stock_branch write failed (" + row.name + "/" + row.branch + "): " + res.text);
+  if (lock) { try { lock.releaseLock(); } catch (_) {} }
   mirrorToReportSheet_("stock_branch", SUPABASE_STOCK_BRANCH_HEADER, ["name", "branch"], row);
   return row;
 }
@@ -1164,7 +1181,15 @@ function handleWakagymRegister(data) {
       players = [{ realName: data.realName || "", playerName: data.playerName || data.realName || "" }];
     }
 
+    // Registers every player's Supabase rows first (fast REST writes, kept
+    // under the lock since they read+update the same in-memory statsRows/
+    // statsRow to avoid two players in one request racing each other), but
+    // defers each row's mirrorToReportSheet_ call (slow full-tab scan) into
+    // pendingMirrors — flushed after the lock is released below, so this
+    // request's mirror-sheet latency no longer blocks every other
+    // concurrent GAS execution through the shared script-wide lock.
     var results = [];
+    var pendingMirrors = [];
     for (var p = 0; p < players.length; p++) {
       var pl = players[p];
       var regId = p === 0 ? groupId : _genWakagymRegId();
@@ -1178,7 +1203,9 @@ function handleWakagymRegister(data) {
         slip_url: slipUrl || null, slip_status: slipStatus, payment_method: payMethod, bank: data.bank || null,
         placement: null, wins_3match: null, tokens_earned: null, promo_packs: null, rewards_given: null, note: null,
       };
-      writeSupabaseRow_("wakagym_registrations", newWakagymObj, SUPABASE_WAKAGYM_REG_HEADER, "reg_id");
+      var regRes = pushToSupabase_("wakagym_registrations", newWakagymObj);
+      if (!regRes.ok) throw new Error("Supabase wakagym_registrations write failed: " + regRes.text);
+      pendingMirrors.push({ table: "wakagym_registrations", header: SUPABASE_WAKAGYM_REG_HEADER, keyCol: "reg_id", obj: newWakagymObj });
 
       var statsRow = findStatsRow_(pName);
       var totalTokens = 0;
@@ -1196,12 +1223,15 @@ function handleWakagymRegister(data) {
         };
         statsRows.push(statsRow);
       }
-      writeSupabaseRow_("player_stats", statsRow, SUPABASE_PLAYER_STATS_HEADER, "player_name");
+      var statsRes = pushToSupabase_("player_stats", statsRow);
+      if (!statsRes.ok) throw new Error("Supabase player_stats write failed: " + statsRes.text);
+      pendingMirrors.push({ table: "player_stats", header: SUPABASE_PLAYER_STATS_HEADER, keyCol: "player_name", obj: statsRow });
 
       results.push({ regId: regId, playerName: pName, totalTokens: totalTokens });
     }
 
     lock.releaseLock();
+    pendingMirrors.forEach(function(m) { mirrorToReportSheet_(m.table, m.header, m.keyCol, m.obj); });
 
     var cfgWs = ss.getSheetByName(TAB_CONFIG);
     var groupStaff = _getConfigValue(cfgWs, "group_staff");
@@ -1320,8 +1350,7 @@ function handleTournamentRegister(data) {
       checked_in_at: null, note: null,
       selected_categories: selectedCats.length > 0 ? selectedCats : null,
     };
-    writeSupabaseRow_("tournament_registrations", newRegObj, SUPABASE_TOURNAMENT_REG_HEADER, "reg_id");
-    lock.releaseLock();
+    writeSupabaseRow_("tournament_registrations", newRegObj, SUPABASE_TOURNAMENT_REG_HEADER, "reg_id", lock);
 
     var statusUrl = "https://waka-liff.vercel.app/treg_status.html?id=" + encodeURIComponent(regId);
     var cfgWs = ss.getSheetByName(TAB_CONFIG);
@@ -2803,8 +2832,7 @@ function handleCreateShipment(data) {
     }
 
     var shObj = { shipment_id: shipId, timestamp: now, to_branch: data.to_branch || "", status: "จัดส่ง", items_json: items, received_at: null };
-    writeSupabaseRow_("shipments", shObj, SUPABASE_SHIPMENTS_HEADER, "shipment_id");
-    lock.releaseLock();
+    writeSupabaseRow_("shipments", shObj, SUPABASE_SHIPMENTS_HEADER, "shipment_id", lock);
     if (shChangedNames.length) _pushCatalogRows_(shCatRows, shChangedNames);
 
     // LINE แจ้งกลุ่ม staff
@@ -2922,29 +2950,54 @@ function handleReceiveShipment(data) {
         bsRowsToWrite.push(bsRow);
       }
     }
-    bsRowsToWrite.forEach(function(r) { _writeStockBranchRow_(r); });
+    // Same reasoning as handleWakagymRegister: push every changed
+    // stock_branch row to Supabase now (fast, needs the lock — concurrent
+    // shipment receives for the same branch/product must not race), but
+    // defer each row's mirrorToReportSheet_ scan until after the lock
+    // releases below.
+    var pendingStockMirrors = [];
+    bsRowsToWrite.forEach(function(r) {
+      var res = pushToSupabase_("stock_branch", r);
+      if (!res.ok) throw new Error("Supabase stock_branch write failed (" + r.name + "/" + r.branch + "): " + res.text);
+      pendingStockMirrors.push(r);
+    });
 
     // แจ้ง LINE ลูกค้าทุกคนที่มีออเดอร์ยืนยัน + สาขานี้ + ยังไม่ส่ง
     // fulfillment=not.in.(...) ทำใน PostgREST ไม่ได้เพราะ NULL (ออเดอร์ใหม่ยัง
     // ไม่เคยตั้ง fulfillment) จะหลุด filter ไปด้วย — กรองใน JS แทน
+    //
+    // This can match an unbounded number of orders (every unshipped
+    // confirmed order for the branch) — the same defer pattern applies,
+    // now doubly important since this loop was previously the single
+    // worst-case source of lock-hold time in the whole file: N order
+    // mirror-scans + N LINE pushes, all serialized under one script-wide
+    // lock that every other concurrent request had to wait behind.
     var excludedFf = ["พร้อมรับ", "บางส่วน", "รับบางส่วนแล้ว", "สาขายืนยัน", "รับแล้ว"];
     var oMatches = supabaseSelect_("orders", "select=*&branch=eq." + encodeURIComponent(branch) + "&slip_status=eq.ยืนยัน");
+    var pendingOrderMirrors = [];
+    var pendingNotifications = [];
     for (var j = 0; j < oMatches.length; j++) {
       var ord = oMatches[j];
       var oFf = ord.fulfillment || "";
       if (excludedFf.indexOf(oFf) >= 0) continue;
       ord.fulfillment = "พร้อมรับ";
       ord.fulfilled_at = now;
-      writeSupabaseOrder_(ord);
+      var ordRes = pushToSupabase_("orders", ord);
+      if (!ordRes.ok) throw new Error("Supabase orders write failed: " + ordRes.text);
+      pendingOrderMirrors.push(ord);
       var uid = ord.line_user_id || "";
       var oid = String(ord.order_id || "");
       if (uid) {
         var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + oid;
-        _linePush(uid, "สินค้าพร้อมรับที่สาขา" + branch + " แล้ว!\n\nออเดอร์: #" + oid + "\n\nดูสถานะ:\n" + trackUrl);
+        pendingNotifications.push({ uid: uid, msg: "สินค้าพร้อมรับที่สาขา" + branch + " แล้ว!\n\nออเดอร์: #" + oid + "\n\nดูสถานะ:\n" + trackUrl });
       }
     }
 
     lock.releaseLock();
+    pendingStockMirrors.forEach(function(r) { mirrorToReportSheet_("stock_branch", SUPABASE_STOCK_BRANCH_HEADER, ["name", "branch"], r); });
+    pendingOrderMirrors.forEach(function(o) { mirrorToReportSheet_("orders", SUPABASE_ORDERS_HEADER, "order_id", o); });
+    pendingNotifications.forEach(function(n) { _linePush(n.uid, n.msg); });
+
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -3039,8 +3092,7 @@ function handleHandoverOrder(data) {
       order.notified_at = now;
     }
 
-    writeSupabaseOrder_(order);
-    lock.releaseLock();
+    writeSupabaseOrder_(order, lock);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now, fulfillment: newFf })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -3077,8 +3129,7 @@ function handleForceCompleteOrder(data) {
     if (!order.staff_confirmed_at) order.staff_confirmed_at = now;
     order.customer_confirmed_at = now;
     _clearDashCache();
-    writeSupabaseOrder_(order);
-    lock.releaseLock();
+    writeSupabaseOrder_(order, lock);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -3154,8 +3205,7 @@ function handlePartialReady(data) {
       order.notified_at = now;
     }
 
-    writeSupabaseOrder_(order);
-    lock.releaseLock();
+    writeSupabaseOrder_(order, lock);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, fulfillment: newFf })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -3227,8 +3277,7 @@ function handlePartialCancelItems(data) {
       );
     }
 
-    writeSupabaseOrder_(order);
-    lock.releaseLock();
+    writeSupabaseOrder_(order, lock);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, cancelled: cancelledItems.length })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -3305,12 +3354,16 @@ function handleConfirmSlip(data) {
       _linePush(uid, message);
     }
 
-    writeSupabaseOrder_(order);
+    writeSupabaseOrder_(order, lock);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
   } finally {
-    lock.releaseLock();
+    // writeSupabaseOrder_ already released the lock on the success path
+    // (before its mirror step) — this is a safety-net re-release for the
+    // early-return/error paths above that never reached that call, and is a
+    // harmless no-op if the lock is already free.
+    try { lock.releaseLock(); } catch (_) {}
   }
 }
 
@@ -3339,12 +3392,13 @@ function handleRejectSlip(data) {
       _linePush(uid, msg);
     }
 
-    writeSupabaseOrder_(order);
+    writeSupabaseOrder_(order, lock);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
   } finally {
-    lock.releaseLock();
+    // See handleConfirmSlip's identical comment — harmless no-op re-release.
+    try { lock.releaseLock(); } catch (_) {}
   }
 }
 
@@ -3432,8 +3486,7 @@ function handleAddStock(data) {
     if (data.limit_box !== undefined && data.limit_box !== null) row.limit_box = Number(data.limit_box);
     if (data.limit_pack !== undefined && data.limit_pack !== null) row.limit_pack = Number(data.limit_pack);
     CacheService.getScriptCache().remove("catalog_config");
-    writeSupabaseRow_("catalog", row, SUPABASE_CATALOG_HEADER, "name");
-    lock.releaseLock();
+    writeSupabaseRow_("catalog", row, SUPABASE_CATALOG_HEADER, "name", lock);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -3464,8 +3517,7 @@ function handleAddProduct(data) {
       image_url: data.image_url || "", barcode: data.barcode || "", notice: "",
     };
     CacheService.getScriptCache().remove("catalog_config");
-    writeSupabaseRow_("catalog", newRow, SUPABASE_CATALOG_HEADER, "name");
-    lock.releaseLock();
+    writeSupabaseRow_("catalog", newRow, SUPABASE_CATALOG_HEADER, "name", lock);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -3491,8 +3543,7 @@ function handleUpdateProduct(data) {
     if (data.barcode !== undefined) row.barcode = data.barcode || "";
     if (data.notice !== undefined) row.notice = data.notice || "";
     CacheService.getScriptCache().remove("catalog_config");
-    writeSupabaseRow_("catalog", row, SUPABASE_CATALOG_HEADER, "name");
-    lock.releaseLock();
+    writeSupabaseRow_("catalog", row, SUPABASE_CATALOG_HEADER, "name", lock);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -3532,9 +3583,9 @@ function handleWithdrawStock(data) {
     var wObj = { timestamp: now, branch: branch, name: name, type: type, qty: qty, reason: reason };
     var wRes = pushToSupabase_("withdrawals", wObj);
     if (!wRes.ok) throw new Error("Supabase withdrawals write failed: " + wRes.text);
+    lock.releaseLock();
     mirrorToReportSheet_("withdrawals", SUPABASE_WITHDRAWALS_HEADER, ["timestamp", "branch", "name"], wObj);
 
-    lock.releaseLock();
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -3577,10 +3628,10 @@ function handleReturnStock(data) {
     var srObj = { timestamp: now, branch: branch, name: name, qty_box: qtyBox, qty_pack: qtyPack };
     var srRes = pushToSupabase_("stock_returns", srObj);
     if (!srRes.ok) throw new Error("Supabase stock_returns write failed: " + srRes.text);
-    mirrorToReportSheet_("stock_returns", SUPABASE_STOCK_RETURNS_HEADER, ["timestamp", "branch", "name"], srObj);
-
     CacheService.getScriptCache().remove("catalog_config");
     lock.releaseLock();
+    mirrorToReportSheet_("stock_returns", SUPABASE_STOCK_RETURNS_HEADER, ["timestamp", "branch", "name"], srObj);
+
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
