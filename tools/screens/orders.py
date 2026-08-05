@@ -699,104 +699,113 @@ with tab_table:
         "— งานที่ต้องแจ้งลูกค้าจริง (อนุมัติสลิป/ส่งมอบ/ปฏิเสธ) ให้ใช้แท็บ 🗂 การ์ดออเดอร์"
     )
 
-    table_src = filtered.sort_values("timestamp_dt", ascending=False).reset_index(drop=True)
-    table_src = table_src.assign(
-        รายการสินค้า=table_src["items_json"].apply(
-            lambda ij: ", ".join(f"{i.get('name','')} x{i.get('qty',1)}" for i in parse_items(ij))
-        ),
-    )
-    edit_df = table_src[[
-        "order_id", "real_name", "phone", "branch", "date", "total",
-        "slip_status", "fulfillment", "notes", "รายการสินค้า",
-    ]].rename(columns={
-        "order_id": "เลขออเดอร์", "real_name": "ลูกค้า", "phone": "เบอร์โทร", "branch": "สาขา",
-        "date": "วันที่", "total": "ยอดรวม", "slip_status": "สถานะสลิป",
-        "fulfillment": "สถานะจัดส่ง", "notes": "หมายเหตุ",
-    })
+    try:
+        table_src = filtered.sort_values("timestamp_dt", ascending=False).reset_index(drop=True)
+        table_src = table_src.assign(
+            รายการสินค้า=table_src["items_json"].apply(
+                lambda ij: ", ".join(f"{i.get('name','')} x{i.get('qty',1)}" for i in parse_items(ij))
+            ),
+        )
+        edit_df = table_src[[
+            "order_id", "real_name", "phone", "branch", "date", "total",
+            "slip_status", "fulfillment", "notes", "รายการสินค้า",
+        ]].rename(columns={
+            "order_id": "เลขออเดอร์", "real_name": "ลูกค้า", "phone": "เบอร์โทร", "branch": "สาขา",
+            "date": "วันที่", "total": "ยอดรวม", "slip_status": "สถานะสลิป",
+            "fulfillment": "สถานะจัดส่ง", "notes": "หมายเหตุ",
+        })
 
-    edited_df = st.data_editor(
-        edit_df,
-        use_container_width=True,
-        hide_index=True,
-        height=600,
-        key="orders_sheet_editor",
-        disabled=["เลขออเดอร์", "ลูกค้า", "เบอร์โทร", "สาขา", "วันที่", "ยอดรวม", "รายการสินค้า"],
-        column_config={
-            "สถานะสลิป": st.column_config.SelectboxColumn(options=ALL_STATUS, required=True),
-            "สถานะจัดส่ง": st.column_config.SelectboxColumn(options=ALL_FULFILL),
-            "ยอดรวม": st.column_config.NumberColumn(format="฿%d"),
-        },
-    )
+        edited_df = st.data_editor(
+            edit_df,
+            use_container_width=True,
+            hide_index=True,
+            height=600,
+            key="orders_sheet_editor",
+            disabled=["เลขออเดอร์", "ลูกค้า", "เบอร์โทร", "สาขา", "วันที่", "ยอดรวม", "รายการสินค้า"],
+            column_config={
+                "สถานะสลิป": st.column_config.SelectboxColumn(options=ALL_STATUS, required=True),
+                "สถานะจัดส่ง": st.column_config.SelectboxColumn(options=ALL_FULFILL),
+                "ยอดรวม": st.column_config.NumberColumn(format="฿%d"),
+            },
+        )
 
-    if st.button("💾 บันทึกการแก้ไขในตาราง", type="primary"):
-        edited_rows = st.session_state.get("orders_sheet_editor", {}).get("edited_rows", {})
-        if not edited_rows:
-            st.info("ไม่มีการแก้ไข")
-        else:
-            errors = []
-            col_map = {"สถานะสลิป": "slip_status", "สถานะจัดส่ง": "fulfillment", "หมายเหตุ": "notes"}
-            for row_idx, changes in edited_rows.items():
-                order_id = str(edit_df.iloc[int(row_idx)]["เลขออเดอร์"])
-                fields = {col_map[c]: v for c, v in changes.items() if c in col_map}
-                if not fields:
-                    continue
-                try:
-                    patch_order_silent(order_id, fields)
-                except Exception as e:
-                    errors.append(f"#{order_id}: {e}")
-            if errors:
-                st.error("บันทึกไม่สำเร็จบางรายการ:\n" + "\n".join(errors))
+        if st.button("💾 บันทึกการแก้ไขในตาราง", type="primary"):
+            edited_rows = st.session_state.get("orders_sheet_editor", {}).get("edited_rows", {})
+            if not edited_rows:
+                st.info("ไม่มีการแก้ไข")
             else:
-                st.success(f"บันทึกแล้ว {len(edited_rows)} ออเดอร์")
-            st.cache_data.clear()
-            st.rerun()
+                errors = []
+                col_map = {"สถานะสลิป": "slip_status", "สถานะจัดส่ง": "fulfillment", "หมายเหตุ": "notes"}
+                for row_idx, changes in edited_rows.items():
+                    order_id = str(edit_df.iloc[int(row_idx)]["เลขออเดอร์"])
+                    fields = {col_map[c]: v for c, v in changes.items() if c in col_map}
+                    if not fields:
+                        continue
+                    try:
+                        patch_order_silent(order_id, fields)
+                    except Exception as e:
+                        errors.append(f"#{order_id}: {e}")
+                if errors:
+                    st.error("บันทึกไม่สำเร็จบางรายการ:\n" + "\n".join(errors))
+                else:
+                    st.success(f"บันทึกแล้ว {len(edited_rows)} ออเดอร์")
+                st.cache_data.clear()
+                st.rerun()
+    except Exception as e:
+        # Supplementary tab — a bug here shouldn't take down the card view
+        # that staff actually depend on day-to-day.
+        st.error(f"ตารางรวมโหลดไม่ได้: {e}")
 
 # ── Tab: ลูกค้าทั้งหมด (customer roll-up, ignores the date/branch filters above) ─
 with tab_customers:
     st.caption("สรุปลูกค้าทั้งหมดจากทุกออเดอร์ในระบบ (ไม่ผูกกับตัวกรองด้านบน)")
 
-    cust_search = st.text_input("ค้นหาลูกค้า", placeholder="ชื่อ หรือ เบอร์โทร", key="cust_search")
+    try:
+        cust_search = st.text_input("ค้นหาลูกค้า", placeholder="ชื่อ หรือ เบอร์โทร", key="cust_search")
 
-    cust_base = df.copy()
-    cust_base["phone"] = cust_base["phone"].fillna("").astype(str)
-    cust_base["confirmed_total"] = cust_base["total"].where(cust_base["slip_status"] == "ยืนยัน", 0)
+        cust_base = df.copy()
+        cust_base["phone"] = cust_base["phone"].fillna("").astype(str)
+        cust_base["confirmed_total"] = cust_base["total"].where(cust_base["slip_status"] == "ยืนยัน", 0)
 
-    cust = (
-        cust_base.groupby("phone")
-        .agg(
-            ลูกค้า=("real_name", "last"),
-            จำนวนออเดอร์=("order_id", "count"),
-            ยืนยันแล้ว=("slip_status", lambda s: int((s == "ยืนยัน").sum())),
-            ยอดซื้อสะสม=("confirmed_total", "sum"),
-            ออเดอร์ล่าสุด=("timestamp_dt", "max"),
+        # Built from a dict of per-column Series (each auto-aligned on the
+        # "phone" group index) rather than one groupby().agg(**kwargs) call —
+        # more standard/portable across pandas versions than mixing string
+        # and lambda aggregators in a single named-aggregation call.
+        grp = cust_base.groupby("phone")
+        cust = pd.DataFrame({
+            "ลูกค้า":        grp["real_name"].last(),
+            "จำนวนออเดอร์":   grp["order_id"].count(),
+            "ยืนยันแล้ว":     grp["slip_status"].apply(lambda s: int((s == "ยืนยัน").sum())),
+            "ยอดซื้อสะสม":    grp["confirmed_total"].sum(),
+            "ออเดอร์ล่าสุด":  grp["timestamp_dt"].max(),
+        }).reset_index().rename(columns={"phone": "เบอร์โทร"}).sort_values("ยอดซื้อสะสม", ascending=False)
+        cust["ออเดอร์ล่าสุด"] = cust["ออเดอร์ล่าสุด"].dt.tz_convert("Asia/Bangkok").dt.strftime("%Y-%m-%d %H:%M")
+
+        if cust_search:
+            s = cust_search.lower()
+            cust = cust[
+                cust["ลูกค้า"].astype(str).str.lower().str.contains(s, na=False)
+                | cust["เบอร์โทร"].astype(str).str.lower().str.contains(s, na=False)
+            ]
+
+        kc1, kc2, kc3 = st.columns(3)
+        with kc1:
+            st.markdown(kpi_card("ลูกค้าทั้งหมด", len(cust)), unsafe_allow_html=True)
+        with kc2:
+            st.markdown(kpi_card("ลูกค้าซื้อซ้ำ", int((cust["จำนวนออเดอร์"] > 1).sum()), ACCENT_TEXT), unsafe_allow_html=True)
+        with kc3:
+            st.markdown(kpi_card("ยอดซื้อสะสมรวม (฿)", f"฿{cust['ยอดซื้อสะสม'].sum():,.0f}"), unsafe_allow_html=True)
+
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+        st.dataframe(
+            cust[["ลูกค้า", "เบอร์โทร", "จำนวนออเดอร์", "ยืนยันแล้ว", "ยอดซื้อสะสม", "ออเดอร์ล่าสุด"]],
+            use_container_width=True,
+            hide_index=True,
+            height=600,
+            column_config={"ยอดซื้อสะสม": st.column_config.NumberColumn(format="฿%d")},
         )
-        .reset_index()
-        .rename(columns={"phone": "เบอร์โทร"})
-        .sort_values("ยอดซื้อสะสม", ascending=False)
-    )
-    cust["ออเดอร์ล่าสุด"] = cust["ออเดอร์ล่าสุด"].dt.tz_convert("Asia/Bangkok").dt.strftime("%Y-%m-%d %H:%M")
-
-    if cust_search:
-        s = cust_search.lower()
-        cust = cust[
-            cust["ลูกค้า"].astype(str).str.lower().str.contains(s, na=False)
-            | cust["เบอร์โทร"].astype(str).str.lower().str.contains(s, na=False)
-        ]
-
-    kc1, kc2, kc3 = st.columns(3)
-    with kc1:
-        st.markdown(kpi_card("ลูกค้าทั้งหมด", len(cust)), unsafe_allow_html=True)
-    with kc2:
-        st.markdown(kpi_card("ลูกค้าซื้อซ้ำ", int((cust["จำนวนออเดอร์"] > 1).sum()), ACCENT_TEXT), unsafe_allow_html=True)
-    with kc3:
-        st.markdown(kpi_card("ยอดซื้อสะสมรวม (฿)", f"฿{cust['ยอดซื้อสะสม'].sum():,.0f}"), unsafe_allow_html=True)
-
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
-    st.dataframe(
-        cust[["ลูกค้า", "เบอร์โทร", "จำนวนออเดอร์", "ยืนยันแล้ว", "ยอดซื้อสะสม", "ออเดอร์ล่าสุด"]],
-        use_container_width=True,
-        hide_index=True,
-        height=600,
-        column_config={"ยอดซื้อสะสม": st.column_config.NumberColumn(format="฿%d")},
-    )
+    except Exception as e:
+        # Supplementary tab — a bug here shouldn't take down the card/table
+        # tabs that staff actually depend on day-to-day.
+        st.error(f"สรุปลูกค้าโหลดไม่ได้: {e}")

@@ -87,7 +87,16 @@ def gas_post(payload: dict) -> dict:
 @st.cache_data(ttl=30)
 def load_catalog() -> pd.DataFrame:
     rows = get_supabase().table("catalog").select("*").order("name").execute().data
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    # Same class of bug as orders.py: a null text column mixed with real
+    # values becomes NaN, which is truthy in Python — `x.get(col) or ""`
+    # then keeps the NaN and renders it as the literal text "nan" in form
+    # fields (category/barcode/image_url/notice are all nullable columns).
+    text_cols = [c for c in ["category", "slug", "active", "image_url", "barcode", "notice"] if c in df.columns]
+    df[text_cols] = df[text_cols].fillna("")
+    return df
 
 
 @st.cache_data(ttl=30)

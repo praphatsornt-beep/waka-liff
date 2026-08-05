@@ -79,7 +79,16 @@ def get_supabase():
 def load_registrations() -> pd.DataFrame:
     try:
         rows = get_supabase().table("wakagym_registrations").select("*").execute().data
-        return pd.DataFrame(rows) if rows else pd.DataFrame()
+        if not rows:
+            return pd.DataFrame()
+        df = pd.DataFrame(rows)
+        # A null text column mixed with real values becomes NaN, which is
+        # truthy in Python — the `r.get(col) or fallback` chains used all
+        # over this page (player_name/real_name/display_name) then keep the
+        # NaN instead of falling through, rendering the literal text "nan".
+        text_cols = df.select_dtypes(exclude="number").columns
+        df[text_cols] = df[text_cols].fillna("")
+        return df
     except Exception as e:
         st.error(f"โหลด wakagym_reg ไม่ได้: {e}")
         return pd.DataFrame()
