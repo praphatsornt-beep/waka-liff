@@ -348,13 +348,18 @@ with tab_central:
         cat_sel = st.selectbox("กรองหมวดหมู่", cats, key="central_cat_filter")
         catalog_show = catalog if cat_sel == "ทุกหมวดหมู่" else catalog[catalog["category"] == cat_sel]
 
-        show = catalog_show[["name", "category", "qty_box", "qty_pack", "limit_box", "limit_pack"]].copy()
-        show["สถานะ"] = show.apply(
-            lambda r: "⚠️ ใกล้หมด" if (pd.to_numeric(r["limit_box"], errors="coerce") or 0) > 0
-            and (pd.to_numeric(r["qty_box"], errors="coerce") or 0) <= (pd.to_numeric(r["limit_box"], errors="coerce") or 0)
-            else "ปกติ",
-            axis=1,
-        )
+        show = catalog_show[["name", "category", "qty_box", "qty_pack", "limit_box", "limit_pack", "active"]].copy()
+
+        def _stock_status(r):
+            if str(r["active"] or "").strip().upper() == "FALSE":
+                return "⛔ ปิดการขาย"
+            if (pd.to_numeric(r["limit_box"], errors="coerce") or 0) > 0 \
+               and (pd.to_numeric(r["qty_box"], errors="coerce") or 0) <= (pd.to_numeric(r["limit_box"], errors="coerce") or 0):
+                return "⚠️ ใกล้หมด"
+            return "ปกติ"
+
+        show["สถานะ"] = show.apply(_stock_status, axis=1)
+        show = show.drop(columns=["active"])
         show = show.rename(columns={
             "name": "สินค้า", "category": "หมวดหมู่", "qty_box": "กล่อง", "qty_pack": "ซอง",
             "limit_box": "ขั้นต่ำ (กล่อง)", "limit_pack": "ขั้นต่ำ (ซอง)",
@@ -373,7 +378,9 @@ with tab_central:
             with st.form(f"edit_product_form_{edit_sel}"):
                 e1, e2 = st.columns(2)
                 e_category = e1.text_input("หมวดหมู่", value=str(edit_row.get("category") or ""))
-                e_active = e2.checkbox("เปิดขาย (active)", value=bool(edit_row.get("active")))
+                # Supabase stores active as the string "TRUE"/"FALSE", not a real bool —
+                # bool("FALSE") is truthy in Python, so compare the string explicitly.
+                e_active = e2.checkbox("เปิดขาย (ไม่ติ๊ก = ปิดการขาย/หมด)", value=str(edit_row.get("active") or "").strip().upper() != "FALSE")
                 e3, e4 = st.columns(2)
                 # Supabase's catalog table names the pack-cost column cost_p, not cost_pack
                 e_cost_box = e3.number_input("ต้นทุน/กล่อง", min_value=0.0, value=_num(edit_row.get("cost_box")), step=1.0)

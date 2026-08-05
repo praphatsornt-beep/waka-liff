@@ -504,6 +504,10 @@ function doPost(e) {
       return handleHandoverOrder(data);
     }
 
+    if (data._action === "forceCompleteOrder") {
+      return handleForceCompleteOrder(data);
+    }
+
     if (data._action === "partialReady") {
       return handlePartialReady(data);
     }
@@ -3038,6 +3042,44 @@ function handleHandoverOrder(data) {
     writeSupabaseOrder_(order);
     lock.releaseLock();
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now, fulfillment: newFf })));
+  } catch (err) {
+    try { lock.releaseLock(); } catch(_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+// ── ปิดงานย้อนหลัง (สถานะอย่างเดียว) ────────────────────────────────────────
+// data: { order_id, code } — ใช้ backfill ออเดอร์ที่ส่งมอบจริงไปแล้วนอกระบบ
+// (เช่น ช่วงเพิ่งเปิดระบบใหม่) ตั้ง fulfillment เป็น "รับแล้ว" ตรง ๆ
+// โดยตั้งใจไม่ตัดสต็อกสาขาและไม่ยิง LINE หาลูกค้า ต่างจาก handleHandoverOrder/
+// customer_confirm ที่เป็น flow จริงและมีผลข้างเคียงทั้งสองอย่างนั้น
+function handleForceCompleteOrder(data) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    var order = getSupabaseOrder_(data.order_id);
+    if (!order) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
+    }
+    var branch = order.branch || "";
+    if (!_branchAuthorized(data.code, branch)) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+    }
+    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
+    var items = Array.isArray(order.items_json) ? order.items_json : [];
+    items.forEach(function(it) {
+      if (!it.cancelled_at && !it.handed_at) it.handed_at = now;
+    });
+    order.items_json = items;
+    order.fulfillment = "รับแล้ว";
+    if (!order.staff_confirmed_at) order.staff_confirmed_at = now;
+    order.customer_confirmed_at = now;
+    _clearDashCache();
+    writeSupabaseOrder_(order);
+    lock.releaseLock();
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
