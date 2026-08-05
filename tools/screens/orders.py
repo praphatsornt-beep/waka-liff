@@ -155,8 +155,30 @@ def gas_post(payload: dict) -> dict:
 def force_complete_order(order_id: str):
     """Backfill close — marks the order fully received ('รับแล้ว') without
     sending LINE messages or touching branch stock. For orders that were
-    actually shipped/handed over before this admin tool existed."""
-    gas_post({"_action": "forceCompleteOrder", "order_id": order_id})
+    actually shipped/handed over before this admin tool existed.
+
+    Writes straight to Supabase instead of routing through GAS's
+    forceCompleteOrder action (still present in gas/Code.gs, unused from
+    here now): this action never touches the catalog_config cache that
+    customer-facing LIFF depends on, sends no LINE message, and mutates no
+    stock — there's nothing GAS's LockService/report-mirror step buys here,
+    only its cold-start + lock-contention latency, which made bulk closes
+    over many orders painfully slow.
+    """
+    now = datetime.now(TH_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    sb = get_supabase()
+    rows = sb.table("orders").select("items_json,staff_confirmed_at").eq("order_id", order_id).limit(1).execute().data
+    if not rows:
+        raise Exception("ไม่พบออเดอร์")
+    order = rows[0]
+    items = order.get("items_json") or []
+    for it in items:
+        if not it.get("cancelled_at") and not it.get("handed_at"):
+            it["handed_at"] = now
+    updates = {"items_json": items, "fulfillment": "รับแล้ว", "customer_confirmed_at": now}
+    if not order.get("staff_confirmed_at"):
+        updates["staff_confirmed_at"] = now
+    sb.table("orders").update(updates).eq("order_id", order_id).execute()
 
 
 def run_bulk_action(label: str, order_ids, action_fn) -> None:
@@ -166,14 +188,18 @@ def run_bulk_action(label: str, order_ids, action_fn) -> None:
     error off the screen before the user ever sees it (confirmed live: a GAS
     call can transiently fail there with no visible error and silently
     no-op — see _gas_request's retry, which reduces but can't eliminate this)."""
+    order_ids = list(order_ids)
     errors = []
     ok_count = 0
-    for order_id in order_ids:
-        try:
-            action_fn(str(order_id))
-            ok_count += 1
-        except Exception as e:
-            errors.append(f"#{order_id}: {e}")
+    with st.spinner(f"{label}: กำลังดำเนินการ..."):
+        progress = st.progress(0.0, text=f"0 / {len(order_ids)}")
+        for i, order_id in enumerate(order_ids):
+            try:
+                action_fn(str(order_id))
+                ok_count += 1
+            except Exception as e:
+                errors.append(f"#{order_id}: {e}")
+            progress.progress((i + 1) / len(order_ids), text=f"{i + 1} / {len(order_ids)}")
     st.session_state["bulk_result"] = {"label": label, "ok": ok_count, "errors": errors}
 
 
