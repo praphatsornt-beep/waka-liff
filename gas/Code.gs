@@ -498,10 +498,6 @@ function doPost(e) {
       return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
     }
 
-    if (data._action === "sendConfirmLink") {
-      return handleSendConfirmLink(data);
-    }
-
     if (data._action === "createShipment") {
       return handleCreateShipment(data);
     }
@@ -516,10 +512,6 @@ function doPost(e) {
 
     if (data._action === "handoverOrder") {
       return handleHandoverOrder(data);
-    }
-
-    if (data._action === "forceCompleteOrder") {
-      return handleForceCompleteOrder(data);
     }
 
     if (data._action === "partialReady") {
@@ -2001,24 +1993,6 @@ function handleApi(params) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ players: players })));
   }
 
-  if (action === "wakagym_player_stats") {
-    var psSb = supabaseSelect_("player_stats", "select=*");
-    var stats = psSb.map(function(r) {
-      return {
-        player_name: String(r.player_name || ""),
-        line_user_id: String(r.line_user_id || ""),
-        display_name: String(r.display_name || ""),
-        real_name: String(r.real_name || ""),
-        total_plays: Number(r.total_plays) || 0,
-        total_tokens: Number(r.total_tokens) || 0,
-        boxes_earned: Number(r.boxes_earned) || 0,
-        boxes_given: Number(r.boxes_given) || 0,
-        last_play_date: String(r.last_play_date || ""),
-      };
-    });
-    return _cors(ContentService.createTextOutput(JSON.stringify({ stats: stats })));
-  }
-
   if (action === "wakagym_update_reg") {
     var regId = params.reg_id || "";
     var field = params.field || "";
@@ -2048,23 +2022,6 @@ function handleApi(params) {
       _linePush(boxUid, "🎁 รับ Box เรียบร้อย!\nชื่อแข่ง: " + boxPlayer + "\nBox ที่ได้: " + given);
     }
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, boxes_given: given })));
-  }
-
-  if (action === "verify_staff_pin") {
-    var pin = String(params.pin || "").trim();
-    if (!pin) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing pin" })));
-    var adminPin = _getConfigValue(null, "admin_pin") || "waka99";
-    if (pin === adminPin) {
-      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, role: "admin", branch: "ทั้งหมด" })));
-    }
-    var configMap = getConfig_();
-    for (var key in configMap) {
-      if (key.indexOf("staff_pin_") === 0 && String(configMap[key]) === pin) {
-        var branchName = key.replace("staff_pin_", "");
-        return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, role: "staff", branch: branchName })));
-      }
-    }
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "invalid" })));
   }
 
   if (action === "wakagym_summary") {
@@ -2267,31 +2224,6 @@ function handleApi(params) {
     }
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ players: found })));
-  }
-
-  if (action === "wakagym_give_cards") {
-    var gcRegId = String(params.reg_id || "").trim();
-    if (!gcRegId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing reg_id" })));
-    var gcRow = getSupabaseRow_("wakagym_registrations", "reg_id", gcRegId);
-    if (!gcRow) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "not found" })));
-    if (String(gcRow.rewards_given).toLowerCase() === "true") {
-      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, already: true })));
-    }
-    var gcGivenAt = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
-    gcRow.rewards_given = "TRUE";
-    gcRow.note = "แจก " + gcGivenAt;
-    var gcUid = String(gcRow.line_user_id || "");
-    var gcName = String(gcRow.player_name || gcRow.real_name || "");
-    var gcTokens = String(gcRow.tokens_earned || "0");
-    var gcPromo = String(gcRow.promo_packs || "0");
-    if (gcUid && gcUid !== "dev_user") {
-      var gcMsg = "🏆 รับรางวัล WAKA GYM!\nชื่อแข่ง: " + gcName
-        + "\n🪙 Token: " + gcTokens
-        + "\n🎁 Promo Pack: " + gcPromo + " ซอง";
-      _linePush(gcUid, gcMsg);
-    }
-    writeSupabaseRow_("wakagym_registrations", gcRow, SUPABASE_WAKAGYM_REG_HEADER, "reg_id");
-    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, already: false })));
   }
 
   // ── TOURNAMENT API ─────────────────────────────────────────────────────────
@@ -2579,22 +2511,6 @@ function handleApi(params) {
   }
 
   return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unknown action" })));
-}
-
-function handleSendConfirmLink(data) {
-  var trackUrl = data.confirmUrl;
-  var msg = "";
-  if (data.msgType === "ready") {
-    msg = "สินค้าพร้อมรับที่สาขาแล้ว!\n\nออเดอร์: #" + data.orderId + "\n\nกดดูสถานะ / ยืนยันรับของ:\n" + trackUrl;
-  } else if (data.msgType === "shipped") {
-    msg = "สินค้ากำลังจัดส่งไปสาขา\n\nออเดอร์: #" + data.orderId + "\n\nกดดูสถานะ:\n" + trackUrl;
-  } else if (data.msgType === "handover") {
-    msg = "สาขาส่งมอบสินค้าแล้ว กรุณากดยืนยันรับของ\n\nออเดอร์: #" + data.orderId + "\n\nกดยืนยัน:\n" + trackUrl;
-  } else {
-    msg = "อัปเดตออเดอร์ #" + data.orderId + "\n\nกดดูสถานะ:\n" + trackUrl;
-  }
-  _linePush(data.lineUserId, msg);
-  return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
 }
 
 function isDuplicateSlip(ss, ref) {
@@ -3094,43 +3010,6 @@ function handleHandoverOrder(data) {
 
     writeSupabaseOrder_(order, lock);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now, fulfillment: newFf })));
-  } catch (err) {
-    try { lock.releaseLock(); } catch(_) {}
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
-  }
-}
-
-// ── ปิดงานย้อนหลัง (สถานะอย่างเดียว) ────────────────────────────────────────
-// data: { order_id, code } — ใช้ backfill ออเดอร์ที่ส่งมอบจริงไปแล้วนอกระบบ
-// (เช่น ช่วงเพิ่งเปิดระบบใหม่) ตั้ง fulfillment เป็น "รับแล้ว" ตรง ๆ
-// โดยตั้งใจไม่ตัดสต็อกสาขาและไม่ยิง LINE หาลูกค้า ต่างจาก handleHandoverOrder/
-// customer_confirm ที่เป็น flow จริงและมีผลข้างเคียงทั้งสองอย่างนั้น
-function handleForceCompleteOrder(data) {
-  var lock = LockService.getScriptLock();
-  lock.waitLock(15000);
-  try {
-    var order = getSupabaseOrder_(data.order_id);
-    if (!order) {
-      lock.releaseLock();
-      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
-    }
-    var branch = order.branch || "";
-    if (!_branchAuthorized(data.code, branch)) {
-      lock.releaseLock();
-      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
-    }
-    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
-    var items = Array.isArray(order.items_json) ? order.items_json : [];
-    items.forEach(function(it) {
-      if (!it.cancelled_at && !it.handed_at) it.handed_at = now;
-    });
-    order.items_json = items;
-    order.fulfillment = "รับแล้ว";
-    if (!order.staff_confirmed_at) order.staff_confirmed_at = now;
-    order.customer_confirmed_at = now;
-    _clearDashCache();
-    writeSupabaseOrder_(order, lock);
-    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
