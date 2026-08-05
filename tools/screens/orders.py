@@ -52,6 +52,16 @@ def load_orders() -> pd.DataFrame:
         df["slip_amount"]  = pd.to_numeric(df.get("slip_amount", 0), errors="coerce").fillna(0)
         df["timestamp_dt"] = pd.to_datetime(df.get("timestamp", ""), errors="coerce", utc=True)
         df["date"]         = df["timestamp_dt"].dt.tz_convert("Asia/Bangkok").dt.date
+        # Supabase nulls land as NaN once a column mixes None with real values —
+        # NaN is truthy in Python, so `row.get(col) or default` silently keeps
+        # the NaN (rendering as the literal text "nan") instead of falling back,
+        # and string ops like .startswith() on it crash outright. `.where(...,
+        # None)` doesn't help here — pandas' "str" dtype uses NaN as its own
+        # missing-value sentinel and coerces None right back to NaN on
+        # assignment — so fill with "" instead, which is falsy like a real
+        # empty value should be.
+        obj_cols = df.columns.difference(["total", "slip_amount", "timestamp_dt", "date"])
+        df[obj_cols] = df[obj_cols].fillna("")
         return df
     except Exception as e:
         st.error(f"โหลด orders ไม่ได้: {e}")
@@ -599,8 +609,9 @@ with tab_cards:
 
                     col_slip, col_act = st.columns([1, 2])
                     with col_slip:
-                        slip_url = row.get("slip_url", "")
-                        if slip_url and slip_url.startswith("http"):
+                        slip_url_raw = row.get("slip_url", "")
+                        slip_url = "" if pd.isna(slip_url_raw) else str(slip_url_raw)
+                        if slip_url.startswith("http"):
                             st.image(slip_url, width=150)
                         slip_amt = float(row.get("slip_amount", 0) or 0)
                         order_total = float(row.get("total", 0) or 0)
