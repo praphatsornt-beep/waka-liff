@@ -154,6 +154,10 @@ function supabaseSelect_(table, query) {
 // Upserts one row into REPORT_SHEET_ID's tab (creating the tab + header if
 // missing). Best-effort only — a report-sheet outage must never break a
 // Supabase-primary write, so this never throws.
+// `keyCol` is either a single column name (existing behavior) or an array of
+// column names for tables with a composite key (e.g. stock_branch's
+// name+branch) — every column in the array must match for a row to be
+// treated as the same record.
 function mirrorToReportSheet_(tabName, header, keyCol, obj) {
   if (!REPORT_SHEET_ID) return;
   try {
@@ -163,7 +167,8 @@ function mirrorToReportSheet_(tabName, header, keyCol, obj) {
       ws = rss.insertSheet(tabName);
       ws.appendRow(header);
     }
-    var keyIdx = header.indexOf(keyCol);
+    var keyCols = Array.isArray(keyCol) ? keyCol : [keyCol];
+    var keyIdxs = keyCols.map(function(k) { return header.indexOf(k); });
     var rowArr = header.map(function(h) {
       var v = obj[h];
       if (v === null || v === undefined) return "";
@@ -171,7 +176,8 @@ function mirrorToReportSheet_(tabName, header, keyCol, obj) {
     });
     var data = ws.getDataRange().getValues();
     for (var i = 1; i < data.length; i++) {
-      if (String(data[i][keyIdx]) === String(obj[keyCol])) {
+      var isMatch = keyIdxs.every(function(idx, ki) { return String(data[i][idx]) === String(obj[keyCols[ki]]); });
+      if (isMatch) {
         ws.getRange(i + 1, 1, 1, rowArr.length).setValues([rowArr]);
         return;
       }
@@ -317,56 +323,8 @@ var SUPABASE_TOURNAMENT_CATEGORIES_HEADER = [
 ];
 var SUPABASE_WAKAGYM_EVENTS_HEADER = ["event_id", "date", "branch", "tier", "entry_fee", "status", "created_by"];
 
-function syncCatalogToSupabase_(ss, name) {
-  syncRowToSupabase_(ss, TAB_CATALOG, name, "catalog", SUPABASE_CATALOG_HEADER, []);
-}
-
-// Pushes each item's _catalog row straight to Supabase from an already-loaded
-// `rows` array (in-memory scan only) instead of syncCatalogToSupabase_, which
-// would re-read the whole _catalog sheet once per item.
-function syncCatalogItemsFromRows_(rows, items) {
-  items.forEach(function(it) {
-    for (var r = 1; r < rows.length; r++) {
-      if (String(rows[r][0]).trim() === String(it.name).trim()) {
-        pushToSupabase_("catalog", sheetRowToObject_(SUPABASE_CATALOG_HEADER, rows[r], []));
-        break;
-      }
-    }
-  });
-}
-// stock_branch has no single-column id — matched by (name, branch) together.
-function syncStockBranchToSupabase_(ss, name, branch) {
-  try {
-    var ws = ss.getSheetByName(TAB_STOCK_BRANCH);
-    if (!ws) return;
-    var rows = ws.getDataRange().getValues();
-    for (var i = 1; i < rows.length; i++) {
-      if (String(rows[i][0]) === String(name) && String(rows[i][2]) === String(branch)) {
-        pushToSupabase_("stock_branch", sheetRowToObject_(SUPABASE_STOCK_BRANCH_HEADER, rows[i], []));
-        return;
-      }
-    }
-  } catch (e) {
-    Logger.log("syncStockBranchToSupabase_ failed: " + e.message);
-  }
-}
-
-// Pushes each item's stock_branch row straight to Supabase using an
-// already-loaded `bsRows`/`bsMap` (built by the caller as name||branch ->
-// row index) instead of syncStockBranchToSupabase_, which would re-read the
-// whole stock_branch sheet once per item.
-function syncStockBranchItemsFromRows_(bsRows, bsMap, items, branch) {
-  items.forEach(function(it) {
-    var idx = bsMap[String(it.name).trim() + "||" + branch];
-    if (idx === undefined) return;
-    pushToSupabase_("stock_branch", sheetRowToObject_(SUPABASE_STOCK_BRANCH_HEADER, bsRows[idx], []));
-  });
-}
-
 const TAB_ORDERS  = "orders";
-const TAB_CATALOG = "_catalog";
 const TAB_CONFIG  = "_config";
-const TAB_STOCK_BRANCH = "stock_branch";
 const TAB_SHIPMENTS    = "shipments";
 const TAB_WAKAGYM_REG = "wakagym_reg";
 const TAB_PLAYER_STATS   = "player_stats";
@@ -691,12 +649,11 @@ function doPost(e) {
     }
     var orderId = _genOrderId();
 
-    // ── ตรวจ limit + หักสต็อก — อ่าน _catalog ครั้งเดียว ส่งต่อทั้ง 3 ฟังก์ชัน ──
-    var catWsForOrder = null, catRowsForOrder = null;
+    // ── ตรวจ limit + หักสต็อก — อ่าน catalog จาก Supabase ครั้งเดียว ส่งต่อทั้ง 3 ฟังก์ชัน ──
+    var catRowsForOrder = null;
     if (data.items && data.items.length > 0) {
-      catWsForOrder = ss.getSheetByName(TAB_CATALOG);
-      catRowsForOrder = catWsForOrder ? catWsForOrder.getDataRange().getValues() : null;
-      var limitCheck = checkCatalogLimits(ss, data.items, catRowsForOrder);
+      catRowsForOrder = _fetchCatalogRows_();
+      var limitCheck = checkCatalogLimits(data.items, catRowsForOrder);
       if (limitCheck.error) {
         try { lock.releaseLock(); } catch(_) {}
         return _cors(ContentService.createTextOutput(JSON.stringify({ success: false, error: limitCheck.error })));
@@ -705,16 +662,14 @@ function doPost(e) {
       // ใช้ตอน cancel เพื่อข้ามการคืน qty_box/pack (ไม่เคยหักจริง)
       for (var pi = 0; pi < data.items.length; pi++) {
         var pIt = data.items[pi];
-        for (var pr = 1; pr < catRowsForOrder.length; pr++) {
-          if (String(catRowsForOrder[pr][0]).trim() !== String(pIt.name).trim()) continue;
-          var pLimitCol = pIt.type === "box" ? 9 : 10;
-          var pStockCol = pIt.type === "box" ? 7 : 8;
-          var pLimit = catRowsForOrder[pr][pLimitCol];
-          var pHasLimit = !(pLimit === "" || pLimit === undefined || pLimit === null);
-          if (pHasLimit && (Number(catRowsForOrder[pr][pStockCol]) || 0) === 0) {
-            pIt._preorder = true;
-          }
-          break;
+        var pRow = _findCatalogRow_(catRowsForOrder, pIt.name);
+        if (!pRow) continue;
+        var pLimitField = pIt.type === "box" ? "limit_box" : "limit_pack";
+        var pStockField = pIt.type === "box" ? "qty_box" : "qty_pack";
+        var pLimit = pRow[pLimitField];
+        var pHasLimit = !(pLimit === "" || pLimit === undefined || pLimit === null);
+        if (pHasLimit && (Number(pRow[pStockField]) || 0) === 0) {
+          pIt._preorder = true;
         }
       }
     }
@@ -750,8 +705,8 @@ function doPost(e) {
 
     if (data.items && data.items.length > 0) {
       // ส่ง rows เดิมให้แชร์กัน — deductCatalogLimits อัปเดต rows ใน memory แล้ว return คืน
-      var updatedRows = deductCatalogLimits(ss, data.items, catWsForOrder, catRowsForOrder);
-      deductStock(ss, data.items, catWsForOrder, updatedRows || catRowsForOrder);
+      var updatedRows = deductCatalogLimits(data.items, catRowsForOrder);
+      deductStock(data.items, updatedRows || catRowsForOrder);
     }
 
     // อัปโหลดสลิปหลัง write order — นอก lock เพราะ Drive upload ช้า
@@ -836,145 +791,150 @@ function doPost(e) {
   }
 }
 
-// ── Catalog: ตรวจ limit + หักสต็อก ──────────────────────────────────────────
-// รับ rows ที่อ่านล่วงหน้าได้ เพื่อลด Sheets API call จาก 3 → 1
+// ── Catalog: ตรวจ limit + หักสต็อก (Supabase-primary) ───────────────────────
+// `_rows` เป็น array ของ catalog object จาก Supabase — ส่งต่อกันได้เพื่อลด
+// จำนวนครั้งที่ยิง supabaseSelect_ ในหนึ่ง request (เดิมคือ Sheet row array,
+// ตอนนี้เป็น object ที่มี field name ตรง ๆ แทนการ index คอลัมน์)
+function _fetchCatalogRows_() {
+  return supabaseSelect_("catalog", "select=*");
+}
+function _findCatalogRow_(rows, name) {
+  var n = String(name).trim();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i].name).trim() === n) return rows[i];
+  }
+  return null;
+}
+// เขียน row ที่เปลี่ยนกลับ Supabase + mirror — เรียกหลังแก้ rows ใน memory
+function _pushCatalogRows_(rows, changedNames) {
+  var names = {};
+  changedNames.forEach(function(n) { names[String(n).trim()] = true; });
+  rows.forEach(function(r) {
+    if (!names[String(r.name).trim()]) return;
+    var res = pushToSupabase_("catalog", r);
+    if (!res.ok) throw new Error("Supabase catalog write failed (" + r.name + "): " + res.text);
+    mirrorToReportSheet_("catalog", SUPABASE_CATALOG_HEADER, "name", r);
+  });
+}
 
-// checkCatalogLimits: ตรวจ limit_box (J) / limit_pack (K) และ actual stock (H/I)
-function checkCatalogLimits(ss, items, _rows) {
-  var ws = ss.getSheetByName(TAB_CATALOG);
-  if (!ws) return { ok: true };
-  var rows = _rows || ws.getDataRange().getValues();
+// checkCatalogLimits: ตรวจ limit_box/limit_pack และ actual stock (qty_box/qty_pack)
+function checkCatalogLimits(items, _rows) {
+  var rows = _rows || _fetchCatalogRows_();
   for (var idx = 0; idx < items.length; idx++) {
     var item = items[idx];
-    for (var r = 1; r < rows.length; r++) {
-      if (String(rows[r][0]).trim() !== String(item.name).trim()) continue;
-      var limitCol = item.type === "box" ? 9 : 10;
-      var stockCol = item.type === "box" ? 7 : 8;
-      var limit = rows[r][limitCol];
-      if (!(limit === "" || limit === undefined || limit === null)) {
-        limit = Number(limit);
-        if (item.qty > limit) {
-          var unitLabel = item.type === "box" ? "กล่อง" : "ซอง";
-          if (limit <= 0) return { error: item.name + " (" + unitLabel + ") สินค้าหมดแล้ว" };
-          return { error: item.name + " (" + unitLabel + ") เหลือเพียง " + limit + " " + unitLabel };
-        }
+    var row = _findCatalogRow_(rows, item.name);
+    if (!row) continue;
+    var limitField = item.type === "box" ? "limit_box" : "limit_pack";
+    var stockField = item.type === "box" ? "qty_box" : "qty_pack";
+    var limit = row[limitField];
+    if (!(limit === "" || limit === undefined || limit === null)) {
+      limit = Number(limit);
+      if (item.qty > limit) {
+        var unitLabel = item.type === "box" ? "กล่อง" : "ซอง";
+        if (limit <= 0) return { error: item.name + " (" + unitLabel + ") สินค้าหมดแล้ว" };
+        return { error: item.name + " (" + unitLabel + ") เหลือเพียง " + limit + " " + unitLabel };
       }
-      // ตรวจ actual stock — แจ้งเตือนถ้าสต็อกกลางไม่พอ
-      var stock = Number(rows[r][stockCol]) || 0;
-      if (stock > 0 && item.qty > stock) {
-        var ul = item.type === "box" ? "กล่อง" : "ซอง";
-        return { error: item.name + " (" + ul + ") สต็อกกลางไม่พอ (เหลือ " + stock + ")" };
-      }
-      break;
+    }
+    // ตรวจ actual stock — แจ้งเตือนถ้าสต็อกกลางไม่พอ
+    var stock = Number(row[stockField]) || 0;
+    if (stock > 0 && item.qty > stock) {
+      var ul = item.type === "box" ? "กล่อง" : "ซอง";
+      return { error: item.name + " (" + ul + ") สต็อกกลางไม่พอ (เหลือ " + stock + ")" };
     }
   }
   return { ok: true };
 }
 
-// deductCatalogLimits: หัก limit_box/pack — รับ ws+rows เพื่อแชร์การอ่าน
-function deductCatalogLimits(ss, items, _ws, _rows) {
-  var ws = _ws || ss.getSheetByName(TAB_CATALOG);
-  if (!ws) return _rows;
-  var range = ws.getDataRange();
-  var rows = _rows || range.getValues();
-  var changed = false;
+// deductCatalogLimits: หัก limit_box/pack — รับ rows เพื่อแชร์การอ่าน
+function deductCatalogLimits(items, _rows) {
+  var rows = _rows || _fetchCatalogRows_();
+  var changedNames = [];
   for (var idx = 0; idx < items.length; idx++) {
     var item = items[idx];
-    for (var r = 1; r < rows.length; r++) {
-      if (String(rows[r][0]).trim() !== String(item.name).trim()) continue;
-      var colIdx = item.type === "box" ? 9 : 10;
-      var limit = rows[r][colIdx];
-      if (limit === "" || limit === undefined || limit === null) break;
-      rows[r][colIdx] = Math.max(0, Number(limit) - (item.qty || 1));
-      changed = true;
-      break;
-    }
+    var row = _findCatalogRow_(rows, item.name);
+    if (!row) continue;
+    var limitField = item.type === "box" ? "limit_box" : "limit_pack";
+    var limit = row[limitField];
+    if (limit === "" || limit === undefined || limit === null) continue;
+    row[limitField] = Math.max(0, Number(limit) - (item.qty || 1));
+    changedNames.push(item.name);
   }
-  if (changed) {
-    range.setValues(rows);
+  if (changedNames.length) {
     CacheService.getScriptCache().remove("catalog_config");
-    syncCatalogItemsFromRows_(rows, items);
+    _pushCatalogRows_(rows, changedNames);
   }
   return rows;
 }
 
-// deductStock: หัก qty_box/pack (H/I) — รับ ws+rows เพื่อแชร์การอ่าน
-function deductStock(ss, items, _ws, _rows) {
-  var ws = _ws || ss.getSheetByName(TAB_CATALOG);
-  if (!ws) return;
-  var range = ws.getDataRange();
-  var rows = _rows || range.getValues();
-  var changed = false;
+// deductStock: หัก qty_box/pack — รับ rows เพื่อแชร์การอ่าน
+function deductStock(items, _rows) {
+  var rows = _rows || _fetchCatalogRows_();
+  var changedNames = [];
   for (var idx = 0; idx < items.length; idx++) {
     var item = items[idx];
-    for (var r = 1; r < rows.length; r++) {
-      if (String(rows[r][0]).trim() !== String(item.name).trim()) continue;
-      if (item.type === "box") {
-        rows[r][7] = Math.max(0, (Number(rows[r][7]) || 0) - (item.qty || 1));
-      } else {
-        rows[r][8] = Math.max(0, (Number(rows[r][8]) || 0) - (item.qty || 1));
-      }
-      changed = true;
-      break;
-    }
+    var row = _findCatalogRow_(rows, item.name);
+    if (!row) continue;
+    var qtyField = item.type === "box" ? "qty_box" : "qty_pack";
+    row[qtyField] = Math.max(0, (Number(row[qtyField]) || 0) - (item.qty || 1));
+    changedNames.push(item.name);
   }
-  if (changed) {
-    range.setValues(rows);
-    syncCatalogItemsFromRows_(rows, items);
-  }
+  if (changedNames.length) _pushCatalogRows_(rows, changedNames);
+  return rows;
 }
 
-function restoreStock(ss, items) {
-  var ws = ss.getSheetByName(TAB_CATALOG);
-  if (!ws) return;
-  var range = ws.getDataRange();
-  var rows = range.getValues();
-  var changed = false;
+function restoreStock(items) {
+  var rows = _fetchCatalogRows_();
+  var changedNames = [];
   for (var idx = 0; idx < items.length; idx++) {
     var item = items[idx];
     // _preorder = true หมายความว่าตอนสั่งซื้อ qty_box/pack เป็น 0 → deductStock ไม่ได้หักจริง
     // จึงไม่คืน qty กลับ (ป้องกัน ghost stock)
     if (item._preorder) continue;
-    for (var r = 1; r < rows.length; r++) {
-      if (String(rows[r][0]).trim() !== String(item.name).trim()) continue;
-      if (item.type === "box") {
-        rows[r][7] = (Number(rows[r][7]) || 0) + (item.qty || 1);
-      } else {
-        rows[r][8] = (Number(rows[r][8]) || 0) + (item.qty || 1);
-      }
-      changed = true;
-      break;
-    }
+    var row = _findCatalogRow_(rows, item.name);
+    if (!row) continue;
+    var qtyField = item.type === "box" ? "qty_box" : "qty_pack";
+    row[qtyField] = (Number(row[qtyField]) || 0) + (item.qty || 1);
+    changedNames.push(item.name);
   }
-  if (changed) {
-    range.setValues(rows);
-    syncCatalogItemsFromRows_(rows, items.filter(function(it) { return !it._preorder; }));
+  if (changedNames.length) _pushCatalogRows_(rows, changedNames);
+}
+
+function restoreCatalogLimits(items) {
+  var rows = _fetchCatalogRows_();
+  var changedNames = [];
+  for (var idx = 0; idx < items.length; idx++) {
+    var item = items[idx];
+    var row = _findCatalogRow_(rows, item.name);
+    if (!row) continue;
+    var limitField = item.type === "box" ? "limit_box" : "limit_pack";
+    var limit = row[limitField];
+    if (limit === "" || limit === undefined || limit === null) continue;
+    row[limitField] = (Number(limit) || 0) + (item.qty || 1);
+    changedNames.push(item.name);
+  }
+  if (changedNames.length) {
+    CacheService.getScriptCache().remove("catalog_config");
+    _pushCatalogRows_(rows, changedNames);
   }
 }
 
-function restoreCatalogLimits(ss, items) {
-  var ws = ss.getSheetByName(TAB_CATALOG);
-  if (!ws) return;
-  var range = ws.getDataRange();
-  var rows = range.getValues();
-  var changed = false;
-  for (var idx = 0; idx < items.length; idx++) {
-    var item = items[idx];
-    for (var r = 1; r < rows.length; r++) {
-      if (String(rows[r][0]).trim() !== String(item.name).trim()) continue;
-      var colIdx = item.type === "box" ? 9 : 10;
-      var limit = rows[r][colIdx];
-      if (limit === "" || limit === undefined || limit === null) break;
-      rows[r][colIdx] = (Number(limit) || 0) + (item.qty || 1);
-      changed = true;
-      break;
-    }
+// ── stock_branch (Supabase-primary, composite key name+branch) ─────────────
+function _fetchStockBranchRows_(branchFilter) {
+  var q = "select=*" + (branchFilter ? "&branch=eq." + encodeURIComponent(branchFilter) : "");
+  return supabaseSelect_("stock_branch", q);
+}
+function _findStockBranchRow_(rows, name, branch) {
+  var n = String(name).trim(), b = String(branch).trim();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i].name).trim() === n && String(rows[i].branch).trim() === b) return rows[i];
   }
-  if (changed) {
-    range.setValues(rows);
-    CacheService.getScriptCache().remove("catalog_config");
-    syncCatalogItemsFromRows_(rows, items);
-  }
+  return null;
+}
+function _writeStockBranchRow_(row) {
+  var res = pushToSupabase_("stock_branch", row);
+  if (!res.ok) throw new Error("Supabase stock_branch write failed (" + row.name + "/" + row.branch + "): " + res.text);
+  mirrorToReportSheet_("stock_branch", SUPABASE_STOCK_BRANCH_HEADER, ["name", "branch"], row);
+  return row;
 }
 
 function _clearDashCache() {
@@ -1653,13 +1613,13 @@ function handleApi(params) {
   // ── รายงานยอดขาย ──
   if (action === "report") {
     // อ่าน cost จาก catalog
-    var costCatRows = supabaseSelect_("catalog", "select=name,cost_box,cost_pack,price_box,price_pack");
+    var costCatRows = supabaseSelect_("catalog", "select=name,cost_box,cost_p,price_box,price_pack");
     var costMap = {};
     costCatRows.forEach(function(r) {
       if (!r.name) return;
       costMap[String(r.name)] = {
         cost_box: Number(r.cost_box) || 0,
-        cost_pack: Number(r.cost_pack) || 0,
+        cost_pack: Number(r.cost_p) || 0,
         price_box: Number(r.price_box) || 0,
         price_pack: Number(r.price_pack) || 0,
       };
@@ -1733,7 +1693,7 @@ function handleApi(params) {
         product: {
           name: String(lr.name), category: String(lr.category || ""),
           price_box: Number(lr.price_box) || 0, price_pack: Number(lr.price_pack) || 0,
-          cost_box: Number(lr.cost_box) || 0, cost_pack: Number(lr.cost_pack) || 0,
+          cost_box: Number(lr.cost_box) || 0, cost_pack: Number(lr.cost_p) || 0,
           barcode: barcode, stock_box: Number(lr.qty_box) || 0, stock_pack: Number(lr.qty_pack) || 0,
         }
       })));
@@ -1748,7 +1708,7 @@ function handleApi(params) {
       return {
         name: String(r.name).trim(), category: String(r.category || ""),
         price_box: Number(r.price_box) || 0, price_pack: Number(r.price_pack) || 0,
-        cost_box: Number(r.cost_box) || 0, cost_pack: Number(r.cost_pack) || 0,
+        cost_box: Number(r.cost_box) || 0, cost_pack: Number(r.cost_p) || 0,
         barcode: String(r.barcode || ""),
         limit_box: (r.limit_box === "" || r.limit_box === undefined || r.limit_box === null) ? -1 : Number(r.limit_box),
         limit_pack: (r.limit_pack === "" || r.limit_pack === undefined || r.limit_pack === null) ? -1 : Number(r.limit_pack),
@@ -1766,7 +1726,7 @@ function handleApi(params) {
       return {
         name: String(r.name || "").trim(),
         category: String(r.category || ""),
-        cost_box: Number(r.cost_box) || 0, cost_pack: Number(r.cost_pack) || 0,
+        cost_box: Number(r.cost_box) || 0, cost_pack: Number(r.cost_p) || 0,
         price_box: Number(r.price_box) || 0, price_pack: Number(r.price_pack) || 0,
         qty_box: Number(r.qty_box) || 0, qty_pack: Number(r.qty_pack) || 0,
         limit_box: (r.limit_box === "" || r.limit_box === undefined || r.limit_box === null) ? -1 : Number(r.limit_box),
@@ -1842,8 +1802,8 @@ function handleApi(params) {
     // คืนเฉพาะ item ที่ยังไม่ได้ส่งมอบลูกค้า (ป้องกัน double restore)
     var itemsToRestore = items.filter(function(it) { return !it.handed_at; });
     if (itemsToRestore.length > 0) {
-      restoreStock(ss, itemsToRestore);
-      restoreCatalogLimits(ss, itemsToRestore);
+      restoreStock(itemsToRestore);
+      restoreCatalogLimits(itemsToRestore);
     }
     order.fulfillment = "ยกเลิก";
     var uid = String(order.line_user_id || "");
@@ -2829,32 +2789,22 @@ function handleCreateShipment(data) {
     }
 
     var items = data.items || [];
-    // ตัดสต็อกกลาง — batch write แทน per-cell
-    var shCatWs = ss.getSheetByName(TAB_CATALOG);
-    if (shCatWs) {
-      var catRange = shCatWs.getDataRange();
-      var sRows = catRange.getValues();
-      var catMap = {};
-      for (var ri = 1; ri < sRows.length; ri++) catMap[String(sRows[ri][0]).trim()] = ri;
-      var catChanged = false;
-      for (var idx = 0; idx < items.length; idx++) {
-        var it = items[idx];
-        var ri = catMap[String(it.name).trim()];
-        if (ri === undefined) continue;
-        var totalBox = (it.qty_box || 0) + (it.qty_box_extra || 0);
-        var totalPack = (it.qty_pack || 0) + (it.qty_pack_extra || 0);
-        if (totalBox > 0)  { sRows[ri][7] = Math.max(0, (Number(sRows[ri][7]) || 0) - totalBox);  catChanged = true; }
-        if (totalPack > 0) { sRows[ri][8] = Math.max(0, (Number(sRows[ri][8]) || 0) - totalPack); catChanged = true; }
-      }
-      if (catChanged) catRange.setValues(sRows);
+    // ตัดสต็อกกลาง (catalog, Supabase-primary)
+    var shCatRows = _fetchCatalogRows_();
+    var shChangedNames = [];
+    for (var idx = 0; idx < items.length; idx++) {
+      var it = items[idx];
+      var shRow = _findCatalogRow_(shCatRows, it.name);
+      if (!shRow) continue;
+      var totalBox = (it.qty_box || 0) + (it.qty_box_extra || 0);
+      var totalPack = (it.qty_pack || 0) + (it.qty_pack_extra || 0);
+      if (totalBox > 0)  { shRow.qty_box  = Math.max(0, (Number(shRow.qty_box)  || 0) - totalBox);  shChangedNames.push(it.name); }
+      if (totalPack > 0) { shRow.qty_pack = Math.max(0, (Number(shRow.qty_pack) || 0) - totalPack); shChangedNames.push(it.name); }
     }
 
     shWs.appendRow([shipId, now, data.to_branch || "", "จัดส่ง", JSON.stringify(items), "", ""]);
     lock.releaseLock();
-    // Push the catalog rows already updated in memory above instead of
-    // syncCatalogToSupabase_, which would re-read the whole _catalog sheet
-    // once per item in the shipment.
-    if (shCatWs) syncCatalogItemsFromRows_(sRows, items);
+    if (shChangedNames.length) _pushCatalogRows_(shCatRows, shChangedNames);
 
     // LINE แจ้งกลุ่ม staff
     try {
@@ -2896,32 +2846,25 @@ function handleCancelShipment(data) {
       if (String(shRows[i][colIdx("shipment_id")]) !== String(data.shipment_id)) continue;
       var status = String(shRows[i][colIdx("status")] || "");
       if (status === "รับแล้ว" || status === "ยกเลิก") continue;
-      // คืนสต็อกกลาง — batch write
+      // คืนสต็อกกลาง (catalog, Supabase-primary)
       var items = [];
       try { items = JSON.parse(String(shRows[i][colIdx("items_json")] || "[]")); } catch(_) {}
-      var catWs = ss.getSheetByName(TAB_CATALOG);
-      if (catWs && items.length > 0) {
-        var catRange = catWs.getDataRange();
-        var catRows = catRange.getValues();
-        var catMap = {};
-        for (var ri = 1; ri < catRows.length; ri++) catMap[String(catRows[ri][0]).trim()] = ri;
-        var catChanged = false;
+      var csCatRows = items.length > 0 ? _fetchCatalogRows_() : null;
+      var csChangedNames = [];
+      if (csCatRows) {
         for (var idx = 0; idx < items.length; idx++) {
           var it = items[idx];
-          var ri = catMap[String(it.name).trim()];
-          if (ri === undefined) continue;
+          var csRow = _findCatalogRow_(csCatRows, it.name);
+          if (!csRow) continue;
           var totalBox = (it.qty_box || 0) + (it.qty_box_extra || 0);
           var totalPack = (it.qty_pack || 0) + (it.qty_pack_extra || 0);
-          if (totalBox > 0)  { catRows[ri][7] = (Number(catRows[ri][7]) || 0) + totalBox;  catChanged = true; }
-          if (totalPack > 0) { catRows[ri][8] = (Number(catRows[ri][8]) || 0) + totalPack; catChanged = true; }
+          if (totalBox > 0)  { csRow.qty_box  = (Number(csRow.qty_box)  || 0) + totalBox;  csChangedNames.push(it.name); }
+          if (totalPack > 0) { csRow.qty_pack = (Number(csRow.qty_pack) || 0) + totalPack; csChangedNames.push(it.name); }
         }
-        if (catChanged) catRange.setValues(catRows);
       }
       shWs.getRange(i + 1, colIdx("status") + 1).setValue("ยกเลิก");
       lock.releaseLock();
-      // Same fix as handleCreateShipment: push the catalog rows already
-      // updated in memory instead of re-reading the whole sheet per item.
-      if (catWs && items.length > 0) syncCatalogItemsFromRows_(catRows, items);
+      if (csChangedNames.length) _pushCatalogRows_(csCatRows, csChangedNames);
       return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
     }
     lock.releaseLock();
@@ -2960,39 +2903,25 @@ function handleReceiveShipment(data) {
     shWs.getRange(shipRow + 1, 4).setValue("รับแล้ว");
     shWs.getRange(shipRow + 1, 6).setValue(now);
 
-    // เพิ่มสต็อกสาขา — batch write แทน per-cell
-    var bsWs = ss.getSheetByName(TAB_STOCK_BRANCH);
-    if (!bsWs) {
-      bsWs = ss.insertSheet(TAB_STOCK_BRANCH);
-      bsWs.appendRow(["name", "category", "branch", "qty_box", "qty_pack"]);
-    }
-    var bsRange = bsWs.getDataRange();
-    var bsRows = bsRange.getValues();
-    var bsMap = {};
-    for (var r = 1; r < bsRows.length; r++) {
-      bsMap[String(bsRows[r][0]).trim() + "||" + String(bsRows[r][2]).trim()] = r;
-    }
-    var bsChanged = false;
-    var newBsRows = [];
+    // เพิ่มสต็อกสาขา (Supabase-primary)
+    var bsRows = _fetchStockBranchRows_(branch);
+    var bsRowsToWrite = [];
     for (var idx = 0; idx < items.length; idx++) {
       var it = items[idx];
       var addBox = (it.qty_box || 0) + (it.qty_box_extra || 0);
       var addPack = (it.qty_pack || 0) + (it.qty_pack_extra || 0);
-      var bsKey = String(it.name).trim() + "||" + branch;
-      var bsIdx = bsMap[bsKey];
-      if (bsIdx !== undefined) {
-        if (addBox  > 0) { bsRows[bsIdx][3] = (Number(bsRows[bsIdx][3]) || 0) + addBox;  bsChanged = true; }
-        if (addPack > 0) { bsRows[bsIdx][4] = (Number(bsRows[bsIdx][4]) || 0) + addPack; bsChanged = true; }
+      var bsRow = _findStockBranchRow_(bsRows, it.name, branch);
+      if (bsRow) {
+        if (addBox  > 0) { bsRow.qty_box  = (Number(bsRow.qty_box)  || 0) + addBox; }
+        if (addPack > 0) { bsRow.qty_pack = (Number(bsRow.qty_pack) || 0) + addPack; }
+        if (addBox > 0 || addPack > 0) bsRowsToWrite.push(bsRow);
       } else {
-        newBsRows.push([it.name, it.category || "", branch, addBox, addPack]);
+        bsRow = { name: it.name, category: it.category || "", branch: branch, qty_box: addBox, qty_pack: addPack };
+        bsRows.push(bsRow);
+        bsRowsToWrite.push(bsRow);
       }
     }
-    if (bsChanged) bsRange.setValues(bsRows);
-    for (var nr = 0; nr < newBsRows.length; nr++) {
-      bsWs.appendRow(newBsRows[nr]);
-      pushToSupabase_("stock_branch", sheetRowToObject_(SUPABASE_STOCK_BRANCH_HEADER, newBsRows[nr], []));
-    }
-    syncStockBranchItemsFromRows_(bsRows, bsMap, items, branch);
+    bsRowsToWrite.forEach(function(r) { _writeStockBranchRow_(r); });
 
     // แจ้ง LINE ลูกค้าทุกคนที่มีออเดอร์ยืนยัน + สาขานี้ + ยังไม่ส่ง
     // fulfillment=not.in.(...) ทำใน PostgREST ไม่ได้เพราะ NULL (ออเดอร์ใหม่ยัง
@@ -3058,31 +2987,18 @@ function handleHandoverOrder(data) {
       return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่มีสินค้าที่พร้อมส่งมอบ" })));
     }
 
-    // ตัดสต็อกสาขาเฉพาะ itemsToHandover — batch write
-    var bsWs = ss.getSheetByName(TAB_STOCK_BRANCH);
-    if (bsWs) {
-      var bsRange = bsWs.getDataRange();
-      var bsRows = bsRange.getValues();
-      var bsMap = {};
-      for (var r = 1; r < bsRows.length; r++) {
-        bsMap[String(bsRows[r][0]).trim() + "||" + String(bsRows[r][2]).trim()] = r;
-      }
-      var bsChanged = false;
-      for (var idx = 0; idx < itemsToHandover.length; idx++) {
-        var it = itemsToHandover[idx];
-        var bsKey = String(it.name).trim() + "||" + branch;
-        var bsIdx = bsMap[bsKey];
-        if (bsIdx === undefined) continue;
-        if (it.type === "box") {
-          bsRows[bsIdx][3] = Math.max(0, (Number(bsRows[bsIdx][3]) || 0) - (it.qty || 1));
-        } else {
-          bsRows[bsIdx][4] = Math.max(0, (Number(bsRows[bsIdx][4]) || 0) - (it.qty || 1));
-        }
-        bsChanged = true;
-      }
-      if (bsChanged) bsRange.setValues(bsRows);
-      syncStockBranchItemsFromRows_(bsRows, bsMap, itemsToHandover, branch);
+    // ตัดสต็อกสาขาเฉพาะ itemsToHandover (Supabase-primary)
+    var hoRows = _fetchStockBranchRows_(branch);
+    var hoRowsToWrite = [];
+    for (var idx = 0; idx < itemsToHandover.length; idx++) {
+      var it = itemsToHandover[idx];
+      var hoRow = _findStockBranchRow_(hoRows, it.name, branch);
+      if (!hoRow) continue;
+      var hoField = it.type === "box" ? "qty_box" : "qty_pack";
+      hoRow[hoField] = Math.max(0, (Number(hoRow[hoField]) || 0) - (it.qty || 1));
+      hoRowsToWrite.push(hoRow);
     }
+    hoRowsToWrite.forEach(function(r) { _writeStockBranchRow_(r); });
 
     // ตั้ง handed_at บน item ที่เพิ่งส่งมอบ
     var handoverNames = [];
@@ -3248,8 +3164,8 @@ function handlePartialCancelItems(data) {
     }
 
     // คืน stock + limits
-    restoreStock(ss, cancelledItems);
-    restoreCatalogLimits(ss, cancelledItems);
+    restoreStock(cancelledItems);
+    restoreCatalogLimits(cancelledItems);
 
     order.items_json = items;
 
@@ -3467,41 +3383,18 @@ function handleAddStock(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var ss = SpreadsheetApp.openById(SHEET_ID);
-    var ws = ss.getSheetByName(TAB_CATALOG);
-    if (!ws) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no _catalog tab" }))); }
-    var rows = ws.getDataRange().getValues();
-    var found = false;
-    for (var r = 1; r < rows.length; r++) {
-      if (String(rows[r][0]).trim() === String(data.name).trim()) {
-        if (data.add_box) ws.getRange(r + 1, 8).setValue((Number(rows[r][7]) || 0) + Number(data.add_box));
-        if (data.add_pack) ws.getRange(r + 1, 9).setValue((Number(rows[r][8]) || 0) + Number(data.add_pack));
-        found = true;
-        break;
-      }
+    var row = getSupabaseRow_("catalog", "name", data.name);
+    if (!row) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบสินค้าใน catalog: " + data.name })));
     }
-    if (!found) {
-      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบสินค้าใน _catalog: " + data.name })));
-    }
-
-    // อัปเดต limit ใน _catalog ถ้าส่งมา
-    if (data.limit_box !== undefined && data.limit_box !== null || data.limit_pack !== undefined && data.limit_pack !== null) {
-      var catWs = ss.getSheetByName(TAB_CATALOG);
-      if (catWs) {
-        var catRows = catWs.getDataRange().getValues();
-        for (var c = 1; c < catRows.length; c++) {
-          if (String(catRows[c][0]).trim() === String(data.name).trim()) {
-            if (data.limit_box !== undefined && data.limit_box !== null) catWs.getRange(c + 1, 10).setValue(Number(data.limit_box));
-            if (data.limit_pack !== undefined && data.limit_pack !== null) catWs.getRange(c + 1, 11).setValue(Number(data.limit_pack));
-            CacheService.getScriptCache().remove("catalog_config");
-            break;
-          }
-        }
-      }
-    }
-
+    if (data.add_box)  row.qty_box  = (Number(row.qty_box)  || 0) + Number(data.add_box);
+    if (data.add_pack) row.qty_pack = (Number(row.qty_pack) || 0) + Number(data.add_pack);
+    if (data.limit_box !== undefined && data.limit_box !== null) row.limit_box = Number(data.limit_box);
+    if (data.limit_pack !== undefined && data.limit_pack !== null) row.limit_pack = Number(data.limit_pack);
+    CacheService.getScriptCache().remove("catalog_config");
+    writeSupabaseRow_("catalog", row, SUPABASE_CATALOG_HEADER, "name");
     lock.releaseLock();
-    syncCatalogToSupabase_(ss, data.name);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -3509,40 +3402,31 @@ function handleAddStock(data) {
   }
 }
 
-// ── เพิ่มสินค้าใหม่ใน _catalog + stock ──
+// ── เพิ่มสินค้าใหม่ใน catalog ──
 // data: { name, category, price_box, price_pack, cost_box, cost_pack, barcode, initial_box, initial_pack }
 function handleAddProduct(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var ss = SpreadsheetApp.openById(SHEET_ID);
-    var catWs = ss.getSheetByName(TAB_CATALOG);
-    if (!catWs) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no _catalog tab" }))); }
-
-    // เช็คชื่อซ้ำ
-    var catRows = catWs.getDataRange().getValues();
-    for (var i = 1; i < catRows.length; i++) {
-      if (String(catRows[i][0]).trim() === String(data.name).trim()) {
-        lock.releaseLock();
-        return _cors(ContentService.createTextOutput(JSON.stringify({ error: "สินค้าชื่อนี้มีอยู่แล้ว" })));
-      }
+    var existing = getSupabaseRow_("catalog", "name", data.name);
+    if (existing) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "สินค้าชื่อนี้มีอยู่แล้ว" })));
     }
 
-    // เพิ่มใน _catalog: A=name, B=category, C=slug, D=cost_box, E=cost_pack, F=price_box, G=price_pack, H=qty_box, I=qty_pack, J=limit_box, K=limit_pack, L=active, M=image_url, N=barcode, O=notice
-    var limBox = (data.limit_box === "" || data.limit_box === undefined || data.limit_box === null) ? "" : Number(data.limit_box);
-    var limPack = (data.limit_pack === "" || data.limit_pack === undefined || data.limit_pack === null) ? "" : Number(data.limit_pack);
-    var newRow = [
-      data.name, data.category || "", "",
-      Number(data.cost_box) || 0, Number(data.cost_pack) || 0,
-      Number(data.price_box) || 0, Number(data.price_pack) || 0,
-      Number(data.initial_box) || 0, Number(data.initial_pack) || 0,
-      limBox, limPack, "TRUE", data.image_url || "", data.barcode || "", ""
-    ];
-    catWs.appendRow(newRow);
-
+    var limBox = (data.limit_box === "" || data.limit_box === undefined || data.limit_box === null) ? null : Number(data.limit_box);
+    var limPack = (data.limit_pack === "" || data.limit_pack === undefined || data.limit_pack === null) ? null : Number(data.limit_pack);
+    var newRow = {
+      name: data.name, category: data.category || "", slug: "",
+      cost_box: Number(data.cost_box) || 0, cost_p: Number(data.cost_pack) || 0,
+      price_box: Number(data.price_box) || 0, price_pack: Number(data.price_pack) || 0,
+      qty_box: Number(data.initial_box) || 0, qty_pack: Number(data.initial_pack) || 0,
+      limit_box: limBox, limit_pack: limPack, active: "TRUE",
+      image_url: data.image_url || "", barcode: data.barcode || "", notice: "",
+    };
     CacheService.getScriptCache().remove("catalog_config");
+    writeSupabaseRow_("catalog", newRow, SUPABASE_CATALOG_HEADER, "name");
     lock.releaseLock();
-    syncCatalogToSupabase_(ss, data.name);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -3554,29 +3438,22 @@ function handleUpdateProduct(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var ss = SpreadsheetApp.openById(SHEET_ID);
-    var catWs = ss.getSheetByName(TAB_CATALOG);
-    if (!catWs) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no _catalog tab" }))); }
-    var catRows = catWs.getDataRange().getValues();
-    var targetRow = -1;
-    for (var i = 1; i < catRows.length; i++) {
-      if (String(catRows[i][0]).trim() === String(data.name).trim()) { targetRow = i + 1; break; }
-    }
-    if (targetRow === -1) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบสินค้า: " + data.name }))); }
-    if (data.category !== undefined) catWs.getRange(targetRow, 2).setValue(data.category);
-    if (data.cost_box !== undefined) catWs.getRange(targetRow, 4).setValue(Number(data.cost_box) || 0);
-    if (data.cost_pack !== undefined) catWs.getRange(targetRow, 5).setValue(Number(data.cost_pack) || 0);
-    if (data.price_box !== undefined) catWs.getRange(targetRow, 6).setValue(Number(data.price_box) || 0);
-    if (data.price_pack !== undefined) catWs.getRange(targetRow, 7).setValue(Number(data.price_pack) || 0);
-    if (data.limit_box !== undefined) catWs.getRange(targetRow, 10).setValue(data.limit_box === "" ? "" : Number(data.limit_box));
-    if (data.limit_pack !== undefined) catWs.getRange(targetRow, 11).setValue(data.limit_pack === "" ? "" : Number(data.limit_pack));
-    if (data.active !== undefined) catWs.getRange(targetRow, 12).setValue(data.active ? "TRUE" : "FALSE");
-    if (data.image_url !== undefined) catWs.getRange(targetRow, 13).setValue(data.image_url || "");
-    if (data.barcode !== undefined) catWs.getRange(targetRow, 14).setValue(data.barcode || "");
-    if (data.notice !== undefined) catWs.getRange(targetRow, 15).setValue(data.notice || "");
+    var row = getSupabaseRow_("catalog", "name", data.name);
+    if (!row) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบสินค้า: " + data.name }))); }
+    if (data.category !== undefined) row.category = data.category;
+    if (data.cost_box !== undefined) row.cost_box = Number(data.cost_box) || 0;
+    if (data.cost_pack !== undefined) row.cost_p = Number(data.cost_pack) || 0;
+    if (data.price_box !== undefined) row.price_box = Number(data.price_box) || 0;
+    if (data.price_pack !== undefined) row.price_pack = Number(data.price_pack) || 0;
+    if (data.limit_box !== undefined) row.limit_box = data.limit_box === "" ? null : Number(data.limit_box);
+    if (data.limit_pack !== undefined) row.limit_pack = data.limit_pack === "" ? null : Number(data.limit_pack);
+    if (data.active !== undefined) row.active = data.active ? "TRUE" : "FALSE";
+    if (data.image_url !== undefined) row.image_url = data.image_url || "";
+    if (data.barcode !== undefined) row.barcode = data.barcode || "";
+    if (data.notice !== undefined) row.notice = data.notice || "";
     CacheService.getScriptCache().remove("catalog_config");
+    writeSupabaseRow_("catalog", row, SUPABASE_CATALOG_HEADER, "name");
     lock.releaseLock();
-    syncCatalogToSupabase_(ss, data.name);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -3604,29 +3481,14 @@ function handleWithdrawStock(data) {
   lock.waitLock(10000);
   try {
     var ss = SpreadsheetApp.openById(SHEET_ID);
-    var bsWs = ss.getSheetByName(TAB_STOCK_BRANCH);
-    if (!bsWs) {
-      lock.releaseLock();
-      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่มีข้อมูลสต็อกสาขา" })));
-    }
-
-    var bsRows = bsWs.getDataRange().getValues();
-    var found = false;
-    for (var r = 1; r < bsRows.length; r++) {
-      if (String(bsRows[r][0]).trim() !== name) continue;
-      if (String(bsRows[r][2]).trim() !== branch) continue;
-      if (type === "box") {
-        bsWs.getRange(r + 1, 4).setValue(Math.max(0, (Number(bsRows[r][3]) || 0) - qty));
-      } else {
-        bsWs.getRange(r + 1, 5).setValue(Math.max(0, (Number(bsRows[r][4]) || 0) - qty));
-      }
-      found = true;
-      break;
-    }
-    if (!found) {
+    var bsRow = _findStockBranchRow_(_fetchStockBranchRows_(branch), name, branch);
+    if (!bsRow) {
       lock.releaseLock();
       return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบ " + name + " ในสต็อกสาขา " + branch })));
     }
+    var wField = type === "box" ? "qty_box" : "qty_pack";
+    bsRow[wField] = Math.max(0, (Number(bsRow[wField]) || 0) - qty);
+    _writeStockBranchRow_(bsRow);
 
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
     var wWs = ss.getSheetByName("withdrawals");
@@ -3637,7 +3499,6 @@ function handleWithdrawStock(data) {
     wWs.appendRow([now, branch, name, type, qty, reason]);
 
     lock.releaseLock();
-    syncStockBranchToSupabase_(ss, name, branch);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -3660,38 +3521,22 @@ function handleReturnStock(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var ss    = SpreadsheetApp.openById(SHEET_ID);
-    var bsWs  = ss.getSheetByName(TAB_STOCK_BRANCH);
-    var catWs = ss.getSheetByName(TAB_CATALOG);
-    if (!bsWs)  { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่มีข้อมูลสต็อกสาขา" }))); }
-    if (!catWs) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่มีข้อมูลคลังกลาง" }))); }
+    var ss = SpreadsheetApp.openById(SHEET_ID);
 
-    // ลดสต็อกสาขา — batch write
-    var bsRange = bsWs.getDataRange();
-    var bsRows = bsRange.getValues();
-    var found = false;
-    for (var r = 1; r < bsRows.length; r++) {
-      if (String(bsRows[r][0]).trim() !== name) continue;
-      if (String(bsRows[r][2]).trim() !== branch) continue;
-      if (qtyBox  > 0) bsRows[r][3] = Math.max(0, (Number(bsRows[r][3]) || 0) - qtyBox);
-      if (qtyPack > 0) bsRows[r][4] = Math.max(0, (Number(bsRows[r][4]) || 0) - qtyPack);
-      found = true;
-      break;
-    }
-    if (!found) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบ " + name + " ในสต็อกสาขา " + branch }))); }
-    bsRange.setValues(bsRows);
+    // ลดสต็อกสาขา (Supabase-primary)
+    var bsRow = _findStockBranchRow_(_fetchStockBranchRows_(branch), name, branch);
+    if (!bsRow) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบ " + name + " ในสต็อกสาขา " + branch }))); }
+    if (qtyBox  > 0) bsRow.qty_box  = Math.max(0, (Number(bsRow.qty_box)  || 0) - qtyBox);
+    if (qtyPack > 0) bsRow.qty_pack = Math.max(0, (Number(bsRow.qty_pack) || 0) - qtyPack);
+    _writeStockBranchRow_(bsRow);
 
-    // เพิ่มสต็อกกลาง — batch write
-    var catRange = catWs.getDataRange();
-    var catRows = catRange.getValues();
-    var catChanged = false;
-    for (var c = 1; c < catRows.length; c++) {
-      if (String(catRows[c][0]).trim() !== name) continue;
-      if (qtyBox  > 0) { catRows[c][7] = (Number(catRows[c][7]) || 0) + qtyBox;  catChanged = true; }
-      if (qtyPack > 0) { catRows[c][8] = (Number(catRows[c][8]) || 0) + qtyPack; catChanged = true; }
-      break;
+    // เพิ่มสต็อกกลาง (catalog, Supabase-primary)
+    var catRow = getSupabaseRow_("catalog", "name", name);
+    if (catRow) {
+      if (qtyBox  > 0) catRow.qty_box  = (Number(catRow.qty_box)  || 0) + qtyBox;
+      if (qtyPack > 0) catRow.qty_pack = (Number(catRow.qty_pack) || 0) + qtyPack;
+      writeSupabaseRow_("catalog", catRow, SUPABASE_CATALOG_HEADER, "name");
     }
-    if (catChanged) catRange.setValues(catRows);
 
     // บันทึก log
     var logWs = ss.getSheetByName("stock_returns");
@@ -3701,8 +3546,6 @@ function handleReturnStock(data) {
 
     CacheService.getScriptCache().remove("catalog_config");
     lock.releaseLock();
-    syncStockBranchToSupabase_(ss, name, branch);
-    syncCatalogToSupabase_(ss, name);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
