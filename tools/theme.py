@@ -202,19 +202,24 @@ h1, h2, h3, h4,
    narrow) width, truncating long option labels. The option list is a
    virtualized (absolutely-positioned) list, so width:max-content can't
    measure its content — force a fixed wider width at every wrapping level
-   instead, and let each option's label wrap rather than ellipsis-truncate. */
-div[data-baseweb="popover"]:has(ul[data-testid="stSelectboxVirtualDropdown"]),
-div[data-baseweb="popover"]:has(ul[data-testid="stSelectboxVirtualDropdown"]) > div,
-div[data-baseweb="popover"]:has(ul[data-testid="stSelectboxVirtualDropdown"]) > div > div {{
+   instead, and let each option's label wrap rather than ellipsis-truncate.
+   `[data-testid*="VirtualDropdown"]` catches both stSelectboxVirtualDropdown
+   and stMultiSelectVirtualDropdown (multiselect used the same fixed-width
+   trigger and truncated identically — selector only covered selectbox
+   before, live report: long product names cut off in the ตัวกรองสินค้า
+   multiselect on the orders page). */
+div[data-baseweb="popover"]:has(ul[data-testid*="VirtualDropdown"]),
+div[data-baseweb="popover"]:has(ul[data-testid*="VirtualDropdown"]) > div,
+div[data-baseweb="popover"]:has(ul[data-testid*="VirtualDropdown"]) > div > div {{
   width: 340px !important;
   max-width: 340px !important;
 }}
-ul[data-testid="stSelectboxVirtualDropdown"],
-ul[data-testid="stSelectboxVirtualDropdown"] > div,
-ul[data-testid="stSelectboxVirtualDropdown"] li[role="option"] {{
+ul[data-testid*="VirtualDropdown"],
+ul[data-testid*="VirtualDropdown"] > div,
+ul[data-testid*="VirtualDropdown"] li[role="option"] {{
   width: 340px !important;
 }}
-ul[data-testid="stSelectboxVirtualDropdown"] li[role="option"] * {{
+ul[data-testid*="VirtualDropdown"] li[role="option"] * {{
   overflow: visible !important;
   text-overflow: unset !important;
   white-space: normal !important;
@@ -225,7 +230,7 @@ ul[data-testid="stSelectboxVirtualDropdown"] li[role="option"] * {{
 div.stTextInput input, div.stDateInput input,
 div.stSelectbox div[data-baseweb="select"] span,
 div.stMultiSelect div[data-baseweb="select"] span,
-ul[data-testid="stSelectboxVirtualDropdown"] li[role="option"] {{
+ul[data-testid*="VirtualDropdown"] li[role="option"] {{
   font-size: 13px !important;
 }}
 
