@@ -129,6 +129,38 @@ function writeSupabaseRow_(table, obj, header, keyCol) {
   return obj;
 }
 
+// PATCH-by-filter, for tables whose real primary key is a DB-generated
+// surrogate (shipments.id) rather than a business key — pushToSupabase_'s
+// upsert-by-PK (POST + resolution=merge-duplicates) can't target those rows
+// without the id, so updating an existing row needs a real UPDATE instead.
+// `filterQuery` is a PostgREST filter, e.g. "id=eq.123".
+function patchSupabase_(table, filterQuery, patch) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return { ok: false, code: 0, text: "SUPABASE_URL/SUPABASE_SERVICE_KEY not set" };
+  try {
+    var res = UrlFetchApp.fetch(SUPABASE_URL + "/rest/v1/" + table + "?" + filterQuery, {
+      method: "patch",
+      contentType: "application/json",
+      headers: {
+        apikey: SUPABASE_SERVICE_KEY,
+        Authorization: "Bearer " + SUPABASE_SERVICE_KEY,
+        Prefer: "return=minimal",
+      },
+      payload: JSON.stringify(patch),
+      muteHttpExceptions: true,
+    });
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      var text = res.getContentText();
+      Logger.log("patchSupabase_(" + table + ") HTTP " + code + ": " + text);
+      return { ok: false, code: code, text: text };
+    }
+    return { ok: true, code: code, text: "" };
+  } catch (e) {
+    Logger.log("patchSupabase_(" + table + ") failed: " + e.message);
+    return { ok: false, code: -1, text: e.message };
+  }
+}
+
 // ── Supabase-primary tables (config, stock_branch, shipments, tournament_*,
 // wakagym_events, player_stats — migrated one at a time). These tables read
 // and write Supabase directly instead of the Sheet; mirrorToReportSheet_
@@ -322,10 +354,19 @@ var SUPABASE_TOURNAMENT_CATEGORIES_HEADER = [
   "category_id", "event_id", "name", "entry_fee", "max_players", "sort_order", "status",
 ];
 var SUPABASE_WAKAGYM_EVENTS_HEADER = ["event_id", "date", "branch", "tier", "entry_fee", "status", "created_by"];
+var SUPABASE_PLAYER_STATS_HEADER = [
+  "player_name", "display_name", "real_name", "line_user_id", "total_plays",
+  "total_tokens", "boxes_earned", "boxes_given", "last_play_date",
+];
+// No "id" here — it's a DB-generated surrogate (shipment_id isn't reliably
+// unique historically, see supabase/schema.sql), not meaningful for the
+// human-readable report-sheet mirror keyed by the business id instead.
+var SUPABASE_SHIPMENTS_HEADER = ["shipment_id", "timestamp", "to_branch", "status", "items_json", "received_at"];
+var SUPABASE_WITHDRAWALS_HEADER = ["timestamp", "branch", "name", "type", "qty", "reason"];
+var SUPABASE_STOCK_RETURNS_HEADER = ["timestamp", "branch", "name", "qty_box", "qty_pack"];
 
 const TAB_ORDERS  = "orders";
 const TAB_CONFIG  = "_config";
-const TAB_SHIPMENTS    = "shipments";
 const TAB_WAKAGYM_REG = "wakagym_reg";
 const TAB_PLAYER_STATS   = "player_stats";
 const TAB_WAKAGYM_EVENTS = "wakagym_events";
@@ -1106,13 +1147,13 @@ function handleWakagymRegister(data) {
     }
     var slipStatus = payMethod === "cash" ? "cash" : "pending";
 
-    var statsWs = _ensureTab(ss, TAB_PLAYER_STATS, [
-      "player_name", "display_name", "real_name", "line_user_id", "total_plays",
-      "total_tokens", "boxes_earned", "boxes_given", "last_play_date"
-    ]);
-    var statsRows = statsWs.getDataRange().getValues();
-    var sHdr = statsRows[0];
-    var sCol = function(name) { return sHdr.indexOf(name); };
+    var statsRows = supabaseSelect_("player_stats", "select=*");
+    var findStatsRow_ = function(name) {
+      for (var i = 0; i < statsRows.length; i++) {
+        if (String(statsRows[i].player_name || "").trim() === name) return statsRows[i];
+      }
+      return null;
+    };
 
     var players = data.players || [];
     if (players.length === 0) {
@@ -1135,28 +1176,23 @@ function handleWakagymRegister(data) {
       };
       writeSupabaseRow_("wakagym_registrations", newWakagymObj, SUPABASE_WAKAGYM_REG_HEADER, "reg_id");
 
-      var foundRow = -1;
-      for (var i = 1; i < statsRows.length; i++) {
-        if (String(statsRows[i][sCol("player_name")]).trim() === pName) {
-          foundRow = i + 1;
-          break;
-        }
-      }
-
+      var statsRow = findStatsRow_(pName);
       var totalTokens = 0;
-      if (foundRow > 0) {
-        var tp = Number(statsRows[foundRow - 1][sCol("total_plays")]) || 0;
-        totalTokens = Number(statsRows[foundRow - 1][sCol("total_tokens")]) || 0;
-        tp++;
-        statsWs.getRange(foundRow, sCol("real_name") + 1).setValue(rName);
-        statsWs.getRange(foundRow, sCol("line_user_id") + 1).setValue(data.lineUserId || "");
-        statsWs.getRange(foundRow, sCol("total_plays") + 1).setValue(tp);
-        statsWs.getRange(foundRow, sCol("last_play_date") + 1).setValue(today);
+      if (statsRow) {
+        totalTokens = Number(statsRow.total_tokens) || 0;
+        statsRow.real_name = rName;
+        statsRow.line_user_id = data.lineUserId || "";
+        statsRow.total_plays = (Number(statsRow.total_plays) || 0) + 1;
+        statsRow.last_play_date = today;
       } else {
-        totalTokens = 0;
-        statsWs.appendRow([pName, data.displayName || "", rName, data.lineUserId || "", 1, 0, 0, 0, today]);
-        statsRows.push([pName, data.displayName || "", rName, data.lineUserId || "", 1, 0, 0, 0, today]);
+        statsRow = {
+          player_name: pName, display_name: data.displayName || "", real_name: rName,
+          line_user_id: data.lineUserId || "", total_plays: 1, total_tokens: 0,
+          boxes_earned: 0, boxes_given: 0, last_play_date: today,
+        };
+        statsRows.push(statsRow);
       }
+      writeSupabaseRow_("player_stats", statsRow, SUPABASE_PLAYER_STATS_HEADER, "player_name");
 
       results.push({ regId: regId, playerName: pName, totalTokens: totalTokens });
     }
@@ -1591,22 +1627,18 @@ function handleApi(params) {
 
   // ── รายการ shipments ──
   if (action === "shipments") {
-    var shWs = ss.getSheetByName(TAB_SHIPMENTS);
-    if (!shWs) return _cors(ContentService.createTextOutput(JSON.stringify({ shipments: [] })));
-    var shRows = shWs.getDataRange().getValues();
-    var shList = [];
-    for (var i = 1; i < shRows.length; i++) {
-      shList.push({
-        shipment_id: String(shRows[i][0] || ""),
-        timestamp: String(shRows[i][1] || ""),
-        to_branch: String(shRows[i][2] || ""),
-        status: String(shRows[i][3] || ""),
-        items_json: String(shRows[i][4] || "[]"),
-        received_at: String(shRows[i][5] || ""),
-        notes: String(shRows[i][6] || ""),
-      });
-    }
-    shList.reverse();
+    var shSb = supabaseSelect_("shipments", "select=shipment_id,timestamp,to_branch,status,items_json,received_at&order=timestamp.desc");
+    var shList = shSb.map(function(r) {
+      return {
+        shipment_id: String(r.shipment_id || ""),
+        timestamp: String(r.timestamp || ""),
+        to_branch: String(r.to_branch || ""),
+        status: String(r.status || ""),
+        items_json: JSON.stringify(r.items_json || []),
+        received_at: String(r.received_at || ""),
+        notes: "", // notes was always written empty and isn't a column in Supabase's shipments table
+      };
+    });
     return _cors(ContentService.createTextOutput(JSON.stringify({ shipments: shList })));
   }
 
@@ -1850,25 +1882,21 @@ function handleApi(params) {
 
   // ── รายการเบิกสินค้า ──
   if (action === "withdrawals") {
-    var wWs = ss.getSheetByName("withdrawals");
-    if (!wWs) return _cors(ContentService.createTextOutput(JSON.stringify({ withdrawals: [] })));
-    var wRows = wWs.getDataRange().getValues();
     var branchFilter = params.branch || "";
     if (!_branchAuthorized(params.code, branchFilter)) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
-    var wList = [];
-    for (var i = 1; i < wRows.length; i++) {
-      if (branchFilter && String(wRows[i][1]) !== branchFilter) continue;
-      wList.push({ timestamp: String(wRows[i][0] || ""), branch: String(wRows[i][1] || ""), name: String(wRows[i][2] || ""), type: String(wRows[i][3] || ""), qty: Number(wRows[i][4]) || 0, reason: String(wRows[i][5] || "") });
-    }
-    wList.reverse();
-    return _cors(ContentService.createTextOutput(JSON.stringify({ withdrawals: wList.slice(0, 50) })));
+    var wQuery = "select=timestamp,branch,name,type,qty,reason&order=timestamp.desc&limit=50";
+    if (branchFilter) wQuery += "&branch=eq." + encodeURIComponent(branchFilter);
+    var wSb = supabaseSelect_("withdrawals", wQuery);
+    var wList = wSb.map(function(r) {
+      return { timestamp: String(r.timestamp || ""), branch: String(r.branch || ""), name: String(r.name || ""), type: String(r.type || ""), qty: Number(r.qty) || 0, reason: String(r.reason || "") };
+    });
+    return _cors(ContentService.createTextOutput(JSON.stringify({ withdrawals: wList })));
   }
 
   // ── WAKA GYM API ──
   if (action === "wakagym_status") {
     var uid = params.line_user_id || "";
     var today = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
-    var statsWs2 = ss.getSheetByName(TAB_PLAYER_STATS);
 
     var event = _getActiveEvent(ss, null);
     var eventInfo = event ? {
@@ -1894,21 +1922,17 @@ function handleApi(params) {
     }
 
     var linkedStats = [];
-    if (statsWs2 && uid) {
-      var sRows2 = statsWs2.getDataRange().getValues();
-      var sHdr2 = sRows2[0];
-      var sC = function(n) { return sHdr2.indexOf(n); };
-      for (var si = 1; si < sRows2.length; si++) {
-        if (String(sRows2[si][sC("line_user_id")]) === uid) {
-          linkedStats.push({
-            player_name: String(sRows2[si][sC("player_name")] || ""),
-            total_plays: Number(sRows2[si][sC("total_plays")]) || 0,
-            total_tokens: Number(sRows2[si][sC("total_tokens")]) || 0,
-            boxes_earned: Number(sRows2[si][sC("boxes_earned")]) || 0,
-            boxes_given: Number(sRows2[si][sC("boxes_given")]) || 0,
-          });
-        }
-      }
+    if (uid) {
+      var sRows2 = supabaseSelect_("player_stats", "select=player_name,total_plays,total_tokens,boxes_earned,boxes_given&line_user_id=eq." + encodeURIComponent(uid));
+      sRows2.forEach(function(r) {
+        linkedStats.push({
+          player_name: String(r.player_name || ""),
+          total_plays: Number(r.total_plays) || 0,
+          total_tokens: Number(r.total_tokens) || 0,
+          boxes_earned: Number(r.boxes_earned) || 0,
+          boxes_given: Number(r.boxes_given) || 0,
+        });
+      });
     }
 
     return _cors(ContentService.createTextOutput(JSON.stringify({
@@ -1945,25 +1969,20 @@ function handleApi(params) {
   }
 
   if (action === "wakagym_player_stats") {
-    var psWs = ss.getSheetByName(TAB_PLAYER_STATS);
-    if (!psWs) return _cors(ContentService.createTextOutput(JSON.stringify({ stats: [] })));
-    var psRows = psWs.getDataRange().getValues();
-    var psHdr = psRows[0];
-    var psCol = function(n) { return psHdr.indexOf(n); };
-    var stats = [];
-    for (var pi = 1; pi < psRows.length; pi++) {
-      stats.push({
-        player_name: String(psRows[pi][psCol("player_name")] || ""),
-        line_user_id: String(psRows[pi][psCol("line_user_id")] || ""),
-        display_name: String(psRows[pi][psCol("display_name")] || ""),
-        real_name: String(psRows[pi][psCol("real_name")] || ""),
-        total_plays: Number(psRows[pi][psCol("total_plays")]) || 0,
-        total_tokens: Number(psRows[pi][psCol("total_tokens")]) || 0,
-        boxes_earned: Number(psRows[pi][psCol("boxes_earned")]) || 0,
-        boxes_given: Number(psRows[pi][psCol("boxes_given")]) || 0,
-        last_play_date: String(psRows[pi][psCol("last_play_date")] || ""),
-      });
-    }
+    var psSb = supabaseSelect_("player_stats", "select=*");
+    var stats = psSb.map(function(r) {
+      return {
+        player_name: String(r.player_name || ""),
+        line_user_id: String(r.line_user_id || ""),
+        display_name: String(r.display_name || ""),
+        real_name: String(r.real_name || ""),
+        total_plays: Number(r.total_plays) || 0,
+        total_tokens: Number(r.total_tokens) || 0,
+        boxes_earned: Number(r.boxes_earned) || 0,
+        boxes_given: Number(r.boxes_given) || 0,
+        last_play_date: String(r.last_play_date || ""),
+      };
+    });
     return _cors(ContentService.createTextOutput(JSON.stringify({ stats: stats })));
   }
 
@@ -1982,28 +2001,20 @@ function handleApi(params) {
   }
 
   if (action === "wakagym_give_box") {
-    var boxPlayer = params.player_name || "";
+    var boxPlayer = String(params.player_name || "").trim();
     if (!boxPlayer) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing player_name" })));
-    var bWs = ss.getSheetByName(TAB_PLAYER_STATS);
-    if (!bWs) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no player_stats tab" })));
-    var bRows = bWs.getDataRange().getValues();
-    var bHdr = bRows[0];
-    var bCol = function(n) { return bHdr.indexOf(n); };
-    for (var bi = 1; bi < bRows.length; bi++) {
-      if (String(bRows[bi][bCol("player_name")]).trim() === boxPlayer.trim()) {
-        var given = Number(bRows[bi][bCol("boxes_given")]) || 0;
-        given++;
-        bWs.getRange(bi + 1, bCol("boxes_given") + 1).setValue(given);
-        var boxAt = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
-        if (bCol("last_play_date") >= 0) bWs.getRange(bi + 1, bCol("last_play_date") + 1).setValue("box " + boxAt);
-        var boxUid = String(bRows[bi][bCol("line_user_id")] || "");
-        if (boxUid && boxUid !== "dev_user") {
-          _linePush(boxUid, "🎁 รับ Box เรียบร้อย!\nชื่อแข่ง: " + boxPlayer + "\nBox ที่ได้: " + given);
-        }
-        return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, boxes_given: given })));
-      }
+    var bRow = getSupabaseRow_("player_stats", "player_name", boxPlayer);
+    if (!bRow) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "player not found" })));
+    var given = (Number(bRow.boxes_given) || 0) + 1;
+    bRow.boxes_given = given;
+    var boxAt = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
+    bRow.last_play_date = "box " + boxAt;
+    writeSupabaseRow_("player_stats", bRow, SUPABASE_PLAYER_STATS_HEADER, "player_name");
+    var boxUid = String(bRow.line_user_id || "");
+    if (boxUid && boxUid !== "dev_user") {
+      _linePush(boxUid, "🎁 รับ Box เรียบร้อย!\nชื่อแข่ง: " + boxPlayer + "\nBox ที่ได้: " + given);
     }
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "player not found" })));
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, boxes_given: given })));
   }
 
   if (action === "verify_staff_pin") {
@@ -2089,9 +2100,6 @@ function handleApi(params) {
       srResults = Array.isArray(params.results) ? params.results : JSON.parse(params.results || "[]");
     } catch(_) {}
     if (srResults.length === 0) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no results" })));
-    var srSs = ss;
-    var srStatsWs = srSs.getSheetByName(TAB_PLAYER_STATS);
-    if (!srStatsWs) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no data" })));
 
     var srEvent = null;
     if (srEventId) {
@@ -2100,9 +2108,13 @@ function handleApi(params) {
     }
     var tier = srEvent ? srEvent.tier : "L";
 
-    var stRows = srStatsWs.getDataRange().getValues();
-    var stHdr = stRows[0];
-    var stc = function(n) { return stHdr.indexOf(n); };
+    var stRows = supabaseSelect_("player_stats", "select=*");
+    var findStatsRow2_ = function(name) {
+      for (var i = 0; i < stRows.length; i++) {
+        if (String(stRows[i].player_name || "").trim() === name) return stRows[i];
+      }
+      return null;
+    };
 
     var processed = [];
     for (var ri = 0; ri < srResults.length; ri++) {
@@ -2122,20 +2134,17 @@ function handleApi(params) {
 
       var pName = String(srRegRow.player_name || "").trim();
       var lineUid = String(srRegRow.line_user_id || "");
-      for (var si = 1; si < stRows.length; si++) {
-        if (String(stRows[si][stc("player_name")]).trim() !== pName) continue;
-        var curTokens = Number(stRows[si][stc("total_tokens")]) || 0;
-        var curBoxes = Number(stRows[si][stc("boxes_earned")]) || 0;
-        curTokens += tokens;
+      var srStatsRow = findStatsRow2_(pName);
+      if (srStatsRow) {
+        var curTokens = (Number(srStatsRow.total_tokens) || 0) + tokens;
+        var curBoxes = Number(srStatsRow.boxes_earned) || 0;
         while (curTokens >= TOKEN_BOX_THRESHOLD) {
           curTokens -= TOKEN_BOX_THRESHOLD;
           curBoxes++;
         }
-        srStatsWs.getRange(si + 1, stc("total_tokens") + 1).setValue(curTokens);
-        srStatsWs.getRange(si + 1, stc("boxes_earned") + 1).setValue(curBoxes);
-        stRows[si][stc("total_tokens")] = curTokens;
-        stRows[si][stc("boxes_earned")] = curBoxes;
-        break;
+        srStatsRow.total_tokens = curTokens;
+        srStatsRow.boxes_earned = curBoxes;
+        writeSupabaseRow_("player_stats", srStatsRow, SUPABASE_PLAYER_STATS_HEADER, "player_name");
       }
 
       processed.push({ reg_id: regId, player_name: pName, placement: placement, tokens: tokens, promo_packs: promos, line_user_id: lineUid });
@@ -2209,20 +2218,14 @@ function handleApi(params) {
       });
     if (found.length === 0) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "not found" })));
 
-    var statsWsLu = ss.getSheetByName(TAB_PLAYER_STATS);
     var statsMap = {};
-    if (statsWsLu) {
-      var stRows = statsWsLu.getDataRange().getValues();
-      var stHdr = stRows[0];
-      var stCol = function(n) { return stHdr.indexOf(n); };
-      for (var si = 1; si < stRows.length; si++) {
-        statsMap[String(stRows[si][stCol("player_name")]).trim()] = {
-          total_tokens: Number(stRows[si][stCol("total_tokens")]) || 0,
-          boxes_earned: Number(stRows[si][stCol("boxes_earned")]) || 0,
-          boxes_given: Number(stRows[si][stCol("boxes_given")]) || 0,
-        };
-      }
-    }
+    supabaseSelect_("player_stats", "select=player_name,total_tokens,boxes_earned,boxes_given").forEach(function(r) {
+      statsMap[String(r.player_name || "").trim()] = {
+        total_tokens: Number(r.total_tokens) || 0,
+        boxes_earned: Number(r.boxes_earned) || 0,
+        boxes_given: Number(r.boxes_given) || 0,
+      };
+    });
     for (var fi = 0; fi < found.length; fi++) {
       var pStat = statsMap[found[fi].player_name] || {};
       found[fi].total_tokens = pStat.total_tokens || 0;
@@ -2770,22 +2773,15 @@ function handleCreateShipment(data) {
   lock.waitLock(15000);
   try {
     var ss = SpreadsheetApp.openById(SHEET_ID);
-    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
+    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
+    var nowDisplay = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
     var shipId = "SH" + Utilities.formatDate(new Date(), "Asia/Bangkok", "yyMMddHHmmss");
 
-    var shWs = ss.getSheetByName(TAB_SHIPMENTS);
-    if (!shWs) {
-      shWs = ss.insertSheet(TAB_SHIPMENTS);
-      shWs.appendRow(["shipment_id", "timestamp", "to_branch", "status", "items_json", "received_at", "notes"]);
-    }
-
-    // D4: ตรวจ duplicate shipment_id ก่อน append
-    var shExisting = shWs.getDataRange().getValues();
-    for (var si = 1; si < shExisting.length; si++) {
-      if (String(shExisting[si][0]) === shipId) {
-        lock.releaseLock();
-        return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ล็อตนี้ถูกสร้างไปแล้ว กรุณารอสักครู่แล้วลองใหม่" })));
-      }
+    // D4: ตรวจ duplicate shipment_id ก่อน insert
+    var shExisting = supabaseSelect_("shipments", "select=shipment_id&shipment_id=eq." + encodeURIComponent(shipId));
+    if (shExisting.length > 0) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ล็อตนี้ถูกสร้างไปแล้ว กรุณารอสักครู่แล้วลองใหม่" })));
     }
 
     var items = data.items || [];
@@ -2802,7 +2798,8 @@ function handleCreateShipment(data) {
       if (totalPack > 0) { shRow.qty_pack = Math.max(0, (Number(shRow.qty_pack) || 0) - totalPack); shChangedNames.push(it.name); }
     }
 
-    shWs.appendRow([shipId, now, data.to_branch || "", "จัดส่ง", JSON.stringify(items), "", ""]);
+    var shObj = { shipment_id: shipId, timestamp: now, to_branch: data.to_branch || "", status: "จัดส่ง", items_json: items, received_at: null };
+    writeSupabaseRow_("shipments", shObj, SUPABASE_SHIPMENTS_HEADER, "shipment_id");
     lock.releaseLock();
     if (shChangedNames.length) _pushCatalogRows_(shCatRows, shChangedNames);
 
@@ -2820,7 +2817,7 @@ function handleCreateShipment(data) {
           return "  - " + it.name + ": " + parts.join(", ");
         }).join("\n");
         var receiveUrl = "https://waka-liff.vercel.app/warehouse.html?tab=history";
-        _linePush(groupId, "📦 สร้างล็อตส่งสาขา " + (data.to_branch || "") + "\n\n" + shipId + " — " + now + "\n\n" + itemLines + "\n\nเมื่อสินค้าถึงสาขาแล้ว กดรับของที่:\n" + receiveUrl);
+        _linePush(groupId, "📦 สร้างล็อตส่งสาขา " + (data.to_branch || "") + "\n\n" + shipId + " — " + nowDisplay + "\n\n" + itemLines + "\n\nเมื่อสินค้าถึงสาขาแล้ว กดรับของที่:\n" + receiveUrl);
       }
     } catch(_) {}
 
@@ -2836,39 +2833,43 @@ function handleCancelShipment(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
-    var ss = SpreadsheetApp.openById(SHEET_ID);
-    var shWs = ss.getSheetByName(TAB_SHIPMENTS);
-    if (!shWs) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no shipments tab" }))); }
-    var shRows = shWs.getDataRange().getValues();
-    var shHdr = shRows[0];
-    var colIdx = function(n) { return shHdr.indexOf(n); };
-    for (var i = 1; i < shRows.length; i++) {
-      if (String(shRows[i][colIdx("shipment_id")]) !== String(data.shipment_id)) continue;
-      var status = String(shRows[i][colIdx("status")] || "");
+    // shipment_id isn't a unique key (see supabase/schema.sql — historical
+    // Sheet-era duplicates exist), so fetch every row with this shipment_id
+    // and take the first one that isn't already received/cancelled, same
+    // as the old Sheet scan's `continue`-past-finished-rows behavior.
+    var csRows = supabaseSelect_("shipments", "select=id,status,items_json&shipment_id=eq." + encodeURIComponent(data.shipment_id));
+    var csTarget = null;
+    for (var i = 0; i < csRows.length; i++) {
+      var status = String(csRows[i].status || "");
       if (status === "รับแล้ว" || status === "ยกเลิก") continue;
-      // คืนสต็อกกลาง (catalog, Supabase-primary)
-      var items = [];
-      try { items = JSON.parse(String(shRows[i][colIdx("items_json")] || "[]")); } catch(_) {}
-      var csCatRows = items.length > 0 ? _fetchCatalogRows_() : null;
-      var csChangedNames = [];
-      if (csCatRows) {
-        for (var idx = 0; idx < items.length; idx++) {
-          var it = items[idx];
-          var csRow = _findCatalogRow_(csCatRows, it.name);
-          if (!csRow) continue;
-          var totalBox = (it.qty_box || 0) + (it.qty_box_extra || 0);
-          var totalPack = (it.qty_pack || 0) + (it.qty_pack_extra || 0);
-          if (totalBox > 0)  { csRow.qty_box  = (Number(csRow.qty_box)  || 0) + totalBox;  csChangedNames.push(it.name); }
-          if (totalPack > 0) { csRow.qty_pack = (Number(csRow.qty_pack) || 0) + totalPack; csChangedNames.push(it.name); }
-        }
-      }
-      shWs.getRange(i + 1, colIdx("status") + 1).setValue("ยกเลิก");
-      lock.releaseLock();
-      if (csChangedNames.length) _pushCatalogRows_(csCatRows, csChangedNames);
-      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+      csTarget = csRows[i];
+      break;
     }
+    if (!csTarget) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบลอต" })));
+    }
+
+    // คืนสต็อกกลาง (catalog, Supabase-primary)
+    var items = Array.isArray(csTarget.items_json) ? csTarget.items_json : [];
+    var csCatRows = items.length > 0 ? _fetchCatalogRows_() : null;
+    var csChangedNames = [];
+    if (csCatRows) {
+      for (var idx = 0; idx < items.length; idx++) {
+        var it = items[idx];
+        var csRow = _findCatalogRow_(csCatRows, it.name);
+        if (!csRow) continue;
+        var totalBox = (it.qty_box || 0) + (it.qty_box_extra || 0);
+        var totalPack = (it.qty_pack || 0) + (it.qty_pack_extra || 0);
+        if (totalBox > 0)  { csRow.qty_box  = (Number(csRow.qty_box)  || 0) + totalBox;  csChangedNames.push(it.name); }
+        if (totalPack > 0) { csRow.qty_pack = (Number(csRow.qty_pack) || 0) + totalPack; csChangedNames.push(it.name); }
+      }
+    }
+    var csPatchRes = patchSupabase_("shipments", "id=eq." + csTarget.id, { status: "ยกเลิก" });
+    if (!csPatchRes.ok) throw new Error("Supabase shipments cancel failed: " + csPatchRes.text);
     lock.releaseLock();
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบลอต" })));
+    if (csChangedNames.length) _pushCatalogRows_(csCatRows, csChangedNames);
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch(err) {
     try { lock.releaseLock(); } catch(_) {}
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
@@ -2881,27 +2882,23 @@ function handleReceiveShipment(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
-    var ss = SpreadsheetApp.openById(SHEET_ID);
-    var shWs = ss.getSheetByName(TAB_SHIPMENTS);
-    if (!shWs) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no shipments tab" }))); }
-    var shRows = shWs.getDataRange().getValues();
-    var shHdr = shRows[0];
-    // D2: ข้าม rows ที่รับแล้ว/ยกเลิก — หา row ที่ status = "จัดส่ง" เท่านั้น
-    var shipRow = -1, branch = "", items = [];
-    for (var i = 1; i < shRows.length; i++) {
-      if (String(shRows[i][0]) !== data.shipment_id) continue;
-      var rowStatus = String(shRows[i][3] || "");
+    // shipment_id isn't a unique key — same historical-duplicate handling as
+    // handleCancelShipment: take the first row that isn't already received/cancelled.
+    var rsRows = supabaseSelect_("shipments", "select=id,to_branch,status,items_json&shipment_id=eq." + encodeURIComponent(data.shipment_id));
+    var rsTarget = null;
+    for (var i = 0; i < rsRows.length; i++) {
+      var rowStatus = String(rsRows[i].status || "");
       if (rowStatus === "รับแล้ว" || rowStatus === "ยกเลิก") continue;
-      shipRow = i;
-      branch = String(shRows[i][2]);
-      try { items = JSON.parse(shRows[i][4] || "[]"); } catch(e) {}
+      rsTarget = rsRows[i];
       break;
     }
-    if (shipRow < 0) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, already: true }))); }
+    if (!rsTarget) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, already: true }))); }
+    var branch = String(rsTarget.to_branch || "");
+    var items = Array.isArray(rsTarget.items_json) ? rsTarget.items_json : [];
 
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
-    shWs.getRange(shipRow + 1, 4).setValue("รับแล้ว");
-    shWs.getRange(shipRow + 1, 6).setValue(now);
+    var rsPatchRes = patchSupabase_("shipments", "id=eq." + rsTarget.id, { status: "รับแล้ว", received_at: now });
+    if (!rsPatchRes.ok) throw new Error("Supabase shipments receive failed: " + rsPatchRes.text);
 
     // เพิ่มสต็อกสาขา (Supabase-primary)
     var bsRows = _fetchStockBranchRows_(branch);
@@ -3480,7 +3477,6 @@ function handleWithdrawStock(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var ss = SpreadsheetApp.openById(SHEET_ID);
     var bsRow = _findStockBranchRow_(_fetchStockBranchRows_(branch), name, branch);
     if (!bsRow) {
       lock.releaseLock();
@@ -3490,13 +3486,11 @@ function handleWithdrawStock(data) {
     bsRow[wField] = Math.max(0, (Number(bsRow[wField]) || 0) - qty);
     _writeStockBranchRow_(bsRow);
 
-    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
-    var wWs = ss.getSheetByName("withdrawals");
-    if (!wWs) {
-      wWs = ss.insertSheet("withdrawals");
-      wWs.appendRow(["timestamp", "branch", "name", "type", "qty", "reason"]);
-    }
-    wWs.appendRow([now, branch, name, type, qty, reason]);
+    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
+    var wObj = { timestamp: now, branch: branch, name: name, type: type, qty: qty, reason: reason };
+    var wRes = pushToSupabase_("withdrawals", wObj);
+    if (!wRes.ok) throw new Error("Supabase withdrawals write failed: " + wRes.text);
+    mirrorToReportSheet_("withdrawals", SUPABASE_WITHDRAWALS_HEADER, ["timestamp", "branch", "name"], wObj);
 
     lock.releaseLock();
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
@@ -3521,8 +3515,6 @@ function handleReturnStock(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var ss = SpreadsheetApp.openById(SHEET_ID);
-
     // ลดสต็อกสาขา (Supabase-primary)
     var bsRow = _findStockBranchRow_(_fetchStockBranchRows_(branch), name, branch);
     if (!bsRow) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบ " + name + " ในสต็อกสาขา " + branch }))); }
@@ -3539,10 +3531,11 @@ function handleReturnStock(data) {
     }
 
     // บันทึก log
-    var logWs = ss.getSheetByName("stock_returns");
-    if (!logWs) { logWs = ss.insertSheet("stock_returns"); logWs.appendRow(["timestamp","branch","name","qty_box","qty_pack"]); }
-    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
-    logWs.appendRow([now, branch, name, qtyBox, qtyPack]);
+    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
+    var srObj = { timestamp: now, branch: branch, name: name, qty_box: qtyBox, qty_pack: qtyPack };
+    var srRes = pushToSupabase_("stock_returns", srObj);
+    if (!srRes.ok) throw new Error("Supabase stock_returns write failed: " + srRes.text);
+    mirrorToReportSheet_("stock_returns", SUPABASE_STOCK_RETURNS_HEADER, ["timestamp", "branch", "name"], srObj);
 
     CacheService.getScriptCache().remove("catalog_config");
     lock.releaseLock();
