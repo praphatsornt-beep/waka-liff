@@ -82,6 +82,10 @@
     .s-wait { background:#fff8e1;color:var(--orange); }
     .s-done { background:#e3f2fd;color:var(--blue); }
 
+    .br-order-tabs { display:flex;gap:6px;margin-bottom:10px; }
+    .br-order-tab { flex:1;padding:10px 8px;border:1px solid var(--card-border);border-radius:10px;background:var(--card-bg);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;color:var(--text2); }
+    .br-order-tab.active { background:var(--accent);color:var(--white);border-color:var(--accent); }
+
     /* Product info */
     .product-info { background:#f0fbf4;border-radius:12px;padding:14px;margin-bottom:12px; }
     .product-info .name { font-weight:700;font-size:16px; }
@@ -338,6 +342,11 @@
               <div class="br-menu-title">เบิกสินค้า</div>
               <div class="br-menu-desc">เบิกสำหรับกิจกรรม</div>
             </div>
+            <div class="br-menu-card" onclick="openBrView('walkin')">
+              <div style="font-size:40px">🛒</div>
+              <div class="br-menu-title">ขายหน้าร้าน</div>
+              <div class="br-menu-desc">บันทึกยอดขาย walk-in</div>
+            </div>
             <div class="br-menu-card" onclick="openBrView('gym')" style="grid-column:1/-1">
               <div style="font-size:40px">🏆</div>
               <div class="br-menu-title">WAKA GYM</div>
@@ -353,7 +362,13 @@
         <div id="brIncoming" style="display:none">
           <div class="card"><h3>📥 ล็อตที่รอรับ</h3><div id="incomingList"><div class="loading">กำลังโหลด...</div></div></div>
         </div>
-        <div id="brOrders" style="display:none"><div class="empty">กำลังโหลด...</div></div>
+        <div id="brOrders" style="display:none">
+          <div class="br-order-tabs">
+            <button class="br-order-tab active" id="brTabPending" onclick="setBrOrdersTab('pending')">ออเดอร์ค้างส่ง</button>
+            <button class="br-order-tab" id="brTabAll" onclick="setBrOrdersTab('all')">ประวัติทั้งหมด</button>
+          </div>
+          <div id="brOrdersList"><div class="empty">กำลังโหลด...</div></div>
+        </div>
         <div id="brHandover" style="display:none">
           <div class="card">
             <h3>ค้นหาออเดอร์</h3>
@@ -385,11 +400,52 @@
                 <option value="อื่นๆ">อื่นๆ</option>
               </select>
             </div>
+            <div class="form-group"><label>ชื่อพนักงาน</label><input type="text" id="wdStaffName" placeholder="ชื่อพนักงานที่เบิก"></div>
             <button class="btn btn-orange" onclick="submitWithdraw()">📤 เบิกสินค้า</button>
           </div>
           <div class="card">
             <h3>ประวัติเบิก</h3>
             <div id="wdHistory"><div class="empty">ยังไม่มีรายการ</div></div>
+          </div>
+        </div>
+
+        <!-- ขายหน้าร้าน sub-view -->
+        <div id="brWalkin" style="display:none">
+          <div class="card">
+            <h3>🛒 ขายหน้าร้าน</h3>
+            <div class="form-group"><label>สินค้า</label>
+              <select id="wsProduct" class="branch-sel" style="margin:0" onchange="wsUpdatePrice()"><option value="">-- เลือก --</option></select>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>ประเภท</label>
+                <select id="wsType" class="branch-sel" style="margin:0" onchange="wsUpdatePrice()"><option value="box">Box (กล่อง)</option><option value="pack">Pack (ซอง)</option></select>
+              </div>
+              <div class="form-group"><label>จำนวน</label><input type="number" id="wsQty" min="1" value="1" inputmode="numeric"></div>
+            </div>
+            <div class="form-group"><label>ราคา/หน่วย (บาท)</label><input type="number" id="wsPrice" min="0" inputmode="decimal"></div>
+            <button class="btn btn-blue" onclick="wsAddToCart()">➕ เพิ่มลงตะกร้า</button>
+          </div>
+
+          <div class="card" id="wsCartCard" style="display:none">
+            <h3>ตะกร้า</h3>
+            <div id="wsCartList"></div>
+            <div style="text-align:right;font-weight:700;font-size:16px;margin-top:8px">รวม: ฿<span id="wsCartTotal">0</span></div>
+            <div class="form-group" style="margin-top:12px"><label>ช่องทางชำระเงิน</label>
+              <select id="wsPayMethod" class="branch-sel" style="margin:0" onchange="wsTogglePayBank()">
+                <option value="cash">💵 เงินสด</option>
+                <option value="transfer">📱 โอนเงิน</option>
+              </select>
+            </div>
+            <div class="form-group" id="wsBankGroup" style="display:none"><label>ธนาคาร/ช่องทาง</label>
+              <input type="text" id="wsBank" placeholder="เช่น กสิกร, พร้อมเพย์">
+            </div>
+            <div class="form-group"><label>ชื่อพนักงาน</label><input type="text" id="wsStaffName" placeholder="ชื่อพนักงานที่ขาย"></div>
+            <button class="btn btn-green" onclick="wsSubmitSale()">✅ บันทึกการขาย</button>
+          </div>
+
+          <div class="card">
+            <h3>ประวัติขายวันนี้</h3>
+            <div id="wsHistory"><div class="empty">ยังไม่มีรายการ</div></div>
           </div>
         </div>
 
@@ -950,12 +1006,13 @@ function openBrView(s) {
   if(!gid('branchSelect').value){alert('เลือกสาขาก่อน');return;}
   gid('brMenu').style.display='none';
   gid('brSubView').style.display='block';
-  ['brIncoming','brOrders','brHandover','brStock','brWithdraw','brGym'].forEach(id=>gid(id).style.display='none');
+  ['brIncoming','brOrders','brHandover','brStock','brWithdraw','brWalkin','brGym'].forEach(id=>gid(id).style.display='none');
   if(s==='incoming'){gid('brIncoming').style.display='block';loadIncoming();}
   if(s==='orders'){gid('brOrders').style.display='block';loadBrOrders();}
   if(s==='handover')gid('brHandover').style.display='block';
   if(s==='bstock'){gid('brStock').style.display='block';loadBrStock();}
   if(s==='withdraw'){gid('brWithdraw').style.display='block';loadWithdrawals();}
+  if(s==='walkin'){gid('brWalkin').style.display='block';openWalkin();}
   if(s==='gym'){gid('brGym').style.display='block';gymOpen();}
 }
 function closeBrView() {
@@ -984,8 +1041,9 @@ async function loadIncoming() {
 }
 
 async function confirmReceive(id) {
-  if(!confirm('ยืนยันว่าได้รับของครบตามรายการ '+id+'?'))return;
-  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'receiveShipment',shipment_id:id})});const d=await r.json();
+  const staff_name=prompt('ยืนยันว่าได้รับของครบตามรายการ '+id+'\nกรอกชื่อพนักงานที่รับของ:');
+  if(staff_name===null||!staff_name.trim())return;
+  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'receiveShipment',shipment_id:id,staff_name:staff_name.trim()})});const d=await r.json();
     if(d.ok||d.already){toast('รับของแล้ว — สต็อกอัปเดต + แจ้งลูกค้าแล้ว');loadIncoming();}
     else alert(d.error);
   }catch(e){alert('ผิดพลาด');}
@@ -1002,11 +1060,32 @@ function onBranchChange() {
   }
 }
 
+let _brOrdersAll = [];
+let _brOrdersTab = 'pending';
+const _brOrdersDoneStatuses = ['รับแล้ว','สาขายืนยัน','ยกเลิก'];
+
+function setBrOrdersTab(tab) {
+  _brOrdersTab = tab;
+  gid('brTabPending').classList.toggle('active', tab === 'pending');
+  gid('brTabAll').classList.toggle('active', tab === 'all');
+  renderBrOrdersList();
+}
+
 async function loadBrOrders() {
-  const b=gid('branchSelect').value;if(!b){gid('brOrders').innerHTML='<div class="empty">เลือกสาขาก่อน</div>';return;}
+  const b=gid('branchSelect').value;if(!b){gid('brOrdersList').innerHTML='<div class="empty">เลือกสาขาก่อน</div>';return;}
   try{const r=await fetch(G+'&action=api&do=branch_orders&branch='+encodeURIComponent(b)+'&code='+encodeURIComponent(_authCode()));const d=await r.json();
-    const el=gid('brOrders');if(!d.orders||!d.orders.length){el.innerHTML='<div class="empty">ไม่มีออเดอร์</div>';return;}
-    el.innerHTML=d.orders.map(o=>{
+    _brOrdersAll = d.orders || [];
+    renderBrOrdersList();
+  }catch(e){gid('brOrdersList').innerHTML='<div class="empty">โหลดไม่ได้</div>';}
+}
+
+function renderBrOrdersList() {
+  const el = gid('brOrdersList');
+  const orders = _brOrdersTab === 'pending'
+    ? _brOrdersAll.filter(o => !_brOrdersDoneStatuses.includes(o.fulfillment || ''))
+    : _brOrdersAll;
+  if (!orders.length) { el.innerHTML = '<div class="empty">' + (_brOrdersTab === 'pending' ? 'ไม่มีออเดอร์ค้างส่ง' : 'ไม่มีออเดอร์') + '</div>'; return; }
+  el.innerHTML = orders.map(o => {
       const ff=o.fulfillment||'รอ';
       const sc=ff==='รับแล้ว'||ff==='สาขายืนยัน'?'s-done':ff==='พร้อมรับ'||ff==='บางส่วน'?'s-ok':ff==='รับบางส่วนแล้ว'?'s-wait':'s-wait';
       let items=[];try{items=JSON.parse(o.items_json||'[]');}catch(_){}
@@ -1041,7 +1120,6 @@ async function loadBrOrders() {
         </div>
       </div>`;
     }).join('');
-  }catch(e){gid('brOrders').innerHTML='<div class="empty">โหลดไม่ได้</div>';}
 }
 
 
@@ -1085,8 +1163,9 @@ async function confirmSlip(oid) {
 }
 
 async function handoverOrder(oid,src) {
-  if(!confirm('ส่งมอบออเดอร์ #'+oid+'?'))return;
-  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'handoverOrder',order_id:oid,code:_authCode()})});const d=await r.json();
+  const staff_name=prompt('ส่งมอบออเดอร์ #'+oid+'\nกรอกชื่อพนักงานที่ส่งมอบ:');
+  if(staff_name===null||!staff_name.trim())return;
+  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'handoverOrder',order_id:oid,code:_authCode(),staff_name:staff_name.trim()})});const d=await r.json();
     if(d.ok){
       const msg=d.fulfillment==='รับบางส่วนแล้ว'?'ส่งมอบบางส่วนแล้ว — แจ้ง LINE แล้ว':'ส่งมอบครบแล้ว — รอลูกค้ายืนยัน';
       toast(msg);
@@ -1111,7 +1190,8 @@ async function submitWithdraw() {
   const name=gid('wdProduct').value;if(!name)return alert('เลือกสินค้า');
   const type=gid('wdType').value,qty=+gid('wdQty').value||0,reason=gid('wdReason').value;
   if(qty<=0)return alert('ใส่จำนวน');
-  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'withdrawStock',branch,name,type,qty,reason,code:_authCode()})});const d=await r.json();
+  const staff_name=gid('wdStaffName').value.trim();if(!staff_name)return alert('กรอกชื่อพนักงาน');
+  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'withdrawStock',branch,name,type,qty,reason,staff_name,code:_authCode()})});const d=await r.json();
     if(d.ok){toast('เบิก '+name+' x'+qty);gid('wdQty').value=1;loadBrStock();loadWithdrawals();}
     else alert(d.error||'ผิดพลาด');
   }catch(e){alert('บันทึกไม่ได้');}
@@ -1125,6 +1205,103 @@ async function loadWithdrawals() {
     for(const w of d.withdrawals)h+='<tr><td style="font-size:11px">'+esc(w.timestamp)+'</td><td>'+esc(w.name)+'</td><td class="num">'+w.qty+' '+(w.type==='box'?'กล่อง':'ซอง')+'</td><td>'+esc(w.reason)+'</td></tr>';
     el.innerHTML=h+'</table>';
   }catch(_){gid('wdHistory').innerHTML='<div class="empty">โหลดไม่ได้</div>';}
+}
+
+// ── ขายหน้าร้าน ──
+let wsCart = [];
+
+async function openWalkin() {
+  if (!products.length) await loadProducts();
+  const wsSel = gid('wsProduct');
+  wsSel.innerHTML = '<option value="">-- เลือก --</option>' + products.map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
+  wsCart = [];
+  wsRenderCart();
+  loadWalkinHistory();
+}
+
+function wsUpdatePrice() {
+  const name = gid('wsProduct').value;
+  const type = gid('wsType').value;
+  const p = products.find(x => x.name === name);
+  if (p) gid('wsPrice').value = type === 'box' ? (p.price_box || 0) : (p.price_pack || 0);
+}
+
+function wsAddToCart() {
+  const name = gid('wsProduct').value; if (!name) { alert('เลือกสินค้า'); return; }
+  const type = gid('wsType').value;
+  const qty = +gid('wsQty').value || 0; if (qty <= 0) { alert('ใส่จำนวน'); return; }
+  const price = +gid('wsPrice').value || 0;
+  wsCart.push({ name, type, qty, price });
+  gid('wsQty').value = 1;
+  wsRenderCart();
+}
+
+function wsRemoveFromCart(idx) {
+  wsCart.splice(idx, 1);
+  wsRenderCart();
+}
+
+function wsRenderCart() {
+  const card = gid('wsCartCard');
+  if (!wsCart.length) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  let total = 0;
+  gid('wsCartList').innerHTML = wsCart.map((it, idx) => {
+    const sub = it.qty * it.price; total += sub;
+    const u = it.type === 'box' ? 'กล่อง' : 'ซอง';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f0ede8">
+      <div style="font-size:13px">${esc(it.name)} (${u}) x${it.qty} · ฿${sub.toLocaleString()}</div>
+      <button onclick="wsRemoveFromCart(${idx})" style="background:none;border:none;color:var(--red);font-size:16px;cursor:pointer">✕</button>
+    </div>`;
+  }).join('');
+  gid('wsCartTotal').textContent = total.toLocaleString();
+}
+
+function wsTogglePayBank() {
+  gid('wsBankGroup').style.display = gid('wsPayMethod').value === 'transfer' ? 'block' : 'none';
+}
+
+async function wsSubmitSale() {
+  const branch = gid('branchSelect').value; if (!branch) { alert('เลือกสาขาก่อน'); return; }
+  if (!wsCart.length) { alert('ยังไม่มีสินค้าในตะกร้า'); return; }
+  const payment_method = gid('wsPayMethod').value;
+  const bank = gid('wsBank').value.trim();
+  const staff_name = gid('wsStaffName').value.trim(); if (!staff_name) { alert('กรอกชื่อพนักงาน'); return; }
+  try {
+    const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'walkinSale', branch, items: wsCart, payment_method, bank, staff_name, code: _authCode() }) });
+    const d = await r.json();
+    if (d.ok) {
+      toast('บันทึกการขาย ฿' + d.total.toLocaleString() + ' แล้ว');
+      wsCart = [];
+      wsRenderCart();
+      loadWalkinHistory();
+    } else {
+      alert(d.error || 'ผิดพลาด');
+    }
+  } catch (e) {
+    alert('บันทึกไม่ได้');
+  }
+}
+
+async function loadWalkinHistory() {
+  const b = gid('branchSelect').value; if (!b) return;
+  try {
+    const r = await fetch(G + '&action=api&do=walkin_sales_list&branch=' + encodeURIComponent(b) + '&code=' + encodeURIComponent(_authCode()));
+    const d = await r.json();
+    const el = gid('wsHistory');
+    if (!d.sales || !d.sales.length) { el.innerHTML = '<div class="empty">ยังไม่มีรายการ</div>'; return; }
+    el.innerHTML = d.sales.map(s => {
+      let items = []; try { items = JSON.parse(s.items_json || '[]'); } catch (_) {}
+      const itemsText = items.map(i => `${i.name} x${i.qty}`).join(', ');
+      const payLabel = s.payment_method === 'cash' ? '💵 เงินสด' : ('📱 โอน' + (s.bank ? ' ' + s.bank : ''));
+      return `<div style="padding:8px 0;border-bottom:1px solid #f0ede8">
+        <div style="display:flex;justify-content:space-between"><strong>฿${Number(s.total).toLocaleString()}</strong><span style="font-size:11px;color:var(--label)">${esc(s.timestamp)}</span></div>
+        <div style="font-size:12px;color:var(--text2)">${esc(itemsText)} · ${payLabel}</div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    gid('wsHistory').innerHTML = '<div class="empty">โหลดไม่ได้</div>';
+  }
 }
 
 // ══════════════════════════════════════════════════════════

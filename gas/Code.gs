@@ -378,6 +378,7 @@ var SUPABASE_PLAYER_STATS_HEADER = [
 var SUPABASE_SHIPMENTS_HEADER = ["shipment_id", "timestamp", "to_branch", "status", "items_json", "received_at"];
 var SUPABASE_WITHDRAWALS_HEADER = ["timestamp", "branch", "name", "type", "qty", "reason"];
 var SUPABASE_STOCK_RETURNS_HEADER = ["timestamp", "branch", "name", "qty_box", "qty_pack"];
+var SUPABASE_WALKIN_SALES_HEADER = ["sale_id", "timestamp", "branch", "items_json", "total", "payment_method", "bank"];
 
 const TAB_ORDERS  = "orders";
 const TAB_CONFIG  = "_config";
@@ -540,6 +541,10 @@ function doPost(e) {
 
     if (data._action === "returnStock") {
       return handleReturnStock(data);
+    }
+
+    if (data._action === "walkinSale") {
+      return handleWalkinSale(data);
     }
 
     if (data._action === "setConfig") {
@@ -1918,6 +1923,27 @@ function handleApi(params) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ withdrawals: wList })));
   }
 
+  // ── ประวัติขายหน้าร้าน (walk-in, แยกจาก orders/รายงานออนไลน์) ──
+  if (action === "walkin_sales_list") {
+    var wsBranchFilter = params.branch || "";
+    if (!_branchAuthorized(params.code, wsBranchFilter)) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+    var wsQuery = "select=*&order=timestamp.desc&limit=50";
+    if (wsBranchFilter) wsQuery += "&branch=eq." + encodeURIComponent(wsBranchFilter);
+    var wsSb = supabaseSelect_("walkin_sales", wsQuery);
+    var wsList = wsSb.map(function(r) {
+      return {
+        sale_id: String(r.sale_id || ""),
+        timestamp: String(r.timestamp || ""),
+        branch: String(r.branch || ""),
+        items_json: JSON.stringify(r.items_json || []),
+        total: Number(r.total) || 0,
+        payment_method: String(r.payment_method || ""),
+        bank: String(r.bank || ""),
+      };
+    });
+    return _cors(ContentService.createTextOutput(JSON.stringify({ sales: wsList })));
+  }
+
   // ── WAKA GYM API ──
   if (action === "wakagym_status") {
     var uid = params.line_user_id || "";
@@ -2830,6 +2856,7 @@ function handleReceiveShipment(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
+    var staffName = String(data.staff_name || "").trim();
     // shipment_id isn't a unique key — same historical-duplicate handling as
     // handleCancelShipment: take the first row that isn't already received/cancelled.
     var rsRows = supabaseSelect_("shipments", "select=id,to_branch,status,items_json&shipment_id=eq." + encodeURIComponent(data.shipment_id));
@@ -2914,6 +2941,19 @@ function handleReceiveShipment(data) {
     pendingOrderMirrors.forEach(function(o) { mirrorToReportSheet_("orders", SUPABASE_ORDERS_HEADER, "order_id", o); });
     pendingNotifications.forEach(function(n) { _linePush(n.uid, n.msg); });
 
+    var groupStaffReceive = _getConfigValue(null, "group_staff");
+    if (groupStaffReceive && staffName) {
+      var receiveItemsText = items.map(function(it) {
+        var parts = [];
+        var tb = (it.qty_box || 0) + (it.qty_box_extra || 0);
+        var tp = (it.qty_pack || 0) + (it.qty_pack_extra || 0);
+        if (tb > 0) parts.push("Box " + tb);
+        if (tp > 0) parts.push("Pack " + tp);
+        return "  - " + it.name + ": " + parts.join(", ");
+      }).join("\n");
+      _linePush(groupStaffReceive, "📥 " + staffName + " รับของจากคลังที่สาขา " + branch + " แล้ว\nล็อต: " + data.shipment_id + "\n\n" + receiveItemsText);
+    }
+
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -2922,13 +2962,14 @@ function handleReceiveShipment(data) {
 }
 
 // ── ส่งมอบลูกค้า: ตัดสต็อกสาขา ────────────────────────────────────────────
-// data: { order_id }
+// data: { order_id, staff_name }
 function handleHandoverOrder(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
     var ss = SpreadsheetApp.openById(SHEET_ID);
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
+    var staffName = String(data.staff_name || "").trim();
 
     var order = getSupabaseOrder_(data.order_id);
     if (!order) {
@@ -3006,6 +3047,12 @@ function handleHandoverOrder(data) {
       }
       _linePush(uid, msg);
       order.notified_at = now;
+    }
+
+    var groupStaffHandover = _getConfigValue(null, "group_staff");
+    if (groupStaffHandover && staffName) {
+      _linePush(groupStaffHandover, "🤝 " + staffName + " ส่งมอบออเดอร์ #" + data.order_id + " ที่สาขา " + branch + " แล้ว\n" +
+        handoverNames.map(function(n) { return "- " + n; }).join("\n"));
     }
 
     writeSupabaseOrder_(order, lock);
@@ -3431,13 +3478,14 @@ function handleUpdateProduct(data) {
 }
 
 // ── เบิกสินค้าจากสต็อกสาขา ────────────────────────────────────────────────
-// data: { branch, name, type, qty, reason }
+// data: { branch, name, type, qty, reason, staff_name }
 function handleWithdrawStock(data) {
   var branch = String(data.branch || "").trim();
   var name   = String(data.name   || "").trim();
   var type   = String(data.type   || "box").trim();
   var qty    = Number(data.qty)   || 0;
   var reason = String(data.reason || "").trim();
+  var staffName = String(data.staff_name || "").trim();
 
   if (!branch || !name || qty <= 0) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ข้อมูลไม่ครบ (branch, name, qty)" })));
@@ -3464,6 +3512,13 @@ function handleWithdrawStock(data) {
     if (!wRes.ok) throw new Error("Supabase withdrawals write failed: " + wRes.text);
     lock.releaseLock();
     mirrorToReportSheet_("withdrawals", SUPABASE_WITHDRAWALS_HEADER, ["timestamp", "branch", "name"], wObj);
+
+    var groupStaffWithdraw = _getConfigValue(null, "group_staff");
+    if (groupStaffWithdraw && staffName) {
+      var unitLabel = type === "box" ? "กล่อง" : "ซอง";
+      _linePush(groupStaffWithdraw, "📤 " + staffName + " เบิก " + name + " x" + qty + " " + unitLabel + " จากสาขา " + branch +
+        (reason ? "\nเหตุผล: " + reason : ""));
+    }
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
@@ -3514,6 +3569,106 @@ function handleReturnStock(data) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+// ── ขายหน้าร้าน (walk-in): ตัดสต็อกสาขา + บันทึกยอดขาย ────────────────────
+// แยกจาก orders โดยตั้งใจ — ไม่มี LINE user, ไม่มีสลิปให้ตรวจ, และไม่ถูกรวม
+// เข้ารายงาน/แดชบอร์ดยอดขายออนไลน์
+// data: { branch, items: [{name, type, qty, price}], payment_method, bank, code }
+function _genWalkinSaleId() {
+  var now = new Date();
+  var pad = function(n) { return String(n).padStart(2, "0"); };
+  var yy = String(now.getFullYear()).slice(-2);
+  var prefix = "WS" + yy + pad(now.getMonth() + 1) + pad(now.getDate());
+  var propKey = "walkin_seq_" + prefix;
+  var seq = parseInt(PROPS.getProperty(propKey) || "0", 10) + 1;
+  PROPS.setProperty(propKey, String(seq));
+  return prefix + String(seq).padStart(3, "0");
+}
+
+function handleWalkinSale(data) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    var branch = String(data.branch || "").trim();
+    var items = Array.isArray(data.items) ? data.items : [];
+    if (!branch || items.length === 0) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ข้อมูลไม่ครบ (branch, items)" })));
+    }
+    if (!_branchAuthorized(data.code, branch)) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+    }
+
+    var bsRows = _fetchStockBranchRows_(branch);
+    // ตรวจสต็อกให้ครบทุกรายการก่อนตัดจริงรายการใดรายการหนึ่ง — กันเคสตัดสต็อก
+    // ไปแล้วครึ่งตะกร้าแล้วมาพบว่ารายการหลังสต็อกไม่พอ
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      var qty = Number(it.qty) || 0;
+      if (qty <= 0) {
+        lock.releaseLock();
+        return _cors(ContentService.createTextOutput(JSON.stringify({ error: String(it.name || "") + ": จำนวนต้องมากกว่า 0" })));
+      }
+      var field = it.type === "box" ? "qty_box" : "qty_pack";
+      var bsRow = _findStockBranchRow_(bsRows, it.name, branch);
+      var have = bsRow ? (Number(bsRow[field]) || 0) : 0;
+      if (have < qty) {
+        lock.releaseLock();
+        return _cors(ContentService.createTextOutput(JSON.stringify({ error: String(it.name || "") + " สต็อกสาขาไม่พอ (เหลือ " + have + ")" })));
+      }
+    }
+
+    // ตัดสต็อกสาขา + บันทึกยอดขาย (fast REST writes, ยังอยู่ใต้ lock เพราะแข่งกับ
+    // การขาย/รับของพร้อมกันได้) แต่ deferred mirror ไปหลังปล่อย lock — เหตุผล
+    // เดียวกับ writeSupabaseOrder_/handleReceiveShipment: mirror scan ช้าและ
+    // ไม่ควรบล็อก request อื่นที่รอ script-wide lock เดียวกันอยู่
+    var pendingMirrors = [];
+    var total = 0;
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      var qty = Number(it.qty) || 0;
+      var price = Number(it.price) || 0;
+      total += price * qty;
+      var field = it.type === "box" ? "qty_box" : "qty_pack";
+      var bsRow = _findStockBranchRow_(bsRows, it.name, branch);
+      bsRow[field] = Math.max(0, (Number(bsRow[field]) || 0) - qty);
+      var bsRes = pushToSupabase_("stock_branch", bsRow);
+      if (!bsRes.ok) throw new Error("Supabase stock_branch write failed (" + bsRow.name + "): " + bsRes.text);
+      pendingMirrors.push({ table: "stock_branch", header: SUPABASE_STOCK_BRANCH_HEADER, keyCol: ["name", "branch"], obj: bsRow });
+    }
+
+    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
+    var saleId = _genWalkinSaleId();
+    var saleObj = {
+      sale_id: saleId, timestamp: now, branch: branch,
+      items_json: items.map(function(it) { return { name: it.name, type: it.type, qty: Number(it.qty) || 0, price: Number(it.price) || 0 }; }),
+      total: total, payment_method: data.payment_method || "cash", bank: data.bank || null,
+    };
+    var saleRes = pushToSupabase_("walkin_sales", saleObj);
+    if (!saleRes.ok) throw new Error("Supabase walkin_sales write failed: " + saleRes.text);
+    pendingMirrors.push({ table: "walkin_sales", header: SUPABASE_WALKIN_SALES_HEADER, keyCol: "sale_id", obj: saleObj });
+
+    lock.releaseLock();
+    pendingMirrors.forEach(function(m) { mirrorToReportSheet_(m.table, m.header, m.keyCol, m.obj); });
+
+    var staffName = String(data.staff_name || "").trim();
+    var groupStaffWalkin = _getConfigValue(null, "group_staff");
+    if (groupStaffWalkin && staffName) {
+      var payLabel = saleObj.payment_method === "cash" ? "💵 เงินสด" : ("📱 โอน" + (saleObj.bank ? " " + saleObj.bank : ""));
+      var walkinItemsText = items.map(function(it) {
+        var u = it.type === "box" ? "กล่อง" : "ซอง";
+        return "  - " + it.name + " (" + u + ") x" + it.qty;
+      }).join("\n");
+      _linePush(groupStaffWalkin, "🛒 " + staffName + " ขายหน้าร้านที่สาขา " + branch + " ฿" + total + " (" + payLabel + ")\n\n" + walkinItemsText);
+    }
+
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, sale_id: saleId, total: total })));
+  } catch (err) {
+    try { lock.releaseLock(); } catch (_) {}
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
   }
 }

@@ -182,6 +182,20 @@ create table if not exists withdrawals (
   reason               text
 );
 
+-- Walk-in (in-store) sales, recorded by branch staff via liff/app.html's
+-- "ขายหน้าร้าน" cart flow. Deliberately kept separate from `orders` — no
+-- LINE user, no slip verification, and by design not rolled into the
+-- online-order revenue report/dashboard.
+create table if not exists walkin_sales (
+  sale_id              text primary key,
+  timestamp            timestamptz,
+  branch               text,
+  items_json           jsonb,
+  total                numeric,
+  payment_method       text,
+  bank                 text
+);
+
 -- RLS on, no policies: only the service_role key (server-side only) can
 -- read/write. The anon/public key gets nothing unless a policy is added later.
 alter table orders enable row level security;
@@ -197,6 +211,7 @@ alter table wakagym_events enable row level security;
 alter table tournament_events enable row level security;
 alter table tournament_categories enable row level security;
 alter table withdrawals enable row level security;
+alter table walkin_sales enable row level security;
 
 -- service_role bypasses RLS but still needs the underlying table grants —
 -- "Automatically expose new tables" was left off when creating the project,
@@ -214,4 +229,5 @@ grant select, insert, update, delete on public.wakagym_events to service_role;
 grant select, insert, update, delete on public.tournament_events to service_role;
 grant select, insert, update, delete on public.tournament_categories to service_role;
 grant select, insert, update, delete on public.withdrawals to service_role;
+grant select, insert, update, delete on public.walkin_sales to service_role;
 grant usage, select on all sequences in schema public to service_role;
