@@ -577,6 +577,10 @@ function applyRole(role) {
   userRole = role;
   const adminOnly = ['nav_home','nav_warehouse'];
   adminOnly.forEach(id => gid(id).style.display = role === 'admin' ? 'flex' : 'none');
+  // สาขา/GYM ซ้ำซ้อนสำหรับพนักงานสาขา — login ด้วยรหัสสาขาแล้ว auto-land ที่
+  // หน้าสาขาอยู่แล้ว และ GYM ก็เป็นการ์ดหนึ่งในหน้าสาขานั้น เหลือแค่ "เมนู" พอ
+  const staffHidden = ['nav_branch','nav_gym'];
+  staffHidden.forEach(id => gid(id).style.display = role === 'staff' ? 'none' : 'flex');
   if (role === 'admin') {
     gid('branchLogin').style.display='none';
     gid('branchAdminPicker').style.display='block';

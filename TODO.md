@@ -4,20 +4,25 @@
 
 ## 🧹 คลีน LIFF / GAS (เริ่ม 2026-08-06)
 
-เป้าหมาย: รวมหน้าแยกๆ (branch/staff/warehouse/report/gym) เข้า `app.html`
-(หน้าเดียว 5 แท็บ) ให้ครบ แล้วค่อยทยอยลบของเก่า — ทำทีละส่วนเพื่อตรวจสอบได้
+เป้าหมาย: รวมงานของพนักงานสาขา (branch/staff/gym) เข้า `app.html` หน้าเดียว
+ให้ครบ แล้วทยอยลบของเก่าที่ซ้ำซ้อน — เครื่องมือแอดมิน (warehouse/report/
+products/tournament_*) **ตัดสินใจแล้วว่าเก็บแยกเหมือนเดิม ไม่รวม** (ตอบ
+2026-08-06: งานใหญ่เกินไป ไม่คุ้มความเสี่ยง และพนักงานสาขาไม่ต้องใช้อยู่แล้ว)
 
 ### ทำแล้ว
 - [x] แก้บั๊ก double-tap race ใน `confirmReceive`/`handoverOrder` (ปุ่มไม่ disable ทำให้กดรัวเด้ง prompt ซ้ำ)
 - [x] เพิ่ม deep-link `app.html?order=xxx` และ `app.html#gym`
 - [x] ลบ `wakagym-staff.html`, `branch.html` (ซ้ำซ้อนกับ `app.html` แล้ว) + แก้ลิงก์ที่เหลือให้ชี้ `app.html` แทน
-- [x] `notifyBranch()` (GAS) ส่งลิงก์ `app.html?order=` แทน `staff.html?order=`
 - [x] ลบ GAS dead code: `isCorrectAccount`, `tournament_lookup`
 - [x] ลบ pipeline ตรวจสลิปทัวร์นาเมนต์เก่าแบบ bank report (`process_registrations.py`, `match_bank_csv.py`, `verify_registrations.ipynb`/`.md`) — ไม่ได้ใช้แล้ว
+- [x] role พนักงานสาขาใน `app.html`: bottom nav เหลือแค่ "เมนู" (ตัด สาขา/GYM ออก เพราะซ้ำซ้อนกับหน้าที่ auto-land อยู่แล้ว + การ์ด GYM ในหน้าสาขา)
+
+### หมายเหตุ
+- `notifyBranch()` ใน `gas/Code.gs` เป็น **dead code** (ไม่มีใครเรียกใช้จริง) — เจอตอนไล่เช็ค 2026-08-06 เคยแก้ `staffUrl` ข้างในให้ชี้ `app.html?order=` ไปแล้วแต่ไม่มีผลอะไรเพราะไม่ถูกเรียก ตัดสินใจ**ปล่อยไว้ก่อน ไม่ลบไม่ต่อสาย** จนกว่าจะมีเหตุผลชัดเจนกว่านี้
 
 ### รอทำ (ยังไม่ลบ เพราะยังมีใครลิงก์ถึง/ยังไม่มั่นใจ 100%)
-- `staff.html` — ตอนนี้ไม่มีใครลิงก์ถึงแล้ว (`notifyBranch` เปลี่ยนไป `app.html` แล้ว) แต่รอให้มั่นใจว่า `app.html?order=` ใช้แทนได้ครบจริงก่อนค่อยลบไฟล์
-- `menu.html`, `warehouse.html`, `report.html`, `products.html`, `order-links.html`, `tournament_staff.html`, `tournament_admin.html`, `receive.html` (orphan อยู่แล้ว) — ยังแยกกันอยู่ ยังไม่ได้รวมเข้า `app.html`
+- `staff.html` — ไม่มีใครลิงก์ถึงแล้ว แต่รอให้มั่นใจว่า `app.html?order=` ใช้แทนได้ครบจริงก่อนค่อยลบไฟล์
+- `receive.html` — orphan อยู่แล้ว (ไม่มีใครลิงก์ถึง) แต่ยังไม่ลบ
 - ตรวจว่า `credentials.json`/`token.json`/`refresh_token.py` (Google OAuth) ยังจำเป็นอยู่จริง — ตอนนี้ยังใช้โดย Streamlit (`shipments`/`stock_returns`/`player_stats`/`withdrawals` ที่ยังไม่ย้ายไป Supabase) ห้ามลบจนกว่าตารางพวกนี้จะย้ายด้วย
 
 ---
