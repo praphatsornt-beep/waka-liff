@@ -929,6 +929,26 @@ async function loadProducts() {
   } catch(_){}
 }
 
+// เบิกสินค้า/ขายหน้าร้าน ต้องเลือกได้เฉพาะสินค้าที่สาขานั้นมีสต็อกจริง —
+// ไม่ใช่ทั้ง catalog กลาง (ที่ productSelect/รับเข้า ใช้) มิฉะนั้นพนักงานจะ
+// เลือกสินค้าที่สาขาไม่มีของแล้วโดนปฏิเสธตอนบันทึกเท่านั้น
+async function _branchInStockNames() {
+  const branch = gid('branchSelect').value;
+  if (!branch) return null;
+  try {
+    const r = await fetch(G+'&action=api&do=branch_stock&branch='+encodeURIComponent(branch)+'&code='+encodeURIComponent(_authCode()));
+    const d = await r.json();
+    return new Set((d.stock||[]).filter(s=>(s.qty_box||0)>0||(s.qty_pack||0)>0).map(s=>s.name));
+  } catch(_) { return null; }
+}
+
+async function loadWithdrawProductOptions() {
+  if (!products.length) await loadProducts();
+  const inStock = await _branchInStockNames();
+  const list = inStock ? products.filter(p=>inStock.has(p.name)) : products;
+  gid('wdProduct').innerHTML = '<option value="">-- เลือก --</option>' + list.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
+}
+
 function toggleScan() {
   if (scanner){stopScan();return;}
   gid('scanBtn').textContent='ปิดกล้อง';
@@ -1028,7 +1048,7 @@ function openBrView(s) {
   if(s==='orders'){gid('brOrders').style.display='block';loadBrOrders();}
   if(s==='handover')gid('brHandover').style.display='block';
   if(s==='bstock'){gid('brStock').style.display='block';loadBrStock();}
-  if(s==='withdraw'){gid('brWithdraw').style.display='block';loadWithdrawals();}
+  if(s==='withdraw'){gid('brWithdraw').style.display='block';loadWithdrawProductOptions();loadWithdrawals();}
   if(s==='walkin'){gid('brWalkin').style.display='block';openWalkin();}
   if(s==='gym'){gid('brGym').style.display='block';gymOpen();}
 }
@@ -1231,8 +1251,10 @@ let wsCart = [];
 
 async function openWalkin() {
   if (!products.length) await loadProducts();
+  const inStock = await _branchInStockNames();
+  const list = inStock ? products.filter(p=>inStock.has(p.name)) : products;
   const wsSel = gid('wsProduct');
-  wsSel.innerHTML = '<option value="">-- เลือก --</option>' + products.map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
+  wsSel.innerHTML = '<option value="">-- เลือก --</option>' + list.map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
   wsCart = [];
   wsRenderCart();
   loadWalkinHistory();
