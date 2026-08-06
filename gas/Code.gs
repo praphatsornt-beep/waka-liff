@@ -1483,6 +1483,14 @@ function handleApi(params) {
   if (action === "search") {
     var q = String(params.q || "").toLowerCase().trim();
     if (!q) return _cors(ContentService.createTextOutput(JSON.stringify({ orders: [] })));
+    // Optional branch scoping — app.html's branch-portal search passes this
+    // so staff only find/handover their own branch's orders; staff.html's
+    // standalone order lookup (reached from a per-order LINE link, no branch
+    // context at all) omits it and keeps searching every branch, unchanged.
+    var seBranch = String(params.branch || "").trim();
+    if (seBranch && !_branchAuthorized(params.code, seBranch)) {
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+    }
     // Deliberately NOT translating this into a PostgREST or=(...ilike...)
     // filter — with arbitrary staff-typed input that risks corrupting the
     // filter's own comma/paren/wildcard syntax, and Thai ilike collation
@@ -1499,6 +1507,7 @@ function handleApi(params) {
         if (v === null || v === undefined) { srow[h] = ""; return; }
         srow[h] = (h === "items_json") ? JSON.stringify(v) : String(v);
       });
+      if (seBranch && srow.branch !== seBranch) continue;
       var seMatch = srow.order_id.toLowerCase().indexOf(q) >= 0
         || srow.real_name.toLowerCase().indexOf(q) >= 0
         || srow.display_name.toLowerCase().indexOf(q) >= 0
@@ -3446,7 +3455,12 @@ function handleWithdrawStock(data) {
       return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบ " + name + " ในสต็อกสาขา " + branch })));
     }
     var wField = type === "box" ? "qty_box" : "qty_pack";
-    bsRow[wField] = Math.max(0, (Number(bsRow[wField]) || 0) - qty);
+    var wHave = Number(bsRow[wField]) || 0;
+    if (qty > wHave) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: name + " สต็อกสาขาไม่พอ (เหลือ " + wHave + ")" })));
+    }
+    bsRow[wField] = wHave - qty;
     _writeStockBranchRow_(bsRow);
 
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
@@ -3488,8 +3502,14 @@ function handleReturnStock(data) {
     // ลดสต็อกสาขา (Supabase-primary)
     var bsRow = _findStockBranchRow_(_fetchStockBranchRows_(branch), name, branch);
     if (!bsRow) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบ " + name + " ในสต็อกสาขา " + branch }))); }
-    if (qtyBox  > 0) bsRow.qty_box  = Math.max(0, (Number(bsRow.qty_box)  || 0) - qtyBox);
-    if (qtyPack > 0) bsRow.qty_pack = Math.max(0, (Number(bsRow.qty_pack) || 0) - qtyPack);
+    var haveBox = Number(bsRow.qty_box) || 0;
+    var havePack = Number(bsRow.qty_pack) || 0;
+    if (qtyBox > haveBox || qtyPack > havePack) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: name + " สต็อกสาขาไม่พอ (เหลือ Box:" + haveBox + " Pack:" + havePack + ")" })));
+    }
+    if (qtyBox  > 0) bsRow.qty_box  = haveBox - qtyBox;
+    if (qtyPack > 0) bsRow.qty_pack = havePack - qtyPack;
     _writeStockBranchRow_(bsRow);
 
     // เพิ่มสต็อกกลาง (catalog, Supabase-primary)

@@ -1163,7 +1163,8 @@ function renderBrOrdersList() {
 
 async function searchOrders() {
   const q=gid('searchOrder').value.trim();if(!q)return;
-  try{const r=await fetch(G+'&action=api&do=search&q='+encodeURIComponent(q));const d=await r.json();
+  const branch=gid('branchSelect').value;
+  try{const r=await fetch(G+'&action=api&do=search&q='+encodeURIComponent(q)+'&branch='+encodeURIComponent(branch)+'&code='+encodeURIComponent(_authCode()));const d=await r.json();
     const el=gid('searchResults');if(!d.orders||!d.orders.length){el.innerHTML='<div class="empty">ไม่พบ</div>';return;}
     el.innerHTML=d.orders.map(o=>{
       const ff=o.fulfillment||'รอ';
