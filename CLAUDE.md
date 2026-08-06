@@ -85,3 +85,96 @@ credentials.json, token.json  # Google OAuth (gitignored)
 ```
 
 Outputs the user needs to act on go to cloud services (Google Sheets, Slides, etc.), not local files.
+
+---
+
+# Codebase Architecture
+
+This repo runs two mostly-independent products that share the `tools/` Python
+layer and a Supabase project:
+
+1. **WAKA SPACE order system** — LINE-based card-game shop: customers order
+   via LIFF, staff fulfill via LIFF, admins/finance manage via Streamlit.
+2. **Tournament registration verification** — an older, Google Forms +
+   Sheets + Claude pipeline (`tools/process_registrations.py`) for matching
+   payment slips to tournament sign-ups. Separate from WAKA SPACE's own
+   in-app tournament/GYM registration flows below.
+
+## The four runtime pieces
+
+- **`gas/Code.gs`** (single ~3,800-line file) — the backend. Deployed as a
+  Google Apps Script Web App (`doGet`/`doPost`, dispatched by an `action`
+  query param: `confirm`, `staff`, `api`, or catalog/config for the default
+  LIFF payload). Handles LINE webhook events, order writes, stock/shipment
+  logic, and PIN-based branch/admin authorization (`BRANCH_CODES`,
+  `ADMIN_CODE` in the file — kept in sync with `liff/app.html`).
+- **`liff/*.html`** — static frontend pages (customer ordering, staff
+  fulfillment, warehouse, reports), each calling the GAS Web App URL
+  directly via `fetch`. Deployed to Vercel. These files are tracked
+  normally by **this repo's own git** — edit and commit them exactly like
+  any other file here, from the repo root. Deploying to Vercel is a
+  *second push*, to this repo's other remote, `vercel` →
+  `github.com/praphatsornt-beep/waka-liff.git` (a full-monorepo mirror;
+  Vercel's project is configured with Root Directory = `liff`). Vercel's
+  actual production branch on that remote is **`master`**, not `main` —
+  push both so they don't drift apart:
+  ```bash
+  git push origin master         # this repo's own remote
+  git push vercel master:master  # triggers the real Vercel deploy
+  git push vercel master:main    # keep main in sync too
+  ```
+  A previous session mistakenly left a stale, disconnected `.git` folder
+  *inside* the `liff/` directory (an old standalone repo from before this
+  monorepo-mirror setup existed) — ignore it entirely; don't `cd liff && git
+  ...`. It was 328 commits behind `vercel/master` before being discovered
+  and abandoned on 2026-08-06.
+- **`tools/verify_app.py` + `tools/screens/*.py`** — the Streamlit admin
+  dashboard (orders, stock, tournament, wakagym, report, settings tabs).
+  `verify_app.py` is the Streamlit Cloud entry point/router — its path is
+  fixed because Streamlit Cloud can't change a deployed app's main file
+  without losing Secrets + URL. `tools/theme.py` holds the shared dark
+  navy/gold visual theme; every page calls `apply_theme()` after
+  `st.set_page_config()`. Some writes (e.g. `settings.py`) go back through
+  the GAS `action=api` endpoint (with a shared secret) rather than straight
+  to Supabase, so GAS's config cache and report-sheet mirror stay correct.
+- **Supabase** (Postgres, schema in `supabase/schema.sql`) — the database
+  both GAS and Streamlit read/write via the REST API (`service_role` key
+  only; RLS denies the `anon` key everything). Tables are being migrated
+  off Google Sheets **one at a time**, not all at once — check
+  `gas/Code.gs` comments near a table's helpers (search for
+  `Supabase-primary`) to know whether a given table is still Sheet-backed.
+  As of the last migration commits: `orders`, `config`, `catalog`,
+  `stock_branch`, `tournament_registrations`, `wakagym_registrations`,
+  `wakagym_events`, `tournament_events`, `tournament_categories` are
+  Supabase-primary. `shipments`, `stock_returns`, `player_stats`,
+  `withdrawals` are not yet migrated. `workflows/setup_supabase.md`
+  describes the original "prep only, Sheets stays authoritative" plan —
+  that plan is now out of date; trust the code comments over that doc.
+
+## Sheets' remaining role
+
+A separate spreadsheet (`REPORT_SHEET_ID`, the "WAKA export" sheet) is
+written by `mirrorToReportSheet_()` as a best-effort, human-readable mirror
+of every Supabase-primary write — never authoritative, never blocking, and
+safe to ignore for anything code-related. The original `SHEET_ID` spreadsheet
+remains authoritative only for tables not yet migrated, plus a fallback path
+if Supabase is unreachable (e.g. `getConfig_()` falls back to reading the
+`_config` tab directly).
+
+## No automated test suite
+
+There are no test files in this repo. Validate changes by running the
+relevant tool directly, or (for LIFF/Streamlit UI changes) exercising the
+page manually — see the `run` skill.
+
+## Key docs to read before touching a given area
+
+- `workflows/order_operations.md` — full WAKA SPACE operational flow: PIN
+  codes, per-role steps (customer/warehouse/branch staff/finance), the slip
+  verification statuses, and deploy steps for GAS/LIFF/Streamlit.
+- `workflows/tournament_operations.md` — day-of-event flow for the in-app
+  tournament/GYM card distribution.
+- `workflows/verify_registrations.md` + `workflows/setup_google_auth.md` —
+  the legacy Forms/Sheets registration-verification pipeline.
+- `TODO.md` — live backlog of known bugs and planned features; check here
+  before assuming something is unimplemented.
