@@ -90,15 +90,13 @@ Outputs the user needs to act on go to cloud services (Google Sheets, Slides, et
 
 # Codebase Architecture
 
-This repo runs two mostly-independent products that share the `tools/` Python
-layer and a Supabase project:
-
-1. **WAKA SPACE order system** — LINE-based card-game shop: customers order
-   via LIFF, staff fulfill via LIFF, admins/finance manage via Streamlit.
-2. **Tournament registration verification** — an older, Google Forms +
-   Sheets + Claude pipeline (`tools/process_registrations.py`) for matching
-   payment slips to tournament sign-ups. Separate from WAKA SPACE's own
-   in-app tournament/GYM registration flows below.
+This repo runs **WAKA SPACE**, a LINE-based card-game shop order system:
+customers order via LIFF, staff fulfill via LIFF, admins/finance manage via
+Streamlit. It also has its own in-app tournament/GYM registration flows
+(below) — separate from an older Google Forms + Sheets + Claude pipeline for
+matching payment slips to tournament sign-ups that was retired 2026-08-06 as
+unused (its own config/admin UI had already gone stale; superseded by the
+in-app tournament flow).
 
 ## The four runtime pieces
 
@@ -174,7 +172,9 @@ page manually — see the `run` skill.
   verification statuses, and deploy steps for GAS/LIFF/Streamlit.
 - `workflows/tournament_operations.md` — day-of-event flow for the in-app
   tournament/GYM card distribution.
-- `workflows/verify_registrations.md` + `workflows/setup_google_auth.md` —
-  the legacy Forms/Sheets registration-verification pipeline.
+- `workflows/setup_google_auth.md` — one-time Google OAuth setup for the
+  `credentials.json`/`token.json` that Streamlit's Sheets-backed pages
+  (`shipments`, `stock_returns`, `player_stats`, `withdrawals` — not yet
+  migrated to Supabase) still depend on.
 - `TODO.md` — live backlog of known bugs and planned features; check here
   before assuming something is unimplemented.

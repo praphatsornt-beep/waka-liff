@@ -56,10 +56,13 @@
 
 รันคำสั่งนี้ครั้งแรก:
 ```bash
-uv run tools/process_registrations.py
+uv run tools/refresh_token.py
 ```
 
 จะเปิดเบราว์เซอร์ให้ล็อกอิน Google → อนุญาต → ระบบจะสร้าง `token.json` ให้อัตโนมัติ
+
+`token.json` นี้ใช้โดย Streamlit (`tools/screens/orders.py`, `stock.py`, `wakagym.py`) สำหรับตาราง
+ที่ยังไม่ได้ย้ายไป Supabase (`shipments`, `stock_returns`, `player_stats`, `withdrawals`)
 
 **ครั้งต่อไปไม่ต้องล็อกอินใหม่** (token มีอายุ และ refresh อัตโนมัติ)
 

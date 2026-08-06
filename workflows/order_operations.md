@@ -35,7 +35,6 @@
 ### หน้า Admin แยก (มี bottom nav bar ทุกหน้า)
 - **คลังกลาง**: https://waka-liff.vercel.app/warehouse.html (PIN: waka99)
 - **รายงานยอดขาย**: https://waka-liff.vercel.app/report.html (PIN: waka99)
-- **สาขา (แยก)**: https://waka-liff.vercel.app/branch.html?branch=ต้นสักคอร์เนอร์
 - **Streamlit จัดการออเดอร์**: https://waka-tournament-e6wsqmhuhhexratyiub65f.streamlit.app/orders
 - **ลูกค้ายืนยันรับของ**: https://waka-liff.vercel.app/confirm.html?order=XXXXXX (จากลิงก์ LINE)
 

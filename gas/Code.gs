@@ -1006,7 +1006,7 @@ function notifyBranch(groupId, order) {
     return "  - " + i.name + " (" + unitLabel + ") x" + i.qty + " = " + (i.price * i.qty) + " บาท";
   }).join("\n");
   var isDelivery = order.branch === "จัดส่ง";
-  var staffUrl = "https://waka-liff.vercel.app/staff.html?order=" + order.orderId;
+  var staffUrl = "https://waka-liff.vercel.app/app.html?order=" + order.orderId;
   var lines = [
     "ออเดอร์ใหม่ #" + order.orderId,
     "ลูกค้า: " + order.displayName + (order.realName ? " (" + order.realName + ")" : ""),
@@ -1120,7 +1120,7 @@ function _ensureTab(ss, tabName, headers) {
   return ws;
 }
 
-function _getActiveEvent(ss, branch) {
+function _getActiveEvent(branch) {
   var today = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
   var query = "select=event_id,date,branch,tier,entry_fee,status&date=eq." + today + "&status=eq.open";
   if (branch) query += "&branch=eq." + encodeURIComponent(branch);
@@ -1154,7 +1154,7 @@ function handleWakagymRegister(data) {
     var today = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
     var payMethod = data.paymentMethod || "transfer";
 
-    var event = _getActiveEvent(ss, null);
+    var event = _getActiveEvent(null);
     var entryFee = event ? event.entry_fee : 200;
     var eventId = event ? event.event_id : "";
     var tier = event ? event.tier : "L";
@@ -1479,7 +1479,6 @@ function handleStaffPage(orderId, action) {
 
 function handleApi(params) {
   var action = params.do || "";
-  var ss = SpreadsheetApp.openById(SHEET_ID);
 
   if (action === "search") {
     var q = String(params.q || "").toLowerCase().trim();
@@ -1949,7 +1948,7 @@ function handleApi(params) {
     var uid = params.line_user_id || "";
     var today = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
 
-    var event = _getActiveEvent(ss, null);
+    var event = _getActiveEvent(null);
     var eventInfo = event ? {
       event_id: event.event_id, tier: event.tier,
       entry_fee: event.entry_fee, branch: event.branch,
@@ -2467,32 +2466,6 @@ function handleApi(params) {
     return ContentService.createTextOutput(csv).setMimeType(ContentService.MimeType.CSV);
   }
 
-  if (action === "tournament_lookup") {
-    var tluQ = String(params.q || params.id || "").trim().toLowerCase();
-    if (!tluQ) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing query" })));
-    var tluSb = supabaseSelect_("tournament_registrations", "select=*");
-    var tluFound = tluSb
-      .filter(function(r) {
-        return String(r.reg_id || "").toLowerCase().indexOf(tluQ) >= 0
-          || String(r.player_name || "").toLowerCase().indexOf(tluQ) >= 0
-          || String(r.real_name || "").toLowerCase().indexOf(tluQ) >= 0;
-      })
-      .map(function(r) {
-        return {
-          reg_id: String(r.reg_id || ""),
-          sequence_no: Number(r.sequence_no) || 0,
-          player_name: String(r.player_name || ""),
-          real_name: String(r.real_name || ""),
-          phone: String(r.phone || ""),
-          event_id: String(r.event_id || ""),
-          slip_status: String(r.slip_status || ""),
-          status: String(r.status || ""),
-          checked_in_at: String(r.checked_in_at || ""),
-        };
-      });
-    return _cors(ContentService.createTextOutput(JSON.stringify({ players: tluFound.slice(0, 20) })));
-  }
-
   if (action === "tournament_categories") {
     var tcEvId = String(params.event || "").trim();
     if (!tcEvId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing event" })));
@@ -2551,36 +2524,6 @@ function isDuplicateSlip(ss, ref) {
     return true;
   }
   return false;
-}
-
-function isCorrectAccount(ss, toAccount, toName) {
-  var acctOk = true;
-  var shopAccount = _getConfigValue(null, "bank_account");
-  if (shopAccount && toAccount) {
-    var clean1 = String(toAccount).replace(/[-\s]/g, "");
-    var clean2 = String(shopAccount).replace(/[-\s]/g, "");
-    var digits1 = clean1.replace(/[^0-9]/g, "");
-    acctOk = clean1.indexOf(clean2) >= 0 || clean2.indexOf(clean1) >= 0
-      || (digits1.length >= 4 && clean2.indexOf(digits1) >= 0);
-  }
-
-  var nameOk = true;
-  if (toName) {
-    var shopNameTh = _getConfigValue(null, "bank_account_name") || "";
-    var shopNameEn = _getConfigValue(null, "bank_account_name_en") || "";
-    var shopNames = [];
-    shopNameTh.split("|").forEach(function(n) { n = n.trim(); if (n) shopNames.push(n.toLowerCase()); });
-    shopNameEn.split("|").forEach(function(n) { n = n.trim(); if (n) shopNames.push(n.toLowerCase()); });
-    var slipName = String(toName).toLowerCase().replace(/[.\s]+/g, " ").trim();
-    if (shopNames.length > 0) {
-      nameOk = false;
-      for (var ni = 0; ni < shopNames.length; ni++) {
-        if (nameMatch(slipName, shopNames[ni])) { nameOk = true; break; }
-      }
-    }
-  }
-
-  return acctOk && nameOk;
 }
 
 function isPartialMatch(slipAcct, shopAcct) {

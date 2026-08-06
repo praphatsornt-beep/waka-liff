@@ -2,6 +2,26 @@
 
 ---
 
+## 🧹 คลีน LIFF / GAS (เริ่ม 2026-08-06)
+
+เป้าหมาย: รวมหน้าแยกๆ (branch/staff/warehouse/report/gym) เข้า `app.html`
+(หน้าเดียว 5 แท็บ) ให้ครบ แล้วค่อยทยอยลบของเก่า — ทำทีละส่วนเพื่อตรวจสอบได้
+
+### ทำแล้ว
+- [x] แก้บั๊ก double-tap race ใน `confirmReceive`/`handoverOrder` (ปุ่มไม่ disable ทำให้กดรัวเด้ง prompt ซ้ำ)
+- [x] เพิ่ม deep-link `app.html?order=xxx` และ `app.html#gym`
+- [x] ลบ `wakagym-staff.html`, `branch.html` (ซ้ำซ้อนกับ `app.html` แล้ว) + แก้ลิงก์ที่เหลือให้ชี้ `app.html` แทน
+- [x] `notifyBranch()` (GAS) ส่งลิงก์ `app.html?order=` แทน `staff.html?order=`
+- [x] ลบ GAS dead code: `isCorrectAccount`, `tournament_lookup`
+- [x] ลบ pipeline ตรวจสลิปทัวร์นาเมนต์เก่าแบบ bank report (`process_registrations.py`, `match_bank_csv.py`, `verify_registrations.ipynb`/`.md`) — ไม่ได้ใช้แล้ว
+
+### รอทำ (ยังไม่ลบ เพราะยังมีใครลิงก์ถึง/ยังไม่มั่นใจ 100%)
+- `staff.html` — ตอนนี้ไม่มีใครลิงก์ถึงแล้ว (`notifyBranch` เปลี่ยนไป `app.html` แล้ว) แต่รอให้มั่นใจว่า `app.html?order=` ใช้แทนได้ครบจริงก่อนค่อยลบไฟล์
+- `menu.html`, `warehouse.html`, `report.html`, `products.html`, `order-links.html`, `tournament_staff.html`, `tournament_admin.html`, `receive.html` (orphan อยู่แล้ว) — ยังแยกกันอยู่ ยังไม่ได้รวมเข้า `app.html`
+- ตรวจว่า `credentials.json`/`token.json`/`refresh_token.py` (Google OAuth) ยังจำเป็นอยู่จริง — ตอนนี้ยังใช้โดย Streamlit (`shipments`/`stock_returns`/`player_stats`/`withdrawals` ที่ยังไม่ย้ายไป Supabase) ห้ามลบจนกว่าตารางพวกนี้จะย้ายด้วย
+
+---
+
 ## 📦 ระบบออเดอร์การ์ด (ก่อนใช้งานจริง)
 
 ### 1. Deploy GAS ล่าสุด
@@ -185,15 +205,14 @@ Staff กดลิงค์ใน Line (ไม่ต้องเปิด Stream
 
 ---
 
-## ระบบเดิม (Tournament)
+## ระบบเดิม (Tournament) — เลิกใช้แล้ว (2026-08-06)
 
-### ✅ ทำแล้ว
-- Tab ตั้งค่า, ตรวจสลิป, รายชื่อ, ประกาศ, อีเมล, เช็คอิน
-- ตรวจสลิปซ้ำ, Admin override, บันทึกรายละเอียดงาน
-
-### รอทำ
-- Config persistence → save config ลง Google Sheet แทน JSON (ทำบางส่วนแล้ว)
-- Google Forms สร้างอัตโนมัติ → รอ OAuth scope `forms.body` (ดู memory)
+Pipeline เก่า (Google Forms + Sheets + Claude ตรวจสลิปจาก bank report:
+`tools/process_registrations.py`, `tools/match_bank_csv.py`,
+`verify_registrations.ipynb`, `workflows/verify_registrations.md`) ถูกลบออก
+— ไม่ได้แตะมา 5 สัปดาห์กว่า, `events_config.json` หายไปแล้ว, แทนที่ด้วยระบบ
+ทัวร์นาเมนต์ในแอป (`treg.html`/`tournament_admin.html`/`tournament_staff.html`
++ ตาราง `tournament_registrations` บน Supabase) ที่ใช้งานจริงอยู่แล้ว
 
 ---
 
