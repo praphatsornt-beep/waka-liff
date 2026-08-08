@@ -358,9 +358,10 @@ with tab_central:
         catalog_show = catalog if cat_sel == "ทุกหมวดหมู่" else catalog[catalog["category"] == cat_sel]
 
         show = catalog_show[["name", "category", "qty_box", "qty_pack", "limit_box", "limit_pack", "active"]].copy()
+        show["active"] = show["active"].apply(lambda v: str(v or "").strip().upper() != "FALSE")
 
         def _stock_status(r):
-            if str(r["active"] or "").strip().upper() == "FALSE":
+            if not r["active"]:
                 return "⛔ ปิดการขาย"
             if (pd.to_numeric(r["limit_box"], errors="coerce") or 0) > 0 \
                and (pd.to_numeric(r["qty_box"], errors="coerce") or 0) <= (pd.to_numeric(r["limit_box"], errors="coerce") or 0):
@@ -368,12 +369,29 @@ with tab_central:
             return "ปกติ"
 
         show["สถานะ"] = show.apply(_stock_status, axis=1)
-        show = show.drop(columns=["active"])
         show = show.rename(columns={
             "name": "สินค้า", "category": "หมวดหมู่", "qty_box": "กล่อง", "qty_pack": "ซอง",
-            "limit_box": "ขั้นต่ำ (กล่อง)", "limit_pack": "ขั้นต่ำ (ซอง)",
+            "limit_box": "ขั้นต่ำ (กล่อง)", "limit_pack": "ขั้นต่ำ (ซอง)", "active": "เปิดขาย",
         })
-        st.dataframe(show, use_container_width=True, hide_index=True)
+        show = show[["สินค้า", "หมวดหมู่", "กล่อง", "ซอง", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "สถานะ", "เปิดขาย"]]
+
+        edited = st.data_editor(
+            show,
+            use_container_width=True,
+            hide_index=True,
+            disabled=["สินค้า", "หมวดหมู่", "กล่อง", "ซอง", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "สถานะ"],
+            column_config={"เปิดขาย": st.column_config.CheckboxColumn("เปิดขาย", help="ติ๊กออก = ปิดการขายสินค้านี้")},
+            key=f"catalog_editor_{cat_sel}",
+        )
+        changed = edited[edited["เปิดขาย"] != show["เปิดขาย"]]
+        if not changed.empty:
+            try:
+                for _, r in changed.iterrows():
+                    gas_post({"_action": "updateProduct", "name": r["สินค้า"], "active": bool(r["เปิดขาย"])})
+                st.cache_data.clear()
+                st.rerun()
+            except Exception as e:
+                st.error(f"บันทึกไม่ได้: {e}")
 
     with st.expander("✏️ แก้ไขสินค้า"):
         edit_names = sorted(catalog["name"].tolist()) if not catalog.empty else []
