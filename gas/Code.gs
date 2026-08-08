@@ -175,6 +175,36 @@ function patchSupabase_(table, filterQuery, patch) {
   }
 }
 
+// Renames a product atomically — updates catalog.name and every matching
+// stock_branch.name in one Postgres transaction via the rename_product() SQL
+// function (see supabase/schema.sql), so a rename can never leave branch
+// stock stranded under the old name.
+function _renameProductRpc_(oldName, newName) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return { ok: false, text: "SUPABASE_URL/SUPABASE_SERVICE_KEY not set" };
+  try {
+    var res = UrlFetchApp.fetch(SUPABASE_URL + "/rest/v1/rpc/rename_product", {
+      method: "post",
+      contentType: "application/json",
+      headers: {
+        apikey: SUPABASE_SERVICE_KEY,
+        Authorization: "Bearer " + SUPABASE_SERVICE_KEY,
+      },
+      payload: JSON.stringify({ old_name: oldName, new_name: newName }),
+      muteHttpExceptions: true,
+    });
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      var text = res.getContentText();
+      Logger.log("_renameProductRpc_ HTTP " + code + ": " + text);
+      return { ok: false, text: text };
+    }
+    return { ok: true, text: "" };
+  } catch (e) {
+    Logger.log("_renameProductRpc_ failed: " + e.message);
+    return { ok: false, text: e.message };
+  }
+}
+
 // ── Supabase-primary tables (config, stock_branch, shipments, tournament_*,
 // wakagym_events, player_stats — migrated one at a time). These tables read
 // and write Supabase directly instead of the Sheet; mirrorToReportSheet_
@@ -357,6 +387,7 @@ var SUPABASE_WAKAGYM_REG_HEADER = [
 var SUPABASE_CATALOG_HEADER = [
   "name", "category", "slug", "cost_box", "cost_p", "price_box", "price_pack",
   "qty_box", "qty_pack", "limit_box", "limit_pack", "active", "image_url", "barcode", "notice",
+  "id",
 ];
 var SUPABASE_CONFIG_HEADER = ["key", "value"];
 var SUPABASE_STOCK_BRANCH_HEADER = ["name", "category", "branch", "qty_box", "qty_pack"];
@@ -3386,8 +3417,16 @@ function handleAddProduct(data) {
 
     var limBox = (data.limit_box === "" || data.limit_box === undefined || data.limit_box === null) ? null : Number(data.limit_box);
     var limPack = (data.limit_pack === "" || data.limit_pack === undefined || data.limit_pack === null) ? null : Number(data.limit_pack);
+
+    // Next sequential product code (P0001, P0002, ...). The id=not.is.null
+    // filter matters — Postgres sorts NULL first on DESC, so without it this
+    // would misread as "no ids yet" during the one-time backfill window.
+    var idRows = supabaseSelect_("catalog", "select=id&id=not.is.null&order=id.desc&limit=1");
+    var lastN = (idRows[0] && /^P(\d+)$/.test(idRows[0].id)) ? parseInt(idRows[0].id.slice(1), 10) : 0;
+    var newId = "P" + String(lastN + 1).padStart(4, "0");
+
     var newRow = {
-      name: data.name, category: data.category || "", slug: "",
+      name: data.name, id: newId, category: data.category || "", slug: "",
       cost_box: Number(data.cost_box) || 0, cost_p: Number(data.cost_pack) || 0,
       price_box: Number(data.price_box) || 0, price_pack: Number(data.price_pack) || 0,
       qty_box: Number(data.initial_box) || 0, qty_pack: Number(data.initial_pack) || 0,
@@ -3409,6 +3448,16 @@ function handleUpdateProduct(data) {
   try {
     var row = getSupabaseRow_("catalog", "name", data.name);
     if (!row) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบสินค้า: " + data.name }))); }
+
+    var newName = String(data.new_name || "").trim();
+    if (newName && newName !== data.name) {
+      var dup = getSupabaseRow_("catalog", "name", newName);
+      if (dup) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "มีสินค้าชื่อนี้อยู่แล้ว" }))); }
+      var renameRes = _renameProductRpc_(data.name, newName);
+      if (!renameRes.ok) { lock.releaseLock(); throw new Error("เปลี่ยนชื่อสินค้าไม่สำเร็จ: " + renameRes.text); }
+      row.name = newName;
+    }
+
     if (data.category !== undefined) row.category = data.category;
     if (data.cost_box !== undefined) row.cost_box = Number(data.cost_box) || 0;
     if (data.cost_pack !== undefined) row.cost_p = Number(data.cost_pack) || 0;

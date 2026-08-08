@@ -95,7 +95,7 @@ def load_catalog() -> pd.DataFrame:
     # values becomes NaN, which is truthy in Python — `x.get(col) or ""`
     # then keeps the NaN and renders it as the literal text "nan" in form
     # fields (category/barcode/image_url/notice are all nullable columns).
-    text_cols = [c for c in ["category", "slug", "active", "image_url", "barcode", "notice"] if c in df.columns]
+    text_cols = [c for c in ["category", "slug", "active", "image_url", "barcode", "notice", "id"] if c in df.columns]
     df[text_cols] = df[text_cols].fillna("")
     return df
 
@@ -318,6 +318,7 @@ with tab_central:
         STATUS_ON, STATUS_OFF = "🟢 เปิดขาย", "🔴 ปิดการขาย"
 
         show = catalog_show[["name", "category", "qty_box", "qty_pack", "limit_box", "limit_pack", "active"]].copy()
+        show["id"] = catalog_show["id"] if "id" in catalog_show.columns else ""
         show["active"] = show["active"].apply(lambda v: str(v or "").strip().upper() != "FALSE")
         show["สถานะ"] = show["active"].apply(lambda a: STATUS_ON if a else STATUS_OFF)
 
@@ -331,16 +332,16 @@ with tab_central:
 
         show["แจ้งเตือน"] = show.apply(_low_stock, axis=1)
         show = show.rename(columns={
-            "name": "สินค้า", "category": "หมวดหมู่", "qty_box": "กล่อง", "qty_pack": "ซอง",
+            "id": "รหัสสินค้า", "name": "สินค้า", "category": "หมวดหมู่", "qty_box": "กล่อง", "qty_pack": "ซอง",
             "limit_box": "ขั้นต่ำ (กล่อง)", "limit_pack": "ขั้นต่ำ (ซอง)",
         })
-        show = show[["สถานะ", "สินค้า", "หมวดหมู่", "กล่อง", "ซอง", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "แจ้งเตือน"]]
+        show = show[["สถานะ", "รหัสสินค้า", "สินค้า", "หมวดหมู่", "กล่อง", "ซอง", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "แจ้งเตือน"]]
 
         edited = st.data_editor(
             show,
             use_container_width=True,
             hide_index=True,
-            disabled=["สินค้า", "หมวดหมู่", "กล่อง", "ซอง", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "แจ้งเตือน"],
+            disabled=["รหัสสินค้า", "สินค้า", "หมวดหมู่", "กล่อง", "ซอง", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "แจ้งเตือน"],
             column_config={"สถานะ": st.column_config.SelectboxColumn("สถานะ", options=[STATUS_ON, STATUS_OFF], required=True)},
             key=f"catalog_editor_{cat_sel}",
         )
@@ -363,7 +364,10 @@ with tab_central:
                 n = pd.to_numeric(v, errors="coerce")
                 return float(n) if pd.notna(n) else default
 
+            st.caption(f"รหัสสินค้า: {edit_row.get('id') or '—'}")
+
             with st.form(f"edit_product_form_{edit_sel}"):
+                e_name = st.text_input("ชื่อสินค้า", value=edit_sel)
                 e1, e2 = st.columns(2)
                 e_category = e1.text_input("หมวดหมู่", value=str(edit_row.get("category") or ""))
                 # Supabase stores active as the string "TRUE"/"FALSE", not a real bool —
@@ -385,7 +389,7 @@ with tab_central:
                 submitted_e = st.form_submit_button("บันทึกการแก้ไข")
                 if submitted_e:
                     try:
-                        gas_post({
+                        payload = {
                             "_action": "updateProduct", "name": edit_sel,
                             "category": e_category.strip(), "active": e_active,
                             "cost_box": e_cost_box, "cost_pack": e_cost_pack,
@@ -393,7 +397,13 @@ with tab_central:
                             "limit_box": e_limit_box, "limit_pack": e_limit_pack,
                             "barcode": e_barcode.strip(), "image_url": e_image_url.strip(),
                             "notice": e_notice.strip(),
-                        })
+                        }
+                        # Only send new_name when it actually changed — sending it
+                        # unconditionally would trigger the rename path (which
+                        # touches stock_branch too) on every no-op edit.
+                        if e_name.strip() and e_name.strip() != edit_sel:
+                            payload["new_name"] = e_name.strip()
+                        gas_post(payload)
                         st.success(f"แก้ไข \"{edit_sel}\" แล้ว")
                         st.cache_data.clear()
                         st.rerun()

@@ -75,6 +75,12 @@ create table if not exists config (
   value                text
 );
 
+-- `id` (added via the migration at the bottom of this file, 2026-08) is a
+-- stable opaque product code (P0001, P0002, ...) — distinct from `slug`
+-- (URL-slug, unused, always "") and `barcode` (physical scanning). `name`
+-- stays the Postgres primary key (nothing else in this schema has a real FK
+-- constraint pointing at it), but `id` lets a product be safely renamed via
+-- the rename_product() function below without losing branch stock history.
 create table if not exists catalog (
   name                 text primary key,
   category             text,
@@ -231,3 +237,33 @@ grant select, insert, update, delete on public.tournament_categories to service_
 grant select, insert, update, delete on public.withdrawals to service_role;
 grant select, insert, update, delete on public.walkin_sales to service_role;
 grant usage, select on all sequences in schema public to service_role;
+
+-- ── Migration (2026-08): stable product id, safe rename ────────────────────
+-- Run in the Supabase SQL editor, in this exact order:
+--
+-- Step 1 — additive, non-blocking, nothing reads this column yet.
+-- alter table catalog add column if not exists id text unique;
+--
+-- Step 2 — atomic two-table rename (catalog + stock_branch in one
+-- transaction) — avoids any partial-failure window between updating the two
+-- tables separately.
+-- create or replace function rename_product(old_name text, new_name text)
+-- returns void
+-- language plpgsql
+-- security definer
+-- as $$
+-- begin
+--   update catalog set name = new_name where name = old_name;
+--   if not found then
+--     raise exception 'product not found: %', old_name;
+--   end if;
+--   update stock_branch set name = new_name where name = old_name;
+-- end;
+-- $$;
+--
+-- grant execute on function rename_product(text, text) to service_role;
+--
+-- Step 3 — run ONLY after tools/backfill_product_ids.py reports every row
+-- backfilled, i.e. after: select count(*) from catalog where id is null;
+-- returns 0.
+-- alter table catalog alter column id set not null;
