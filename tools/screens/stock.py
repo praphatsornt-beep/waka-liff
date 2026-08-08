@@ -355,9 +355,13 @@ with tab_central:
                     "หมวดหมู่", _e_cat_opts, index=_e_cat_opts.index(_e_cur_cat),
                     format_func=lambda c: c or "(ไม่ระบุ)",
                 )
+                e_slug = e2.text_input(
+                    "Slug (สำหรับลิงก์สั่งของโดยตรง)", value=str(edit_row.get("slug") or ""),
+                    help="ใช้สร้างลิงก์สั่งของตรงจากหน้า order-links.html เช่น ใส่ bt11 ไว้ว่างได้",
+                )
                 # Supabase stores active as the string "TRUE"/"FALSE", not a real bool —
                 # bool("FALSE") is truthy in Python, so compare the string explicitly.
-                e_active = e2.checkbox("เปิดขาย (ไม่ติ๊ก = ปิดการขาย/หมด)", value=str(edit_row.get("active") or "").strip().upper() != "FALSE")
+                e_active = st.checkbox("เปิดขาย (ไม่ติ๊ก = ปิดการขาย/หมด)", value=str(edit_row.get("active") or "").strip().upper() != "FALSE")
                 e3, e4 = st.columns(2)
                 # Supabase's catalog table names the pack-cost column cost_p, not cost_pack
                 e_cost_box = e3.number_input("ต้นทุน/กล่อง", min_value=0.0, value=_num(edit_row.get("cost_box")), step=1.0)
@@ -369,10 +373,6 @@ with tab_central:
                 e_limit_box = e7.number_input("ขั้นต่ำแจ้งเตือน (กล่อง)", min_value=0.0, value=_num(edit_row.get("limit_box")), step=1.0)
                 e_limit_pack = e8.number_input("ขั้นต่ำแจ้งเตือน (ซอง)", min_value=0.0, value=_num(edit_row.get("limit_pack")), step=1.0)
                 e_barcode = st.text_input("บาร์โค้ด", value=str(edit_row.get("barcode") or ""))
-                e_slug = st.text_input(
-                    "Slug (สำหรับลิงก์สั่งของโดยตรง)", value=str(edit_row.get("slug") or ""),
-                    help="ใช้สร้างลิงก์สั่งของตรงจากหน้า order-links.html เช่น ใส่ bt11 ไว้ว่างได้",
-                )
                 e_image_url = st.text_input("ลิงก์รูปภาพ", value=str(edit_row.get("image_url") or ""))
                 e_notice = st.text_area("ข้อความแจ้งเตือนในสินค้า (notice)", value=str(edit_row.get("notice") or ""))
                 submitted_e = st.form_submit_button("บันทึกการแก้ไข")
@@ -530,7 +530,9 @@ with tab_walkin:
                 with c1:
                     total_val = pd.to_numeric(r.get("total"), errors="coerce") or 0
                     st.markdown(f"**฿{total_val:,.0f}** — 🏬 {r.get('branch', '')} · {r.get('timestamp', '')}")
-                    st.caption(f"{summary or '—'} · {pay_label}")
+                    staff_name = r.get("staff_name") or ""
+                    staff_line = f" · 👤 {staff_name}" if staff_name else ""
+                    st.caption(f"{summary or '—'} · {pay_label}{staff_line}")
                 with c2:
                     st.caption(r.get("sale_id", ""))
 
@@ -558,9 +560,13 @@ with tab_new_product:
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
     with st.form("add_product_form_tab"):
+        new_name = st.text_input("ชื่อสินค้า")
         p1, p2 = st.columns(2)
-        new_name = p1.text_input("ชื่อสินค้า")
-        new_category = p2.selectbox("หมวดหมู่", [""] + ALL_CATEGORIES, format_func=lambda c: c or "(ไม่ระบุ)")
+        new_category = p1.selectbox("หมวดหมู่", [""] + ALL_CATEGORIES, format_func=lambda c: c or "(ไม่ระบุ)")
+        new_slug = p2.text_input(
+            "Slug (สำหรับลิงก์สั่งของโดยตรง, ถ้ามี)",
+            help="ใช้สร้างลิงก์สั่งของตรงจากหน้า order-links.html เช่น ใส่ bt11 เว้นว่างได้",
+        )
         p3, p4 = st.columns(2)
         new_cost_box = p3.number_input("ต้นทุน/กล่อง", min_value=0.0, value=0.0, step=1.0)
         new_cost_pack = p4.number_input("ต้นทุน/ซอง", min_value=0.0, value=0.0, step=1.0)
@@ -574,10 +580,6 @@ with tab_new_product:
         new_limit_box = p9.number_input("ขั้นต่ำแจ้งเตือน (กล่อง)", min_value=0, value=0, step=1)
         new_limit_pack = p10.number_input("ขั้นต่ำแจ้งเตือน (ซอง)", min_value=0, value=0, step=1)
         new_barcode = st.text_input("บาร์โค้ด (ถ้ามี)")
-        new_slug = st.text_input(
-            "Slug (สำหรับลิงก์สั่งของโดยตรง, ถ้ามี)",
-            help="ใช้สร้างลิงก์สั่งของตรงจากหน้า order-links.html เช่น ใส่ bt11 เว้นว่างได้",
-        )
         new_image_url = st.text_input("ลิงก์รูปภาพ", value=uploaded_url, help="อัปโหลดรูปด้านบนแล้วลิงก์จะเติมให้อัตโนมัติ หรือวางลิงก์เองก็ได้")
         submitted_p = st.form_submit_button("เพิ่มสินค้า")
         if submitted_p:

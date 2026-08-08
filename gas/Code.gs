@@ -391,7 +391,7 @@ var SUPABASE_PLAYER_STATS_HEADER = [
 var SUPABASE_SHIPMENTS_HEADER = ["shipment_id", "timestamp", "to_branch", "status", "items_json", "received_at"];
 var SUPABASE_WITHDRAWALS_HEADER = ["timestamp", "branch", "name", "type", "qty", "reason"];
 var SUPABASE_STOCK_RETURNS_HEADER = ["timestamp", "branch", "name", "qty_box", "qty_pack"];
-var SUPABASE_WALKIN_SALES_HEADER = ["sale_id", "timestamp", "branch", "items_json", "total", "payment_method", "bank"];
+var SUPABASE_WALKIN_SALES_HEADER = ["sale_id", "timestamp", "branch", "items_json", "total", "payment_method", "bank", "staff_name"];
 
 const TAB_ORDERS  = "orders";
 const TAB_CONFIG  = "_config";
@@ -3608,10 +3608,12 @@ function handleWalkinSale(data) {
 
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
     var saleId = _genWalkinSaleId();
+    var staffName = String(data.staff_name || "").trim();
     var saleObj = {
       sale_id: saleId, timestamp: now, branch: branch,
       items_json: items.map(function(it) { return { name: it.name, type: it.type, qty: Number(it.qty) || 0, price: Number(it.price) || 0 }; }),
       total: total, payment_method: data.payment_method || "cash", bank: data.bank || null,
+      staff_name: staffName || null,
     };
     var saleRes = pushToSupabase_("walkin_sales", saleObj);
     if (!saleRes.ok) throw new Error("Supabase walkin_sales write failed: " + saleRes.text);
@@ -3620,7 +3622,6 @@ function handleWalkinSale(data) {
     lock.releaseLock();
     pendingMirrors.forEach(function(m) { mirrorToReportSheet_(m.table, m.header, m.keyCol, m.obj); });
 
-    var staffName = String(data.staff_name || "").trim();
     var groupStaffWalkin = _getConfigValue(null, "group_staff");
     if (groupStaffWalkin && staffName) {
       var payLabel = saleObj.payment_method === "cash" ? "💵 เงินสด" : ("📱 โอน" + (saleObj.bank ? " " + saleObj.bank : ""));

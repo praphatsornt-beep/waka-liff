@@ -438,7 +438,7 @@ home_pg = st.Page(home, title="หน้าแรก", icon="🏠", url_path="",
 orders_pg = st.Page("screens/orders.py", title="ออเดอร์", icon="🛒", url_path="orders")
 tournament_pg = st.Page("screens/tournament.py", title="ทัวร์นาเมนต์", icon="🏆", url_path="tournament")
 wakagym_pg = st.Page("screens/wakagym.py", title="WAKA GYM", icon="🏋️", url_path="wakagym")
-stock_pg = st.Page("screens/stock.py", title="สต็อก", icon="📦", url_path="stock")
+stock_pg = st.Page("screens/stock.py", title="สต็อกและสินค้า", icon="📦", url_path="stock")
 report_pg = st.Page("screens/report.py", title="รายงาน", icon="📊", url_path="report")
 settings_pg = st.Page("screens/settings.py", title="ตั้งค่า", icon="⚙️", url_path="settings")
 

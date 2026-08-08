@@ -199,7 +199,8 @@ create table if not exists walkin_sales (
   items_json           jsonb,
   total                numeric,
   payment_method       text,
-  bank                 text
+  bank                 text,
+  staff_name           text
 );
 
 -- RLS on, no policies: only the service_role key (server-side only) can
@@ -267,3 +268,8 @@ grant usage, select on all sequences in schema public to service_role;
 -- backfilled, i.e. after: select count(*) from catalog where id is null;
 -- returns 0.
 -- alter table catalog alter column id set not null;
+
+-- ── Migration (2026-08): walk-in sale staff name ────────────────────────────
+-- Run in the Supabase SQL editor. Additive, nullable — no backfill needed,
+-- historical sales made before this column existed just show blank staff.
+-- alter table walkin_sales add column if not exists staff_name text;
