@@ -59,23 +59,11 @@ def load_config() -> dict:
     return {r["key"]: (r.get("value") or "") for r in rows}
 
 
-@st.cache_data(ttl=30)
-def load_categories() -> list:
-    rows = get_supabase().table("catalog").select("category").execute().data
-    seen = []
-    for r in rows:
-        c = (r.get("category") or "").strip()
-        if c and c not in seen:
-            seen.append(c)
-    return seen
-
-
 # ── Page ──────────────────────────────────────────────────────────────────────
 apply_theme()
-page_header("ตั้งค่า", "ข้อมูลธนาคาร PIN พนักงาน และคำอธิบายหมวดหมู่สินค้า")
+page_header("ตั้งค่า", "ข้อมูลธนาคาร PIN พนักงาน")
 
 cfg = load_config()
-categories = load_categories()
 
 with st.form("bank_settings_form"):
     st.subheader("ข้อมูลธนาคาร & ค่าจัดส่ง")
@@ -121,27 +109,11 @@ with st.form("pin_settings_form"):
 
 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-if categories:
-    with st.form("category_desc_form"):
-        st.subheader("คำอธิบายหมวดหมู่สินค้า")
-        desc_inputs = {}
-        for cat in categories:
-            desc_inputs[cat] = st.text_area(cat, value=cfg.get(f"category_desc_{cat}", ""), height=80)
-        if st.form_submit_button("บันทึกคำอธิบาย"):
-            try:
-                set_config({f"category_desc_{c}": v.strip() for c, v in desc_inputs.items()})
-                st.success("บันทึกแล้ว")
-                st.rerun()
-            except Exception as e:
-                st.error(f"บันทึกไม่ได้: {e}")
-
-st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
 with st.expander("ตั้งค่าขั้นสูง"):
     covered = {"bank_name", "bank_account", "bank_account_name", "bank_account_name_en", "delivery_fee", "admin_pin"}
     covered |= {f"staff_pin_{b}" for b in BRANCHES}
-    covered |= {f"category_desc_{c}" for c in categories}
-    other_keys = sorted(k for k in cfg if k not in covered)
+    # หมวดหมู่สินค้า (category_desc_*) จัดการที่หน้าสต็อก → แท็บ "หมวดหมู่สินค้า" แทน
+    other_keys = sorted(k for k in cfg if k not in covered and not k.startswith("category_desc_"))
 
     if other_keys:
         st.caption("คีย์เหล่านี้บางตัวถูกตั้งค่าอัตโนมัติผ่านบอท LINE (group_staff, finance_line_id) — แก้ที่นี่ได้แต่ปกติไม่ต้องยุ่ง")

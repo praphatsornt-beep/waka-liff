@@ -101,6 +101,12 @@ def load_catalog() -> pd.DataFrame:
 
 
 @st.cache_data(ttl=30)
+def load_config() -> dict:
+    rows = get_supabase().table("config").select("key,value").execute().data
+    return {r["key"]: (r.get("value") or "") for r in rows}
+
+
+@st.cache_data(ttl=30)
 def load_stock_branch() -> pd.DataFrame:
     rows = get_supabase().table("stock_branch").select("*").execute().data
     return pd.DataFrame(rows)
@@ -215,8 +221,8 @@ with k4:
 
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
-tab_central, tab_branch, tab_history, tab_new_product = st.tabs(
-    ["คลังกลาง", "สต็อกสาขา", "ประวัติการโอน", "🆕 เพิ่มสินค้าใหม่"]
+tab_central, tab_branch, tab_history, tab_new_product, tab_categories = st.tabs(
+    ["คลังกลาง", "สต็อกสาขา", "ประวัติการโอน", "🆕 เพิ่มสินค้าใหม่", "🏷️ หมวดหมู่สินค้า"]
 )
 
 with tab_central:
@@ -582,3 +588,75 @@ with tab_new_product:
                     st.rerun()
                 except Exception as e:
                     st.error(f"เพิ่มสินค้าไม่ได้: {e}")
+
+with tab_categories:
+    CAT_DESC_PREFIX = "category_desc_"
+    cat_cfg = load_config()
+    desc_map = {k[len(CAT_DESC_PREFIX):]: v for k, v in cat_cfg.items() if k.startswith(CAT_DESC_PREFIX)}
+    product_cats = sorted(set(catalog["category"].dropna().tolist())) if not catalog.empty else []
+    product_cats = [c for c in product_cats if c]
+    all_cats = sorted(set(product_cats) | set(desc_map.keys()))
+    counts = catalog["category"].value_counts().to_dict() if not catalog.empty else {}
+
+    if not all_cats:
+        st.caption("ยังไม่มีหมวดหมู่สินค้า")
+    else:
+        cat_table = pd.DataFrame([
+            {"หมวดหมู่": c, "จำนวนสินค้า": int(counts.get(c, 0)), "คำอธิบาย": desc_map.get(c, "")}
+            for c in all_cats
+        ])
+        st.dataframe(cat_table, use_container_width=True, hide_index=True)
+
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+    with st.expander("➕ เพิ่มหมวดหมู่ใหม่"):
+        with st.form("add_category_form", clear_on_submit=True):
+            new_cat_name = st.text_input("ชื่อหมวดหมู่")
+            new_cat_desc = st.text_area("คำอธิบาย", height=80)
+            if st.form_submit_button("เพิ่มหมวดหมู่"):
+                if not new_cat_name.strip():
+                    st.warning("กรอกชื่อหมวดหมู่ก่อน")
+                elif new_cat_name.strip() in all_cats:
+                    st.error("มีหมวดหมู่นี้อยู่แล้ว")
+                else:
+                    try:
+                        get_supabase().table("config").upsert({
+                            "key": f"{CAT_DESC_PREFIX}{new_cat_name.strip()}", "value": new_cat_desc.strip(),
+                        }).execute()
+                        st.success(f'เพิ่มหมวดหมู่ "{new_cat_name}" แล้ว')
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"เพิ่มไม่ได้: {e}")
+
+    with st.expander("✏️ แก้ไข / เปลี่ยนชื่อหมวดหมู่"):
+        if not all_cats:
+            st.caption("ยังไม่มีหมวดหมู่ให้แก้ไข")
+        else:
+            edit_cat_sel = st.selectbox("เลือกหมวดหมู่ที่จะแก้ไข", all_cats, key="edit_cat_sel")
+            with st.form(f"edit_category_form_{edit_cat_sel}"):
+                edit_cat_name = st.text_input("ชื่อหมวดหมู่", value=edit_cat_sel)
+                edit_cat_desc = st.text_area("คำอธิบาย", value=desc_map.get(edit_cat_sel, ""), height=80)
+                if st.form_submit_button("บันทึก"):
+                    new_name = edit_cat_name.strip()
+                    if not new_name:
+                        st.warning("ชื่อหมวดหมู่ห้ามว่าง")
+                    else:
+                        try:
+                            if new_name != edit_cat_sel:
+                                # เปลี่ยนหมวดหมู่ของสินค้าทุกชิ้นที่อยู่หมวดเดิม
+                                get_supabase().table("catalog").update(
+                                    {"category": new_name}
+                                ).eq("category", edit_cat_sel).execute()
+                                # ย้ายคำอธิบายเดิมไปคีย์ใหม่แล้วลบคีย์เก่า
+                                get_supabase().table("config").delete().eq(
+                                    "key", f"{CAT_DESC_PREFIX}{edit_cat_sel}"
+                                ).execute()
+                            get_supabase().table("config").upsert({
+                                "key": f"{CAT_DESC_PREFIX}{new_name}", "value": edit_cat_desc.strip(),
+                            }).execute()
+                            st.success("บันทึกแล้ว")
+                            st.cache_data.clear()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"บันทึกไม่ได้: {e}")
