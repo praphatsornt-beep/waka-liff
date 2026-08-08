@@ -1,5 +1,11 @@
 # Setup Google Authentication
 
+> **สถานะ 2026-08: ไม่มีโค้ดจุดไหนในโปรเจกต์ใช้ `credentials.json`/`token.json` แล้ว** —
+> ทุกหน้า Streamlit (`orders.py`, `stock.py`, `wakagym.py`) ย้ายไปอ่าน Supabase ตรงผ่าน
+> `service_role` key (คนละกลไกกับ OAuth flow นี้) หมดแล้ว เก็บ workflow นี้ไว้เผื่อมีสคริปต์
+> ใหม่ในอนาคตที่ต้องกลับไปพึ่ง Google Sheets/Drive โดยตรงอีกครั้ง — ไม่ต้องทำตามขั้นตอนนี้
+> สำหรับใช้งานระบบปกติ
+
 ## Objective
 ได้ไฟล์ `credentials.json` สำหรับให้ Python scripts เข้าถึง Google Sheets และ Google Drive
 
@@ -61,8 +67,8 @@ uv run tools/refresh_token.py
 
 จะเปิดเบราว์เซอร์ให้ล็อกอิน Google → อนุญาต → ระบบจะสร้าง `token.json` ให้อัตโนมัติ
 
-`token.json` นี้ใช้โดย Streamlit (`tools/screens/orders.py`, `stock.py`, `wakagym.py`) สำหรับตาราง
-ที่ยังไม่ได้ย้ายไป Supabase (`shipments`, `stock_returns`, `player_stats`, `withdrawals`)
+`token.json` ไม่ถูกใช้โดยโค้ดจุดไหนในโปรเจกต์แล้ว (ดูหมายเหตุด้านบน) — ขั้นตอนนี้มีไว้เผื่อ
+สร้าง token สำหรับสคริปต์ one-off ในอนาคตที่ต้องเข้าถึง Sheets/Drive โดยตรง
 
 **ครั้งต่อไปไม่ต้องล็อกอินใหม่** (token มีอายุ และ refresh อัตโนมัติ)
 

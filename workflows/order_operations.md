@@ -368,15 +368,11 @@ git add . && git commit -m "..." && git push origin main
 
 ### Streamlit — auto deploy
 ```
-git add tools/pages/orders.py && git commit -m "..." && git push origin master
+git add tools/screens/orders.py && git commit -m "..." && git push origin master
 → Streamlit Cloud deploy อัตโนมัติ
 ```
 
-### Google OAuth Token หมดอายุ
-```
-cd "waka tournament"
-python tools/refresh_token.py
-→ เปิดเบราว์เซอร์ login Google
-→ อัปเดต GOOGLE_TOKEN ใน Streamlit Secrets
-```
-ป้องกัน: Google Cloud Console → OAuth consent → Audience → Publishing status ต้องเป็น "In production"
+### Google OAuth Token หมดอายุ — ไม่ใช้แล้ว (2026-08)
+`tools/refresh_token.py`/`credentials.json`/`token.json`/`GOOGLE_TOKEN` ไม่มีโค้ดจุดไหนใช้แล้ว —
+ทุกหน้าใน Streamlit อ่าน Supabase ตรงผ่าน `service_role` key ทั้งหมด ไม่ต้องทำขั้นตอนนี้อีก
+เว้นแต่จะมีสคริปต์ใหม่ที่กลับไปพึ่ง Sheets โดยตรง (ดู `TODO.md`)

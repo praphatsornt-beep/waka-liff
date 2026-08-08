@@ -20,46 +20,12 @@ from theme import (
     TEXT2, DANGER_TEXT,
 )
 
-try:
-    import gspread
-    from google.oauth2.service_account import Credentials
-except ImportError as e:
-    st.error(f"ติดตั้ง packages ก่อน: `pip install -r requirements.txt`\n\n{e}")
-    st.stop()
-
-SCOPES   = ["https://www.googleapis.com/auth/spreadsheets"]
-SA_PATH  = Path("service_account.json")
-SHEET_ID = "1aUHbSt3qlQ4uMIzlCGbF-iFm0AqSeqx12nxk5ny1JoY"
 GAS_URL  = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
 WAKA_S   = "wk26xK9mPqRt"  # shared secret doPost/doGet require via ?_s= (same value as tournament.py's WAKA_S)
 ADMIN_CODE = "waka99"  # withdrawStock now also requires this to prove branch ownership, same as
                         # liff/app.html's admin bypass — Streamlit is an admin-only tool
 
 BRANCHES = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์"]
-
-
-# ── Auth — shipment history isn't dual-written to Supabase, read the Sheet directly ──
-def _build_creds():
-    try:
-        if "GOOGLE_SERVICE_ACCOUNT" in st.secrets:
-            info = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
-            return Credentials.from_service_account_info(info, scopes=SCOPES)
-    except Exception:
-        pass
-    return Credentials.from_service_account_file(str(SA_PATH), scopes=SCOPES)
-
-_gc_client = None
-
-def get_gc():
-    global _gc_client
-    if _gc_client is not None:
-        try:
-            _gc_client.open_by_key(SHEET_ID)
-            return _gc_client
-        except Exception:
-            _gc_client = None
-    _gc_client = gspread.authorize(_build_creds())
-    return _gc_client
 
 
 @st.cache_resource
@@ -114,15 +80,8 @@ def load_stock_branch() -> pd.DataFrame:
 
 @st.cache_data(ttl=60)
 def load_shipments() -> pd.DataFrame:
-    try:
-        ws = get_gc().open_by_key(SHEET_ID).worksheet("shipments")
-        rows = ws.get_all_values()
-        if len(rows) < 2:
-            return pd.DataFrame()
-        df = pd.DataFrame(rows[1:], columns=rows[0])
-        return df.iloc[::-1].reset_index(drop=True)  # newest first
-    except Exception:
-        return pd.DataFrame()
+    rows = get_supabase().table("shipments").select("*").order("timestamp", desc=True).execute().data
+    return pd.DataFrame(rows)
 
 
 NOT_YET_SHIPPED = {"กำลังจัดส่งไปสาขา", "พร้อมรับ", "สาขายืนยัน", "รับแล้ว", "จัดส่งแล้ว"}
@@ -331,6 +290,7 @@ with tab_central:
 
         show = catalog_show[["name", "category", "qty_box", "qty_pack", "limit_box", "limit_pack", "active"]].copy()
         show["id"] = catalog_show["id"] if "id" in catalog_show.columns else ""
+        show["slug"] = catalog_show["slug"] if "slug" in catalog_show.columns else ""
         show["active"] = show["active"].apply(lambda v: str(v or "").strip().upper() != "FALSE")
         show["สถานะ"] = show["active"].apply(lambda a: STATUS_ON if a else STATUS_OFF)
 
@@ -344,16 +304,16 @@ with tab_central:
 
         show["แจ้งเตือน"] = show.apply(_low_stock, axis=1)
         show = show.rename(columns={
-            "id": "รหัสสินค้า", "name": "สินค้า", "category": "หมวดหมู่", "qty_box": "กล่อง", "qty_pack": "ซอง",
+            "id": "รหัสสินค้า", "name": "สินค้า", "slug": "Slug", "category": "หมวดหมู่", "qty_box": "กล่อง", "qty_pack": "ซอง",
             "limit_box": "ขั้นต่ำ (กล่อง)", "limit_pack": "ขั้นต่ำ (ซอง)",
         })
-        show = show[["สถานะ", "รหัสสินค้า", "สินค้า", "หมวดหมู่", "กล่อง", "ซอง", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "แจ้งเตือน"]]
+        show = show[["สถานะ", "รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "กล่อง", "ซอง", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "แจ้งเตือน"]]
 
         edited = st.data_editor(
             show,
             use_container_width=True,
             hide_index=True,
-            disabled=["รหัสสินค้า", "สินค้า", "หมวดหมู่", "กล่อง", "ซอง", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "แจ้งเตือน"],
+            disabled=["รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "กล่อง", "ซอง", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "แจ้งเตือน"],
             column_config={"สถานะ": st.column_config.SelectboxColumn("สถานะ", options=[STATUS_ON, STATUS_OFF], required=True)},
             key=f"catalog_editor_{cat_sel}",
         )

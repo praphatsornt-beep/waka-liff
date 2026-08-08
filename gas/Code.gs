@@ -640,8 +640,6 @@ function doPost(e) {
       return _cors(ContentService.createTextOutput(JSON.stringify({ success: false, error: "unknown action or empty order" })));
     }
 
-    var ss = SpreadsheetApp.openById(SHEET_ID);
-
     var slipStatus = "ไม่มีสลิป";
     var slipNote   = "ลูกค้าไม่ได้แนบสลิป";
     var slipUrl    = "";
@@ -667,7 +665,7 @@ function doPost(e) {
       } else if (!isSlipOK && verify.suspicious) {
         slipStatus = "สงสัยปลอม";
         slipNote   = "Claude: " + (verify.suspicious_reason || "สลิปมีลักษณะผิดปกติ");
-      } else if (slipTxnId && isDuplicateSlip(ss, slipTxnId)) {
+      } else if (slipTxnId && isDuplicateSlip(slipTxnId)) {
         slipStatus = "สลิปซ้ำ";
         slipNote   = "เลขอ้างอิง " + slipTxnId + " เคยใช้แล้ว";
       } else if (Number(verify.amount) < Number(data.total)) {
@@ -678,10 +676,9 @@ function doPost(e) {
         slipStatus = "ยืนยัน";
         slipNote   = "SlipOK (QR verified): ยอดตรง " + verify.amount + " บาท, " + (verify.bank || "") + " " + (verify.date || "") + " " + (verify.to_name || "");
       } else {
-        var cfgWs2 = ss.getSheetByName(TAB_CONFIG);
-        var shopAcct = _getConfigValue(cfgWs2, "bank_account") || "";
-        var shopNameTh = _getConfigValue(cfgWs2, "bank_account_name") || "";
-        var shopNameEn = _getConfigValue(cfgWs2, "bank_account_name_en") || "";
+        var shopAcct = _getConfigValue(null, "bank_account") || "";
+        var shopNameTh = _getConfigValue(null, "bank_account_name") || "";
+        var shopNameEn = _getConfigValue(null, "bank_account_name_en") || "";
         var shopNames = [];
         shopNameTh.split("|").forEach(function(n) { n = n.trim(); if (n) shopNames.push(n.toLowerCase()); });
         shopNameEn.split("|").forEach(function(n) { n = n.trim(); if (n) shopNames.push(n.toLowerCase()); });
@@ -811,8 +808,7 @@ function doPost(e) {
 
     // LINE push หลัง release lock — ไม่ block order ถัดไป
     try {
-      var cfgWs   = ss.getSheetByName(TAB_CONFIG);
-      var financeId = _getConfigValue(cfgWs, "finance_line_id");
+      var financeId = _getConfigValue(null, "finance_line_id");
       var streamlitUrl = "https://waka-tournament-e6wsqmhuhhexratyiub65f.streamlit.app/orders";
       if (financeId) {
         var itemsSummary = (data.items || []).map(function(i) {
@@ -1179,7 +1175,6 @@ function handleWakagymRegister(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
-    var ss = SpreadsheetApp.openById(SHEET_ID);
     var groupId = _genWakagymRegId();
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
     var today = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
@@ -1261,8 +1256,7 @@ function handleWakagymRegister(data) {
     lock.releaseLock();
     pendingMirrors.forEach(function(m) { mirrorToReportSheet_(m.table, m.header, m.keyCol, m.obj); });
 
-    var cfgWs = ss.getSheetByName(TAB_CONFIG);
-    var groupStaff = _getConfigValue(cfgWs, "group_staff");
+    var groupStaff = _getConfigValue(null, "group_staff");
     if (groupStaff) {
       var bankName = data.bank || "";
       var payText = payMethod === "cash" ? "💵 เงินสด" : "📱 " + (bankName || "โอนเงิน");
@@ -1277,7 +1271,7 @@ function handleWakagymRegister(data) {
     }
 
     if (payMethod !== "cash") {
-      var finId = _getConfigValue(cfgWs, "finance_line_id");
+      var finId = _getConfigValue(null, "finance_line_id");
       if (finId) {
         var finBankName = data.bank || "โอนเงิน";
         var finMsg = "🏆 แข่ง WAKA GYM\n📱 โอนเข้า " + finBankName + " " + totalAmount + "฿";
@@ -1318,7 +1312,6 @@ function handleTournamentRegister(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
-    var ss = SpreadsheetApp.openById(SHEET_ID);
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
 
     var eventId = String(data.eventId || "").trim();
@@ -1381,7 +1374,6 @@ function handleTournamentRegister(data) {
     writeSupabaseRow_("tournament_registrations", newRegObj, SUPABASE_TOURNAMENT_REG_HEADER, "reg_id", lock);
 
     var statusUrl = "https://waka-liff.vercel.app/treg_status.html?id=" + encodeURIComponent(regId);
-    var cfgWs = ss.getSheetByName(TAB_CONFIG);
 
     if (data.lineUserId && data.lineUserId !== "dev_user") {
       var custMsg = "🏆 ลงทะเบียนสำเร็จ!\n"
@@ -1393,7 +1385,7 @@ function handleTournamentRegister(data) {
       _linePush(data.lineUserId, custMsg);
     }
 
-    var groupStaff = _getConfigValue(cfgWs, "group_staff");
+    var groupStaff = _getConfigValue(null, "group_staff");
     if (groupStaff) {
       var payText = payMethod === "cash" ? "💵 เงินสด" : "📱 " + (data.bank || "โอนเงิน");
       var staffMsg = "🏆 สมัครแข่ง #" + seqNo + " — " + eventName + "\n"
@@ -2552,7 +2544,7 @@ function handleApi(params) {
   return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unknown action" })));
 }
 
-function isDuplicateSlip(ss, ref) {
+function isDuplicateSlip(ref) {
   if (!ref) return false;
   var cache = CacheService.getScriptCache();
   var cacheKey = "slip_ref_" + String(ref).trim();
@@ -2730,7 +2722,6 @@ function handleCreateShipment(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
-    var ss = SpreadsheetApp.openById(SHEET_ID);
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
     var nowDisplay = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
     var shipId = "SH" + Utilities.formatDate(new Date(), "Asia/Bangkok", "yyMMddHHmmss");
@@ -2762,8 +2753,7 @@ function handleCreateShipment(data) {
 
     // LINE แจ้งกลุ่ม staff
     try {
-      var cfgWs = ss.getSheetByName(TAB_CONFIG);
-      var groupId = _getConfigValue(cfgWs, "group_staff");
+      var groupId = _getConfigValue(null, "group_staff");
       if (groupId) {
         var itemLines = items.map(function(it) {
           var parts = [];
@@ -2950,7 +2940,6 @@ function handleHandoverOrder(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
-    var ss = SpreadsheetApp.openById(SHEET_ID);
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
     var staffName = String(data.staff_name || "").trim();
 
@@ -3128,7 +3117,6 @@ function handlePartialCancelItems(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
-    var ss = SpreadsheetApp.openById(SHEET_ID);
     var indices = data.indices || [];
     var reason = String(data.reason || "");
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");

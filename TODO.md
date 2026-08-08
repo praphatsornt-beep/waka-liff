@@ -16,14 +16,17 @@ products/tournament_*) **ตัดสินใจแล้วว่าเก็�
 - [x] ลบ GAS dead code: `isCorrectAccount`, `tournament_lookup`
 - [x] ลบ pipeline ตรวจสลิปทัวร์นาเมนต์เก่าแบบ bank report (`process_registrations.py`, `match_bank_csv.py`, `verify_registrations.ipynb`/`.md`) — ไม่ได้ใช้แล้ว
 - [x] role พนักงานสาขาใน `app.html`: bottom nav เหลือแค่ "เมนู" (ตัด สาขา/GYM ออก เพราะซ้ำซ้อนกับหน้าที่ auto-land อยู่แล้ว + การ์ด GYM ในหน้าสาขา)
+- [x] ย้าย `shipments`/`stock_returns`/`player_stats`/`withdrawals`/`walkin_sales` ไป Supabase-primary ครบทุกตารางแล้ว (2026-08) — `stock.py`'s `load_shipments()` และ `wakagym.py`'s `load_player_stats()` เป็นจุดอ่าน Sheets จุดสุดท้ายที่เหลือ ย้ายไปอ่าน Supabase แล้ว เอา gspread stack ออกจากทั้งสองไฟล์
+- [x] ลบ `SpreadsheetApp.openById(SHEET_ID)` ที่ตายแล้วใน GAS 6 จุด (`doPost`, `handleWakagymRegister`, `handleTournamentRegister`, `handleCreateShipment`, `handleHandoverOrder`, `handlePartialCancelItems`) — เปิด Sheet ทิ้งเปล่าๆทุกครั้งที่มี order/ลงทะเบียน/ส่งของ ไม่มีใครใช้จริงเพราะ `_getConfigValue` อ่าน Supabase อยู่แล้ว
 
 ### หมายเหตุ
 - `notifyBranch()` ใน `gas/Code.gs` เป็น **dead code** (ไม่มีใครเรียกใช้จริง) — เจอตอนไล่เช็ค 2026-08-06 เคยแก้ `staffUrl` ข้างในให้ชี้ `app.html?order=` ไปแล้วแต่ไม่มีผลอะไรเพราะไม่ถูกเรียก ตัดสินใจ**ปล่อยไว้ก่อน ไม่ลบไม่ต่อสาย** จนกว่าจะมีเหตุผลชัดเจนกว่านี้
+- `credentials.json`/`token.json`/`refresh_token.py` (Google OAuth) **ยืนยันแล้วว่าไม่มีอะไรใช้จริง** ตอนนี้ — Streamlit ทุกหน้าอ่าน Supabase ตรงหมดแล้ว (2026-08) แต่**ยังไม่ลบไฟล์/workflow** จนกว่าจะถามยืนยันอีกครั้ง
 
 ### รอทำ (ยังไม่ลบ เพราะยังมีใครลิงก์ถึง/ยังไม่มั่นใจ 100%)
 - `staff.html` — ไม่มีใครลิงก์ถึงแล้ว แต่รอให้มั่นใจว่า `app.html?order=` ใช้แทนได้ครบจริงก่อนค่อยลบไฟล์
 - `receive.html` — orphan อยู่แล้ว (ไม่มีใครลิงก์ถึง) แต่ยังไม่ลบ
-- ตรวจว่า `credentials.json`/`token.json`/`refresh_token.py` (Google OAuth) ยังจำเป็นอยู่จริง — ตอนนี้ยังใช้โดย Streamlit (`shipments`/`stock_returns`/`player_stats`/`withdrawals` ที่ยังไม่ย้ายไป Supabase) ห้ามลบจนกว่าตารางพวกนี้จะย้ายด้วย
+- ลบ `credentials.json`/`token.json`/`refresh_token.py`/`workflows/setup_google_auth.md` — ยืนยันแล้วว่าไม่มีโค้ดจุดไหนใช้ แต่รอถามก่อนลบจริง (ตามที่ตกลงไว้)
 
 ---
 

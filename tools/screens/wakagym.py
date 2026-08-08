@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """WAKA GYM Management Dashboard"""
 
-import json
 import sys
 from pathlib import Path
 from datetime import date, timedelta, timezone, datetime
@@ -15,44 +14,10 @@ load_dotenv()
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from theme import apply_theme, badge, page_header
 
-try:
-    import gspread
-    from google.oauth2.service_account import Credentials
-except ImportError as e:
-    st.error(f"ติดตั้ง packages ก่อน: `pip install -r requirements.txt`\n\n{e}")
-    st.stop()
-
-SCOPES   = ["https://www.googleapis.com/auth/spreadsheets"]
-SA_PATH  = Path("service_account.json")
-SHEET_ID = "1aUHbSt3qlQ4uMIzlCGbF-iFm0AqSeqx12nxk5ny1JoY"
 GAS_URL    = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
 WAKA_S     = "wk26xK9mPqRt"  # shared secret doPost/doGet require via ?_s= (same value as tournament.py's WAKA_S)
 
 TH_TZ = timezone(timedelta(hours=7))
-
-# ── Auth ─────────────────────────────────────────────────────────────────────
-def _build_creds():
-    try:
-        if "GOOGLE_SERVICE_ACCOUNT" in st.secrets:
-            info = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
-            return Credentials.from_service_account_info(info, scopes=SCOPES)
-    except Exception:
-        pass
-    return Credentials.from_service_account_file(str(SA_PATH), scopes=SCOPES)
-
-
-_gc_client = None
-
-def get_gc():
-    global _gc_client
-    if _gc_client is not None:
-        try:
-            _gc_client.open_by_key(SHEET_ID)
-            return _gc_client
-        except Exception:
-            _gc_client = None
-    _gc_client = gspread.authorize(_build_creds())
-    return _gc_client
 
 
 def _now_th():
@@ -97,18 +62,14 @@ def load_registrations() -> pd.DataFrame:
 @st.cache_data(ttl=120)
 def load_player_stats() -> pd.DataFrame:
     try:
-        ws = get_gc().open_by_key(SHEET_ID).worksheet("player_stats")
-        rows = ws.get_all_values()
-        if len(rows) < 2:
+        rows = get_supabase().table("player_stats").select("*").execute().data
+        if not rows:
             return pd.DataFrame()
-        df = pd.DataFrame(rows[1:], columns=rows[0])
+        df = pd.DataFrame(rows)
         for col in ["total_plays", "total_tokens", "boxes_earned", "boxes_given"]:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
-        df["row_num"] = range(2, len(df) + 2)
         return df
-    except gspread.exceptions.WorksheetNotFound:
-        return pd.DataFrame()
     except Exception as e:
         st.error(f"โหลด player_stats ไม่ได้: {e}")
         return pd.DataFrame()

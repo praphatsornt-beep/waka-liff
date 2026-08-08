@@ -137,17 +137,14 @@ in-app tournament flow).
   to Supabase, so GAS's config cache and report-sheet mirror stay correct.
 - **Supabase** (Postgres, schema in `supabase/schema.sql`) — the database
   both GAS and Streamlit read/write via the REST API (`service_role` key
-  only; RLS denies the `anon` key everything). Tables are being migrated
-  off Google Sheets **one at a time**, not all at once — check
-  `gas/Code.gs` comments near a table's helpers (search for
-  `Supabase-primary`) to know whether a given table is still Sheet-backed.
-  As of the last migration commits: `orders`, `config`, `catalog`,
-  `stock_branch`, `tournament_registrations`, `wakagym_registrations`,
-  `wakagym_events`, `tournament_events`, `tournament_categories` are
-  Supabase-primary. `shipments`, `stock_returns`, `player_stats`,
-  `withdrawals` are not yet migrated. `workflows/setup_supabase.md`
-  describes the original "prep only, Sheets stays authoritative" plan —
-  that plan is now out of date; trust the code comments over that doc.
+  only; RLS denies the `anon` key everything). All tables are now
+  Supabase-primary (migrated off Google Sheets 2026-08): `orders`, `config`,
+  `catalog`, `stock_branch`, `tournament_registrations`,
+  `wakagym_registrations`, `wakagym_events`, `tournament_events`,
+  `tournament_categories`, `shipments`, `stock_returns`, `player_stats`,
+  `withdrawals`, `walkin_sales`. `workflows/setup_supabase.md` describes the
+  original "prep only, Sheets stays authoritative" plan — that plan is long
+  out of date; trust the code comments over that doc.
 
 ## Sheets' remaining role
 
@@ -155,9 +152,16 @@ A separate spreadsheet (`REPORT_SHEET_ID`, the "WAKA export" sheet) is
 written by `mirrorToReportSheet_()` as a best-effort, human-readable mirror
 of every Supabase-primary write — never authoritative, never blocking, and
 safe to ignore for anything code-related. The original `SHEET_ID` spreadsheet
-remains authoritative only for tables not yet migrated, plus a fallback path
-if Supabase is unreachable (e.g. `getConfig_()` falls back to reading the
-`_config` tab directly).
+has no remaining production read/write path — its only uses now are
+`getConfig_()`'s fallback if Supabase is unreachable, and a handful of
+one-time/dev-only functions at the bottom of `gas/Code.gs`
+(`backfillPartialReadyNotifiedAt`, `testPartialFlow`, `testWakagymFlow`,
+`_testWgCleanup`) that operate on legacy Sheet-era rows and are only ever
+run manually from the Apps Script editor, never from a live request.
+Streamlit has no Google Sheets dependency left either — every screen reads
+Supabase directly via `service_role`; the `credentials.json`/`token.json`
+OAuth flow (`tools/refresh_token.py`) is unused by anything in the current
+codebase.
 
 ## No automated test suite
 
@@ -172,9 +176,10 @@ page manually — see the `run` skill.
   verification statuses, and deploy steps for GAS/LIFF/Streamlit.
 - `workflows/tournament_operations.md` — day-of-event flow for the in-app
   tournament/GYM card distribution.
-- `workflows/setup_google_auth.md` — one-time Google OAuth setup for the
-  `credentials.json`/`token.json` that Streamlit's Sheets-backed pages
-  (`shipments`, `stock_returns`, `player_stats`, `withdrawals` — not yet
-  migrated to Supabase) still depend on.
+- `workflows/setup_google_auth.md` — one-time Google OAuth setup for
+  `credentials.json`/`token.json`. Currently unused by any code in this
+  repo (all Streamlit screens read Supabase directly now) — kept in case
+  a future Sheets-dependent script needs it again, not because anything
+  live depends on it today.
 - `TODO.md` — live backlog of known bugs and planned features; check here
   before assuming something is unimplemented.

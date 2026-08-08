@@ -444,7 +444,7 @@
           </div>
 
           <div class="card">
-            <h3>ประวัติขายวันนี้</h3>
+            <h3>ประวัติขายล่าสุด</h3>
             <div id="wsHistory"><div class="empty">ยังไม่มีรายการ</div></div>
           </div>
         </div>
@@ -1331,6 +1331,7 @@ async function loadWalkinHistory() {
     const r = await fetch(G + '&action=api&do=walkin_sales_list&branch=' + encodeURIComponent(b) + '&code=' + encodeURIComponent(_authCode()));
     const d = await r.json();
     const el = gid('wsHistory');
+    if (d.error) { el.innerHTML = `<div class="empty">โหลดไม่ได้: ${esc(d.error)}</div>`; return; }
     if (!d.sales || !d.sales.length) { el.innerHTML = '<div class="empty">ยังไม่มีรายการ</div>'; return; }
     el.innerHTML = d.sales.map(s => {
       let items = []; try { items = JSON.parse(s.items_json || '[]'); } catch (_) {}
