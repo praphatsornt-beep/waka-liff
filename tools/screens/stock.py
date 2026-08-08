@@ -188,6 +188,12 @@ page_header("สต็อกสินค้า", "คลังกลาง ส�
 catalog = load_catalog()
 stock_branch = load_stock_branch()
 
+CAT_DESC_PREFIX = "category_desc_"
+_cat_cfg = load_config()
+_product_cats = sorted(set(catalog["category"].dropna().tolist())) if not catalog.empty else []
+_product_cats = [c for c in _product_cats if c]
+ALL_CATEGORIES = sorted(set(_product_cats) | {k[len(CAT_DESC_PREFIX):] for k in _cat_cfg if k.startswith(CAT_DESC_PREFIX)})
+
 low_stock = pd.DataFrame()
 if not catalog.empty:
     low_stock = catalog[
@@ -375,7 +381,14 @@ with tab_central:
             with st.form(f"edit_product_form_{edit_sel}"):
                 e_name = st.text_input("ชื่อสินค้า", value=edit_sel)
                 e1, e2 = st.columns(2)
-                e_category = e1.text_input("หมวดหมู่", value=str(edit_row.get("category") or ""))
+                _e_cur_cat = str(edit_row.get("category") or "")
+                _e_cat_opts = [""] + ALL_CATEGORIES
+                if _e_cur_cat and _e_cur_cat not in _e_cat_opts:
+                    _e_cat_opts.append(_e_cur_cat)
+                e_category = e1.selectbox(
+                    "หมวดหมู่", _e_cat_opts, index=_e_cat_opts.index(_e_cur_cat),
+                    format_func=lambda c: c or "(ไม่ระบุ)",
+                )
                 # Supabase stores active as the string "TRUE"/"FALSE", not a real bool —
                 # bool("FALSE") is truthy in Python, so compare the string explicitly.
                 e_active = e2.checkbox("เปิดขาย (ไม่ติ๊ก = ปิดการขาย/หมด)", value=str(edit_row.get("active") or "").strip().upper() != "FALSE")
@@ -390,6 +403,10 @@ with tab_central:
                 e_limit_box = e7.number_input("ขั้นต่ำแจ้งเตือน (กล่อง)", min_value=0.0, value=_num(edit_row.get("limit_box")), step=1.0)
                 e_limit_pack = e8.number_input("ขั้นต่ำแจ้งเตือน (ซอง)", min_value=0.0, value=_num(edit_row.get("limit_pack")), step=1.0)
                 e_barcode = st.text_input("บาร์โค้ด", value=str(edit_row.get("barcode") or ""))
+                e_slug = st.text_input(
+                    "Slug (สำหรับลิงก์สั่งของโดยตรง)", value=str(edit_row.get("slug") or ""),
+                    help="ใช้สร้างลิงก์สั่งของตรงจากหน้า order-links.html เช่น ใส่ bt11 ไว้ว่างได้",
+                )
                 e_image_url = st.text_input("ลิงก์รูปภาพ", value=str(edit_row.get("image_url") or ""))
                 e_notice = st.text_area("ข้อความแจ้งเตือนในสินค้า (notice)", value=str(edit_row.get("notice") or ""))
                 submitted_e = st.form_submit_button("บันทึกการแก้ไข")
@@ -401,7 +418,7 @@ with tab_central:
                             "cost_box": e_cost_box, "cost_pack": e_cost_pack,
                             "price_box": e_price_box, "price_pack": e_price_pack,
                             "limit_box": e_limit_box, "limit_pack": e_limit_pack,
-                            "barcode": e_barcode.strip(), "image_url": e_image_url.strip(),
+                            "barcode": e_barcode.strip(), "slug": e_slug.strip(), "image_url": e_image_url.strip(),
                             "notice": e_notice.strip(),
                         }
                         # Only send new_name when it actually changed — sending it
@@ -549,7 +566,7 @@ with tab_new_product:
     with st.form("add_product_form_tab"):
         p1, p2 = st.columns(2)
         new_name = p1.text_input("ชื่อสินค้า")
-        new_category = p2.text_input("หมวดหมู่")
+        new_category = p2.selectbox("หมวดหมู่", [""] + ALL_CATEGORIES, format_func=lambda c: c or "(ไม่ระบุ)")
         p3, p4 = st.columns(2)
         new_cost_box = p3.number_input("ต้นทุน/กล่อง", min_value=0.0, value=0.0, step=1.0)
         new_cost_pack = p4.number_input("ต้นทุน/ซอง", min_value=0.0, value=0.0, step=1.0)
@@ -563,6 +580,10 @@ with tab_new_product:
         new_limit_box = p9.number_input("ขั้นต่ำแจ้งเตือน (กล่อง)", min_value=0, value=0, step=1)
         new_limit_pack = p10.number_input("ขั้นต่ำแจ้งเตือน (ซอง)", min_value=0, value=0, step=1)
         new_barcode = st.text_input("บาร์โค้ด (ถ้ามี)")
+        new_slug = st.text_input(
+            "Slug (สำหรับลิงก์สั่งของโดยตรง, ถ้ามี)",
+            help="ใช้สร้างลิงก์สั่งของตรงจากหน้า order-links.html เช่น ใส่ bt11 เว้นว่างได้",
+        )
         new_image_url = st.text_input("ลิงก์รูปภาพ", value=uploaded_url, help="อัปโหลดรูปด้านบนแล้วลิงก์จะเติมให้อัตโนมัติ หรือวางลิงก์เองก็ได้")
         submitted_p = st.form_submit_button("เพิ่มสินค้า")
         if submitted_p:
@@ -579,7 +600,7 @@ with tab_new_product:
                         "price_box": new_price_box, "price_pack": new_price_pack,
                         "initial_box": new_initial_box, "initial_pack": new_initial_pack,
                         "limit_box": new_limit_box, "limit_pack": new_limit_pack,
-                        "barcode": new_barcode.strip(),
+                        "barcode": new_barcode.strip(), "slug": new_slug.strip(),
                         "image_url": new_image_url.strip(),
                     })
                     st.success(f"เพิ่มสินค้า \"{new_name}\" แล้ว")
@@ -590,12 +611,8 @@ with tab_new_product:
                     st.error(f"เพิ่มสินค้าไม่ได้: {e}")
 
 with tab_categories:
-    CAT_DESC_PREFIX = "category_desc_"
-    cat_cfg = load_config()
-    desc_map = {k[len(CAT_DESC_PREFIX):]: v for k, v in cat_cfg.items() if k.startswith(CAT_DESC_PREFIX)}
-    product_cats = sorted(set(catalog["category"].dropna().tolist())) if not catalog.empty else []
-    product_cats = [c for c in product_cats if c]
-    all_cats = sorted(set(product_cats) | set(desc_map.keys()))
+    desc_map = {k[len(CAT_DESC_PREFIX):]: v for k, v in _cat_cfg.items() if k.startswith(CAT_DESC_PREFIX)}
+    all_cats = ALL_CATEGORIES
     counts = catalog["category"].value_counts().to_dict() if not catalog.empty else {}
 
     if not all_cats:

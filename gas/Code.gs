@@ -3426,7 +3426,7 @@ function handleAddProduct(data) {
     var newId = "P" + String(lastN + 1).padStart(4, "0");
 
     var newRow = {
-      name: data.name, id: newId, category: data.category || "", slug: "",
+      name: data.name, id: newId, category: data.category || "", slug: data.slug || "",
       cost_box: Number(data.cost_box) || 0, cost_p: Number(data.cost_pack) || 0,
       price_box: Number(data.price_box) || 0, price_pack: Number(data.price_pack) || 0,
       qty_box: Number(data.initial_box) || 0, qty_pack: Number(data.initial_pack) || 0,
@@ -3469,6 +3469,7 @@ function handleUpdateProduct(data) {
     if (data.image_url !== undefined) row.image_url = data.image_url || "";
     if (data.barcode !== undefined) row.barcode = data.barcode || "";
     if (data.notice !== undefined) row.notice = data.notice || "";
+    if (data.slug !== undefined) row.slug = data.slug || "";
     CacheService.getScriptCache().remove("catalog_config");
     writeSupabaseRow_("catalog", row, SUPABASE_CATALOG_HEADER, "name", lock);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
