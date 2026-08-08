@@ -76,12 +76,9 @@ def load_player_stats() -> pd.DataFrame:
 
 
 def update_reg_field(reg_id: str, field: str, value: str):
-    import requests
-    requests.get(
-        GAS_URL,
-        params={"action": "api", "do": "wakagym_update_reg", "_s": WAKA_S, "reg_id": reg_id, "field": field, "value": value},
-        timeout=15,
-    )
+    if field not in ("slip_status", "rewards_given", "note"):
+        return
+    get_supabase().table("wakagym_registrations").update({field: value}).eq("reg_id", reg_id).execute()
 
 
 def give_box(player_name: str):

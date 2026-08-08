@@ -2,9 +2,10 @@
 """Settings — shop config (bank info, staff PINs, category descriptions).
 
 _config is Supabase-primary (see gas/Code.gs getConfig_/setConfig_) — this
-page reads Supabase directly and writes through GAS's `setConfig` action so
-every save also mirrors into the WAKA export report sheet and busts GAS's
-120s config cache.
+page reads and writes Supabase directly via service_role. GAS still caches
+config for 120s (CacheService, used by order/PIN checks in gas/Code.gs), so
+a save here can take up to 2 minutes to be visible to LIFF/GAS — acceptable
+for admin-only settings that change rarely.
 """
 
 import os
@@ -12,16 +13,12 @@ import sys
 from pathlib import Path
 
 import streamlit as st
-import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from theme import apply_theme, page_header
-
-GAS_URL = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
-WAKA_S  = "wk26xK9mPqRt"
 
 BRANCHES = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์"]
 
@@ -40,16 +37,9 @@ def get_supabase():
     return create_client(url, key)
 
 
-def gas_post(payload: dict) -> dict:
-    resp = requests.post(f"{GAS_URL}?_s={WAKA_S}", json=payload, timeout=30)
-    result = resp.json()
-    if result.get("error"):
-        raise Exception(result["error"])
-    return result
-
-
 def set_config(config: dict) -> None:
-    gas_post({"_action": "setConfig", "config": config})
+    rows = [{"key": k, "value": str(v)} for k, v in config.items()]
+    get_supabase().table("config").upsert(rows).execute()
     st.cache_data.clear()
 
 

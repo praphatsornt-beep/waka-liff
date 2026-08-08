@@ -305,24 +305,6 @@ function setConfig_(key, value) {
   return pushResult;
 }
 
-// data: { config: {key1: value1, key2: value2, ...} } — batch update, used by
-// the Streamlit settings page. Protected: not in PUBLIC_ACTIONS_POST, so
-// callers must pass the shared secret via ?_s=.
-function handleSetConfig(data) {
-  try {
-    var cfg = data.config || {};
-    var keys = Object.keys(cfg);
-    if (!keys.length) {
-      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing config" })));
-    }
-    var results = {};
-    keys.forEach(function(k) { results[k] = setConfig_(k, String(cfg[k])); });
-    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, updated: keys.length, results: results })));
-  } catch (err) {
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
-  }
-}
-
 // Builds a plain object {column: value} from a sheet header row + one data
 // row, converting "" -> null and JSON.parse-ing the given jsonFields so
 // they land as real jsonb in Supabase instead of an escaped string.
@@ -576,10 +558,6 @@ function doPost(e) {
 
     if (data._action === "walkinSale") {
       return handleWalkinSale(data);
-    }
-
-    if (data._action === "setConfig") {
-      return handleSetConfig(data);
     }
 
     if (data._action === "uploadProductImage") {
@@ -2048,20 +2026,6 @@ function handleApi(params) {
       };
     });
     return _cors(ContentService.createTextOutput(JSON.stringify({ players: players })));
-  }
-
-  if (action === "wakagym_update_reg") {
-    var regId = params.reg_id || "";
-    var field = params.field || "";
-    var value = params.value || "";
-    if (!regId || !field) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing params" })));
-    var allowed = ["slip_status", "rewards_given", "note"];
-    if (allowed.indexOf(field) < 0) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "invalid field" })));
-    var tuRow = getSupabaseRow_("wakagym_registrations", "reg_id", regId);
-    if (!tuRow) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "reg not found" })));
-    tuRow[field] = value;
-    writeSupabaseRow_("wakagym_registrations", tuRow, SUPABASE_WAKAGYM_REG_HEADER, "reg_id");
-    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   }
 
   if (action === "wakagym_give_box") {
