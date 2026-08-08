@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Stock Dashboard — central warehouse stock, per-branch stock, transfer history"""
 
+import base64
 import json
 import os
 import sys
@@ -214,10 +215,12 @@ with k4:
 
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
-tab_central, tab_branch, tab_history = st.tabs(["คลังกลาง", "สต็อกสาขา", "ประวัติการโอน"])
+tab_central, tab_branch, tab_history, tab_new_product = st.tabs(
+    ["คลังกลาง", "สต็อกสาขา", "ประวัติการโอน", "🆕 เพิ่มสินค้าใหม่"]
+)
 
 with tab_central:
-    ac1, ac2, ac3 = st.columns(3)
+    ac1, ac3 = st.columns(2)
     with ac1:
         with st.popover("➕ เพิ่มสต็อกคลังกลาง", use_container_width=True):
             names = catalog["name"].tolist() if not catalog.empty else []
@@ -238,51 +241,6 @@ with tab_central:
                             st.rerun()
                         except Exception as e:
                             st.error(f"บันทึกไม่ได้: {e}")
-
-    with ac2:
-        with st.popover("🆕 เพิ่มสินค้าใหม่", use_container_width=True):
-            with st.form("add_product_form"):
-                p1, p2 = st.columns(2)
-                new_name = p1.text_input("ชื่อสินค้า")
-                new_category = p2.text_input("หมวดหมู่")
-                p3, p4 = st.columns(2)
-                new_cost_box = p3.number_input("ต้นทุน/กล่อง", min_value=0.0, value=0.0, step=1.0)
-                new_cost_pack = p4.number_input("ต้นทุน/ซอง", min_value=0.0, value=0.0, step=1.0)
-                p5, p6 = st.columns(2)
-                new_price_box = p5.number_input("ราคาขาย/กล่อง", min_value=0.0, value=0.0, step=1.0)
-                new_price_pack = p6.number_input("ราคาขาย/ซอง", min_value=0.0, value=0.0, step=1.0)
-                p7, p8 = st.columns(2)
-                new_initial_box = p7.number_input("สต็อกเริ่มต้น (กล่อง)", min_value=0, value=0, step=1)
-                new_initial_pack = p8.number_input("สต็อกเริ่มต้น (ซอง)", min_value=0, value=0, step=1)
-                p9, p10 = st.columns(2)
-                new_limit_box = p9.number_input("ขั้นต่ำแจ้งเตือน (กล่อง)", min_value=0, value=0, step=1)
-                new_limit_pack = p10.number_input("ขั้นต่ำแจ้งเตือน (ซอง)", min_value=0, value=0, step=1)
-                new_barcode = st.text_input("บาร์โค้ด (ถ้ามี)")
-                new_image_url = st.text_input("ลิงก์รูปภาพ (ถ้ามี)")
-                st.caption("อัปโหลดรูปขึ้น Google Drive → คลิกขวา \"รับลิงก์\" → ตั้งสิทธิ์เป็น \"ทุกคนที่มีลิงก์\" → วางลิงก์ที่นี่")
-                submitted_p = st.form_submit_button("เพิ่มสินค้า")
-                if submitted_p:
-                    if not new_name.strip():
-                        st.warning("กรอกชื่อสินค้าก่อน")
-                    elif not catalog.empty and new_name.strip() in catalog["name"].values:
-                        st.error("มีสินค้าชื่อนี้อยู่แล้ว")
-                    else:
-                        try:
-                            gas_post({
-                                "_action": "addProduct",
-                                "name": new_name.strip(), "category": new_category.strip(),
-                                "cost_box": new_cost_box, "cost_pack": new_cost_pack,
-                                "price_box": new_price_box, "price_pack": new_price_pack,
-                                "initial_box": new_initial_box, "initial_pack": new_initial_pack,
-                                "limit_box": new_limit_box, "limit_pack": new_limit_pack,
-                                "barcode": new_barcode.strip(),
-                                "image_url": new_image_url.strip(),
-                            })
-                            st.success(f"เพิ่มสินค้า \"{new_name}\" แล้ว")
-                            st.cache_data.clear()
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"เพิ่มสินค้าไม่ได้: {e}")
 
     with ac3:
         with st.popover("🚚 สร้างล็อตส่งสาขา", use_container_width=True):
@@ -548,3 +506,69 @@ with tab_history:
                                 st.error(f"ยกเลิกไม่ได้: {e}")
                 elif status == "รับแล้ว":
                     st.caption(f"รับเมื่อ: {r.get('received_at', '') or '—'}")
+
+with tab_new_product:
+    st.markdown("**รูปสินค้า**")
+    img_file = st.file_uploader("เลือกรูปสินค้า", type=["jpg", "jpeg", "png", "webp"], key="new_product_img")
+    if img_file is not None:
+        st.image(img_file, width=200)
+        if st.button("📤 อัปโหลดรูปนี้", key="upload_new_product_img_btn"):
+            try:
+                b64 = base64.b64encode(img_file.getvalue()).decode("ascii")
+                res = gas_post({
+                    "_action": "uploadProductImage",
+                    "base64": b64,
+                    "mimeType": img_file.type or "image/jpeg",
+                    "filename": img_file.name,
+                })
+                st.session_state["new_product_image_url"] = res.get("url", "")
+                st.success("อัปโหลดรูปแล้ว — ลิงก์เติมในช่องด้านล่างให้แล้ว")
+            except Exception as e:
+                st.error(f"อัปโหลดรูปไม่ได้: {e}")
+
+    uploaded_url = st.session_state.get("new_product_image_url", "")
+
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+    with st.form("add_product_form_tab"):
+        p1, p2 = st.columns(2)
+        new_name = p1.text_input("ชื่อสินค้า")
+        new_category = p2.text_input("หมวดหมู่")
+        p3, p4 = st.columns(2)
+        new_cost_box = p3.number_input("ต้นทุน/กล่อง", min_value=0.0, value=0.0, step=1.0)
+        new_cost_pack = p4.number_input("ต้นทุน/ซอง", min_value=0.0, value=0.0, step=1.0)
+        p5, p6 = st.columns(2)
+        new_price_box = p5.number_input("ราคาขาย/กล่อง", min_value=0.0, value=0.0, step=1.0)
+        new_price_pack = p6.number_input("ราคาขาย/ซอง", min_value=0.0, value=0.0, step=1.0)
+        p7, p8 = st.columns(2)
+        new_initial_box = p7.number_input("สต็อกเริ่มต้น (กล่อง)", min_value=0, value=0, step=1)
+        new_initial_pack = p8.number_input("สต็อกเริ่มต้น (ซอง)", min_value=0, value=0, step=1)
+        p9, p10 = st.columns(2)
+        new_limit_box = p9.number_input("ขั้นต่ำแจ้งเตือน (กล่อง)", min_value=0, value=0, step=1)
+        new_limit_pack = p10.number_input("ขั้นต่ำแจ้งเตือน (ซอง)", min_value=0, value=0, step=1)
+        new_barcode = st.text_input("บาร์โค้ด (ถ้ามี)")
+        new_image_url = st.text_input("ลิงก์รูปภาพ", value=uploaded_url, help="อัปโหลดรูปด้านบนแล้วลิงก์จะเติมให้อัตโนมัติ หรือวางลิงก์เองก็ได้")
+        submitted_p = st.form_submit_button("เพิ่มสินค้า")
+        if submitted_p:
+            if not new_name.strip():
+                st.warning("กรอกชื่อสินค้าก่อน")
+            elif not catalog.empty and new_name.strip() in catalog["name"].values:
+                st.error("มีสินค้าชื่อนี้อยู่แล้ว")
+            else:
+                try:
+                    gas_post({
+                        "_action": "addProduct",
+                        "name": new_name.strip(), "category": new_category.strip(),
+                        "cost_box": new_cost_box, "cost_pack": new_cost_pack,
+                        "price_box": new_price_box, "price_pack": new_price_pack,
+                        "initial_box": new_initial_box, "initial_pack": new_initial_pack,
+                        "limit_box": new_limit_box, "limit_pack": new_limit_pack,
+                        "barcode": new_barcode.strip(),
+                        "image_url": new_image_url.strip(),
+                    })
+                    st.success(f"เพิ่มสินค้า \"{new_name}\" แล้ว")
+                    st.session_state.pop("new_product_image_url", None)
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"เพิ่มสินค้าไม่ได้: {e}")
