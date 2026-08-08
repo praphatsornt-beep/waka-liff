@@ -357,37 +357,40 @@ with tab_central:
         cat_sel = st.selectbox("กรองหมวดหมู่", cats, key="central_cat_filter")
         catalog_show = catalog if cat_sel == "ทุกหมวดหมู่" else catalog[catalog["category"] == cat_sel]
 
+        STATUS_ON, STATUS_OFF = "🟢 เปิดขาย", "🔴 ปิดการขาย"
+
         show = catalog_show[["name", "category", "qty_box", "qty_pack", "limit_box", "limit_pack", "active"]].copy()
         show["active"] = show["active"].apply(lambda v: str(v or "").strip().upper() != "FALSE")
+        show["สถานะ"] = show["active"].apply(lambda a: STATUS_ON if a else STATUS_OFF)
 
-        def _stock_status(r):
+        def _low_stock(r):
             if not r["active"]:
-                return "⛔ ปิดการขาย"
+                return ""
             if (pd.to_numeric(r["limit_box"], errors="coerce") or 0) > 0 \
                and (pd.to_numeric(r["qty_box"], errors="coerce") or 0) <= (pd.to_numeric(r["limit_box"], errors="coerce") or 0):
                 return "⚠️ ใกล้หมด"
-            return "ปกติ"
+            return ""
 
-        show["สถานะ"] = show.apply(_stock_status, axis=1)
+        show["แจ้งเตือน"] = show.apply(_low_stock, axis=1)
         show = show.rename(columns={
             "name": "สินค้า", "category": "หมวดหมู่", "qty_box": "กล่อง", "qty_pack": "ซอง",
-            "limit_box": "ขั้นต่ำ (กล่อง)", "limit_pack": "ขั้นต่ำ (ซอง)", "active": "เปิดขาย",
+            "limit_box": "ขั้นต่ำ (กล่อง)", "limit_pack": "ขั้นต่ำ (ซอง)",
         })
-        show = show[["สถานะ", "สินค้า", "หมวดหมู่", "กล่อง", "ซอง", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "เปิดขาย"]]
+        show = show[["สถานะ", "สินค้า", "หมวดหมู่", "กล่อง", "ซอง", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "แจ้งเตือน"]]
 
         edited = st.data_editor(
             show,
             use_container_width=True,
             hide_index=True,
-            disabled=["สินค้า", "หมวดหมู่", "กล่อง", "ซอง", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "สถานะ"],
-            column_config={"เปิดขาย": st.column_config.CheckboxColumn("เปิดขาย", help="ติ๊กออก = ปิดการขายสินค้านี้")},
+            disabled=["สินค้า", "หมวดหมู่", "กล่อง", "ซอง", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "แจ้งเตือน"],
+            column_config={"สถานะ": st.column_config.SelectboxColumn("สถานะ", options=[STATUS_ON, STATUS_OFF], required=True)},
             key=f"catalog_editor_{cat_sel}",
         )
-        changed = edited[edited["เปิดขาย"] != show["เปิดขาย"]]
+        changed = edited[edited["สถานะ"] != show["สถานะ"]]
         if not changed.empty:
             try:
                 for _, r in changed.iterrows():
-                    gas_post({"_action": "updateProduct", "name": r["สินค้า"], "active": bool(r["เปิดขาย"])})
+                    gas_post({"_action": "updateProduct", "name": r["สินค้า"], "active": r["สถานะ"] == STATUS_ON})
                 st.cache_data.clear()
                 st.rerun()
             except Exception as e:
