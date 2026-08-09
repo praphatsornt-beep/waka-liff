@@ -22,6 +22,50 @@ from theme import (
     ACCENT_TEXT, PRIMARY_BTN, DIVIDER, DIVIDER2, PENDING_TEXT, SUCCESS_TEXT, DANGER_TEXT,
 )
 
+
+def _require_login() -> None:
+    """Password gate + admin-name capture for the whole dashboard.
+
+    There are no per-user accounts (one shared password for now), so
+    admin_name is a self-reported free-text field, not a verified identity —
+    it's a lightweight deterrent/audit trail (logged into GAS write actions'
+    notes and LINE messages), not real access control. Runs once here at the
+    entry point: every other page (screens/*.py) is executed by pg.run()
+    inside this same script run, so this single check gates them all.
+    """
+    admin_password = os.environ.get("ADMIN_PASSWORD", "")
+    if not admin_password:
+        try:
+            admin_password = st.secrets["ADMIN_PASSWORD"]
+        except Exception:
+            admin_password = ""
+    if not admin_password:
+        st.error("ยังไม่ได้ตั้งรหัสผ่านแอดมิน — เพิ่ม ADMIN_PASSWORD ใน Streamlit Secrets (หรือ .env ตอนรันเครื่อง local) ก่อนใช้งาน")
+        st.stop()
+
+    if st.session_state.get("authed") and st.session_state.get("admin_name"):
+        return
+
+    st.markdown("<div style='height:100px'></div>", unsafe_allow_html=True)
+    _, mid, _ = st.columns([1, 1.2, 1])
+    with mid:
+        st.markdown("### 🔒 WAKA ADMIN DASHBOARD")
+        if not st.session_state.get("authed"):
+            pw = st.text_input("รหัสผ่าน", type="password", key="login_pw")
+            if st.button("เข้าสู่ระบบ", use_container_width=True, type="primary"):
+                if pw == admin_password:
+                    st.session_state["authed"] = True
+                    st.rerun()
+                else:
+                    st.error("รหัสผ่านไม่ถูกต้อง")
+        else:
+            st.caption("เกือบเสร็จแล้ว — กรอกชื่อไว้บันทึกในทุกการดำเนินการที่ทำจากตอนนี้")
+            name = st.text_input("ชื่อผู้ดูแลระบบ (แสดงในประวัติการยืนยัน/ยกเลิก/แก้ไขสินค้า)", key="login_name")
+            if st.button("เริ่มใช้งาน", use_container_width=True, type="primary") and name.strip():
+                st.session_state["admin_name"] = name.strip()
+                st.rerun()
+    st.stop()
+
 TH_TZ = timezone(timedelta(hours=7))
 
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
@@ -432,6 +476,7 @@ def home():
 
 st.set_page_config(page_title="WAKA", page_icon="🏠", layout="wide", initial_sidebar_state="expanded")
 apply_theme()
+_require_login()
 st.logo(str(ASSETS_DIR / "waka_logo.png"), icon_image=str(ASSETS_DIR / "waka_icon.png"), size="large")
 
 home_pg = st.Page(home, title="หน้าแรก", icon="🏠", url_path="", default=True)
@@ -442,11 +487,16 @@ stock_pg = st.Page("screens/stock.py", title="สต็อกและสิน�
 report_pg = st.Page("screens/report.py", title="รายงาน", icon="📊", url_path="report")
 settings_pg = st.Page("screens/settings.py", title="ตั้งค่า", icon="⚙️", url_path="settings")
 
-pg = st.navigation({"เมนูหลัก": [home_pg, orders_pg, tournament_pg, wakagym_pg, stock_pg, report_pg, settings_pg]})
+pg = st.navigation({"เมนูหลัก": [home_pg, orders_pg, stock_pg, report_pg, tournament_pg, wakagym_pg, settings_pg]})
 
 with st.sidebar:
     if st.button("🔄 โหลดใหม่", use_container_width=True):
         st.cache_data.clear()
+        st.rerun()
+    st.caption(f"👤 {st.session_state.get('admin_name', '')}")
+    if st.button("ออกจากระบบ", use_container_width=True):
+        st.session_state.pop("authed", None)
+        st.session_state.pop("admin_name", None)
         st.rerun()
 
 pg.run()

@@ -130,16 +130,20 @@ with f3:
 
 orders = load_orders_df()
 if not orders.empty:
-    confirmed = orders[orders["slip_status"] == CONFIRMED_ORDER_STATUS]
-    confirmed = confirmed[(confirmed["date"] >= date_from) & (confirmed["date"] <= date_to)]
-    if branch_sel != "ทุกสาขา":
-        confirmed = confirmed[confirmed["branch"] == branch_sel]
+    in_range = orders[orders["slip_status"] == CONFIRMED_ORDER_STATUS]
+    in_range = in_range[(in_range["date"] >= date_from) & (in_range["date"] <= date_to)]
 else:
-    confirmed = orders
+    in_range = orders
 
 cost_map = load_catalog_cost()
+if not in_range.empty:
+    in_range = in_range.assign(cost=in_range["items_json"].apply(lambda ij: order_cost(ij, cost_map)))
+
+# `in_range` stays every branch (date-filtered only) so the "แยกสาขา" tab can
+# always compare all branches side by side; `confirmed` applies the top
+# branch_sel filter on top of that for the KPI cards and other tabs.
+confirmed = in_range[in_range["branch"] == branch_sel] if branch_sel != "ทุกสาขา" else in_range
 if not confirmed.empty:
-    confirmed = confirmed.assign(cost=confirmed["items_json"].apply(lambda ij: order_cost(ij, cost_map)))
     total_revenue = confirmed["total"].sum()
     total_cost = confirmed["cost"].sum()
 else:
@@ -166,7 +170,7 @@ st.download_button(
 
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
-tab_sales, tab_products, tab_compare = st.tabs(["ยอดขาย", "สินค้าขายดี", "ทัวร์นาเมนต์ vs WAKA GYM"])
+tab_sales, tab_branch, tab_products, tab_compare = st.tabs(["ยอดขาย", "แยกสาขา", "สินค้าขายดี", "ทัวร์นาเมนต์ vs WAKA GYM"])
 
 with tab_sales:
     t_events_s, t_regs_s = load_tournament_data()
@@ -199,19 +203,47 @@ with tab_sales:
     else:
         by_date = confirmed.groupby("date")["total"].sum()
         st.bar_chart(by_date)
+
+with tab_branch:
+    if in_range.empty:
+        st.caption("ไม่มีข้อมูลยอดขายในช่วงที่เลือก")
+    else:
         by_branch = (
-            confirmed.groupby("branch")
-            .agg(ออเดอร์=("order_id", "count"), ยอดขาย=("total", "sum"))
+            in_range.groupby("branch")
+            .agg(ออเดอร์=("order_id", "count"), ยอดขาย=("total", "sum"), ต้นทุน=("cost", "sum"))
+            .assign(กำไร=lambda d: d["ยอดขาย"] - d["ต้นทุน"])
             .reset_index()
             .rename(columns={"branch": "สาขา"})
             .sort_values("ยอดขาย", ascending=False)
         )
+        st.bar_chart(by_branch.set_index("สาขา")["ยอดขาย"])
         st.dataframe(by_branch, use_container_width=True, hide_index=True)
         st.download_button(
             "⬇️ ดาวน์โหลดยอดขายแยกสาขา (CSV)", df_to_csv_bytes(by_branch),
             file_name=f"waka_sales_by_branch_{date_from}_{date_to}.csv", mime="text/csv",
             key="dl_by_branch",
         )
+
+        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+        for b in by_branch["สาขา"]:
+            branch_orders = in_range[in_range["branch"] == b]
+            with st.expander(f"สินค้าขายดี — {b}"):
+                agg_b = {}
+                for _, row in branch_orders.iterrows():
+                    for i in parse_items(row.get("items_json")):
+                        key = (i.get("name", ""), i.get("type", ""))
+                        a = agg_b.setdefault(key, {"qty": 0, "revenue": 0})
+                        qty = i.get("qty", 1) or 1
+                        a["qty"] += qty
+                        a["revenue"] += qty * (i.get("price", 0) or 0)
+                if not agg_b:
+                    st.caption("ไม่มีข้อมูล")
+                else:
+                    prod_df_b = pd.DataFrame([
+                        {"สินค้า": name, "ประเภท": "กล่อง" if t == "box" else "ซอง", "จำนวนขาย": v["qty"], "ยอดขาย": v["revenue"]}
+                        for (name, t), v in agg_b.items()
+                    ]).sort_values("ยอดขาย", ascending=False)
+                    st.dataframe(prod_df_b.head(10), use_container_width=True, hide_index=True)
 
 with tab_products:
     if confirmed.empty:

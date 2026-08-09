@@ -15,7 +15,7 @@ load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from theme import (
-    apply_theme, badge, flat, page_header, kpi_card,
+    apply_theme, badge, flat, page_header, kpi_card, admin_name,
     SURFACE, SURFACE_ALT, BORDER, TEXT2, TEXT3, ACCENT_TEXT, ACCENT_LIGHT, DIVIDER2,
     PENDING_TEXT, SUCCESS_TEXT, DANGER_TEXT,
 )
@@ -102,8 +102,8 @@ def _now_th():
 
 
 GAS_URL = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
-WAKA_S  = "wk26xK9mPqRt"  # shared secret doPost/doGet require via ?_s= (same value as tournament.py's WAKA_S)
-ADMIN_CODE = "waka99"  # branch-scoped actions (handoverOrder/partialReady/partialCancelItems) now also
+WAKA_S  = "SEpVTmIUFwEUgvVflPPIuv1gDhhiqSKRVjjGG34z"  # shared secret doPost/doGet require via ?_s= (same value as tournament.py's WAKA_S)
+ADMIN_CODE = "t52mm48m3"  # branch-scoped actions (handoverOrder/partialReady/partialCancelItems) now also
                         # require this to prove branch ownership, same as liff/app.html's admin bypass —
                         # Streamlit is an admin-only tool so it always passes the admin code
 
@@ -127,7 +127,7 @@ def _gas_request(payload: dict) -> dict:
 
 
 def confirm_slip_via_gas(order_id: str, custom_message: str = ""):
-    payload = {"_action": "confirmSlip", "order_id": order_id}
+    payload = {"_action": "confirmSlip", "order_id": order_id, "staff_name": admin_name()}
     if custom_message.strip():
         payload["custom_message"] = custom_message.strip()
     result = _gas_request(payload)
@@ -136,7 +136,7 @@ def confirm_slip_via_gas(order_id: str, custom_message: str = ""):
 
 
 def reject_slip_via_gas(order_id: str, reason: str = ""):
-    payload = {"_action": "rejectSlip", "order_id": order_id}
+    payload = {"_action": "rejectSlip", "order_id": order_id, "staff_name": admin_name()}
     if reason.strip():
         payload["reason"] = reason.strip()
     result = _gas_request(payload)
@@ -145,7 +145,7 @@ def reject_slip_via_gas(order_id: str, reason: str = ""):
 
 
 def gas_post(payload: dict) -> dict:
-    payload = {**payload, "code": ADMIN_CODE}
+    payload = {**payload, "code": ADMIN_CODE, "staff_name": admin_name()}
     result = _gas_request(payload)
     if not result.get("ok"):
         raise Exception(result.get("error", "GAS ตอบผิดพลาด"))

@@ -280,6 +280,13 @@ def flat(html: str) -> str:
     return "\n".join(line.strip() for line in html.strip().splitlines() if line.strip())
 
 
+def admin_name() -> str:
+    """Name of the admin operating this session, captured once at login
+    (verify_app.py's auth gate) — read this wherever a write action needs to
+    log who performed it (staff_name payload field to GAS)."""
+    return st.session_state.get("admin_name", "")
+
+
 def page_header(title: str, subtitle: str = "") -> None:
     """Same title/subtitle treatment on every page. Uses Streamlit's native
     st.subheader/st.caption rather than custom HTML — a raw-HTML div at
