@@ -21,8 +21,8 @@ from theme import (
 )
 
 GAS_URL  = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
-WAKA_S   = "SEpVTmIUFwEUgvVflPPIuv1gDhhiqSKRVjjGG34z"  # shared secret doPost/doGet require via ?_s= (same value as tournament.py's WAKA_S)
-ADMIN_CODE = "t52mm48m3"  # withdrawStock now also requires this to prove branch ownership, same as
+WAKA_S   = "wk26xK9mPqRt"  # shared secret doPost/doGet require via ?_s= (same value as tournament.py's WAKA_S)
+ADMIN_CODE = "waka99"  # withdrawStock now also requires this to prove branch ownership, same as
                         # liff/app.html's admin bypass — Streamlit is an admin-only tool
 
 BRANCHES = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์"]

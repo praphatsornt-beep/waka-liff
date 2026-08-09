@@ -16,7 +16,7 @@ load_dotenv()
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from theme import apply_theme, badge, page_header
 
-WAKA_S   = "SEpVTmIUFwEUgvVflPPIuv1gDhhiqSKRVjjGG34z"
+WAKA_S   = "wk26xK9mPqRt"
 GAS_URL  = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
 LIFF_BASE = "https://liff.line.me/2010457385-JHbMDl5I"
 TH_TZ = timezone(timedelta(hours=7))
