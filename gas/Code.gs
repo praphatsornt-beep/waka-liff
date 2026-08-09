@@ -1673,13 +1673,30 @@ function handleApi(params) {
     if (cached) return _cors(ContentService.createTextOutput(cached));
 
     var today = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
-
-    var dashSb = supabaseSelect_("orders", "select=order_id,real_name,display_name,phone,items_json,total,slip_status,fulfillment,branch,address,timestamp&order=timestamp.desc");
-    var dOrdersToday = 0, dRevenueToday = 0, dPendingCount = 0;
-    var dRecentOrders = [];
     var dPendingSlips = ["รอตรวจ", "รอตรวจเพิ่ม", "ยอดไม่ตรง", "สลิปซ้ำ", "บัญชีไม่ตรง", "สงสัยปลอม"];
+
+    // นับ pending แยกเป็น query ของตัวเอง กรองที่ Supabase เลย (select=order_id
+    // เฉพาะคอลัมน์เดียว) แทนที่จะดึงทั้งตาราง orders มา filter ฝั่ง JS — กัน
+    // ปัญหาสองต่อ: (1) ตารางโตขึ้นเรื่อยๆ ก็ยังนับได้ครบไม่ต้องลาก full table,
+    // (2) ออเดอร์ค้างตรวจเก่าๆ ที่หลุด limit ของ recent list ด้านล่างจะไม่ตกหล่น
+    var dPendingFilter = dPendingSlips.map(function(s) { return encodeURIComponent(s); }).join(",");
+    var dPendingRows = supabaseSelect_("orders", "select=order_id&slip_status=in.(" + dPendingFilter + ")");
+    var dPendingCount = dPendingRows.length;
+
+    // recent_orders ใช้แสดงผลบนหน้า LIFF "ออเดอร์" — โชว์เฉพาะออเดอร์ที่ยังไม่
+    // เสร็จสมบูรณ์เท่านั้น (ดูรายการทั้งหมด/ประวัติย้อนหลังไปดูที่ Streamlit แทน)
+    // จำกัด limit ที่ query เลยแทนที่จะดึงทั้งตารางมาตัดทีหลัง ยิ่งออเดอร์สะสม
+    // เยอะยิ่งช้าลงเรื่อยๆ ถ้าไม่ limit — สถานะ "เสร็จสมบูรณ์" กรองฝั่ง JS ไม่ใช่
+    // SQL because fulfillment เป็น NULL ได้สำหรับออเดอร์ใหม่ที่ยังไม่ขยับสถานะ
+    // เลย, ตัวกรอง SQL แบบ not.in/neq จะดรอป NULL แถวเหล่านั้นทิ้งไปเงียบๆ (บั๊ก
+    // เดียวกับที่คอมเมนต์ไว้ใน branch_summary ด้านบน)
+    var dDoneFulfillment = ["รับแล้ว", "สาขายืนยัน", "ยกเลิก"];
+    var dashSb = supabaseSelect_("orders", "select=order_id,real_name,display_name,phone,items_json,total,slip_status,fulfillment,branch,address,timestamp&order=timestamp.desc&limit=300");
+    var dOrdersToday = 0, dRevenueToday = 0;
+    var dRecentOrders = [];
     dashSb.forEach(function(r) {
       var slip = String(r.slip_status || "");
+      var ff = String(r.fulfillment || "");
       // Supabase's timestamp is UTC (e.g. "...+00:00"), unlike the Sheet's
       // already-Bangkok-local string — must convert before date-comparing,
       // a naive substring(0,10) here would be off by up to 7 hours.
@@ -1688,22 +1705,21 @@ function handleApi(params) {
         dOrdersToday++;
         if (slip === "ยืนยัน") dRevenueToday += Number(r.total) || 0;
       }
-      if (dPendingSlips.indexOf(slip) >= 0) dPendingCount++;
-      if (dRecentOrders.length < 200) {
-        dRecentOrders.push({
-          order_id: String(r.order_id || ""),
-          real_name: String(r.real_name || ""),
-          display_name: String(r.display_name || ""),
-          phone: String(r.phone || ""),
-          items_json: JSON.stringify(r.items_json || []),
-          total: Number(r.total) || 0,
-          slip_status: slip,
-          fulfillment: String(r.fulfillment || ""),
-          branch: String(r.branch || ""),
-          address: String(r.address || ""),
-          timestamp: String(r.timestamp || ""),
-        });
-      }
+      var isDone = dDoneFulfillment.indexOf(ff) >= 0 || slip === "ยกเลิก";
+      if (isDone) return;
+      dRecentOrders.push({
+        order_id: String(r.order_id || ""),
+        real_name: String(r.real_name || ""),
+        display_name: String(r.display_name || ""),
+        phone: String(r.phone || ""),
+        items_json: JSON.stringify(r.items_json || []),
+        total: Number(r.total) || 0,
+        slip_status: slip,
+        fulfillment: ff,
+        branch: String(r.branch || ""),
+        address: String(r.address || ""),
+        timestamp: String(r.timestamp || ""),
+      });
     });
     var dashJsonSb = JSON.stringify({
       orders_today: dOrdersToday, revenue_today: dRevenueToday,
