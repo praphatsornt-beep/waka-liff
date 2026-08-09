@@ -1,25 +1,28 @@
 #!/usr/bin/env python3
-"""Shared WAKA visual theme (fonts, dark navy/gold card-game palette, status colors).
+"""Shared WAKA visual theme (fonts, coffee/gray palette, status colors).
 
 Colors and fonts are lifted from the WAKA Admin Dashboard design mockup —
-dark navy-black background, gold-bordered cards, turquoise primary CTAs.
+cream/off-white main content, dark navy sidebar, gold-bordered cards,
+turquoise primary CTAs. (A 2026-07-21 commit briefly re-themed the whole
+app to a dark navy-black background instead of just the sidebar, drifting
+from the mockup; reverted back to the mockup's light main content 2026-08-09.)
 Import and call `apply_theme()` once near the top of each page, after
 `st.set_page_config(...)`.
 """
 
 import streamlit as st
 
-BG = "#0C0E13"
-SURFACE = "#161A22"
-SURFACE_ALT = "#1B212B"
-BORDER = "rgba(184,134,59,0.45)"
-BORDER2 = "#B8863B"
-DIVIDER = "rgba(255,255,255,0.08)"
-DIVIDER2 = "rgba(255,255,255,0.06)"
-TEXT = "#F1EDE4"
-TEXT2 = "#9A9284"
-TEXT3 = "#6E6658"
-TEXT4 = "#B8B0A2"
+BG = "#F0EEEA"
+SURFACE = "#FFFFFF"
+SURFACE_ALT = "#F5F3EE"
+BORDER = "#DDD8CE"
+BORDER2 = "#CFC9BC"
+DIVIDER = "#E6E2D8"
+DIVIDER2 = "#ECE9E1"
+TEXT = "#2B2723"
+TEXT2 = "#6B655C"
+TEXT3 = "#78716A"
+TEXT4 = "#57514A"
 ACCENT_LIGHT = "#2A2416"
 ACCENT_TEXT = "#F0C767"
 PRIMARY_BTN = "#1C6C7C"
