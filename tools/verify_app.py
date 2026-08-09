@@ -316,10 +316,10 @@ def top_products_card(products: list) -> str:
     rows_html = ""
     for p in products:
         rows_html += f"""
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 22px;border-bottom:1px solid {DIVIDER2}">
-          <span style="font-size:13.5px">{p['name']}</span>
-          <span style="font-size:12.5px;color:{TEXT3}">{p['qty']} ชิ้น</span>
-          <span style="font-size:13px;font-weight:700;color:{ACCENT_TEXT}">฿{p['revenue']:,.0f}</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 22px;border-bottom:1px solid {DIVIDER2}">
+          <span style="font-size:13.5px;flex:1;min-width:0">{p['name']}</span>
+          <span style="font-size:12.5px;color:{TEXT3};flex:none;white-space:nowrap">{p['qty']} ชิ้น</span>
+          <span style="font-size:13px;font-weight:700;color:{ACCENT_TEXT};flex:none;white-space:nowrap;min-width:76px;text-align:right">฿{p['revenue']:,.0f}</span>
         </div>
         """
     if not rows_html:
@@ -464,7 +464,7 @@ def home():
     st.markdown(stock_warning_card(low_stock), unsafe_allow_html=True)
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-    d1, d2 = st.columns([1, 1.4])
+    d1, d2 = st.columns([1.3, 1])
     with d1:
         st.markdown(top_products_card(top_products(recent_orders)), unsafe_allow_html=True)
     with d2:
