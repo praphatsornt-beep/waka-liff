@@ -18,8 +18,17 @@ const SCRIPT_SECRET = PROPS.getProperty("SCRIPT_SECRET") || "";
 // knows the code for the branch they're requesting, not just the branch name
 // (the `branch` query/body param alone is not proof of identity — anyone who
 // can reach the API can set it to any value).
-const BRANCH_CODES = { "ts01": "ต้นสักคอร์เนอร์", "mt01": "เมืองทองธานี", "sn01": "ศรีนครินทร์" };
-const ADMIN_CODE   = "waka99";
+//
+// Read from Script Properties, not hardcoded — the previous hardcoded values
+// (here AND duplicated in liff/app.html + tools/screens/*.py) were exposed by
+// this being a public GitHub repo (2026-08-09 audit finding C-1). Fails
+// closed (empty map / empty string) if the properties aren't set yet, rather
+// than falling back to the old compromised values.
+const BRANCH_CODES = (function() {
+  try { return JSON.parse(PROPS.getProperty("BRANCH_CODES") || "{}"); }
+  catch (e) { return {}; }
+})();
+const ADMIN_CODE = PROPS.getProperty("ADMIN_CODE") || "";
 
 // Thai strings that visually match can still fail === if one side picked up
 // stray formatting during copy/paste (e.g. through the Apps Script editor).
@@ -1805,6 +1814,7 @@ function handleApi(params) {
     var orderId = params.order || "";
     if (!orderId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing order" })));
     var cancelReason = String(params.reason || "");
+    var cancelStaffName = String(params.staff_name || "").trim();
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
     var order = getSupabaseOrder_(orderId);
     if (!order) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
@@ -1821,6 +1831,10 @@ function handleApi(params) {
       restoreCatalogLimits(itemsToRestore);
     }
     order.fulfillment = "ยกเลิก";
+    // Additive, not overwriting — keeps the original slip-verification note
+    // (order.notes already holds that) instead of erasing it.
+    order.notes = (order.notes ? order.notes + "\n" : "") +
+      "ยกเลิกโดย " + (cancelStaffName || "ไม่ระบุชื่อ") + " " + now + (cancelReason ? " เหตุผล: " + cancelReason : "");
     var uid = String(order.line_user_id || "");
     if (uid) {
       var cancelMsg;
@@ -3135,8 +3149,9 @@ function handleConfirmSlip(data) {
     if (currentSlip === "ยืนยัน") return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, already: true })));
 
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
+    var confirmStaffName = String(data.staff_name || "").trim();
     order.slip_status = "ยืนยัน";
-    order.notes = "Admin confirm " + now;
+    order.notes = "ยืนยันสลิปโดย " + (confirmStaffName || "แอดมิน (ไม่ระบุชื่อ)") + " " + now;
 
     var uid = order.line_user_id || "";
     var orderId = String(order.order_id || "");
@@ -3184,7 +3199,8 @@ function handleRejectSlip(data) {
     var orderId = String(order.order_id || "");
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
     var reason = String(data.reason || "").trim();
-    var note = "Admin reject " + now + (reason ? " (" + reason + ")" : "");
+    var rejectStaffName = String(data.staff_name || "").trim();
+    var note = "ปฏิเสธสลิปโดย " + (rejectStaffName || "แอดมิน (ไม่ระบุชื่อ)") + " " + now + (reason ? " (" + reason + ")" : "");
 
     order.slip_status = "ยกเลิก";
     order.notes = note;
@@ -3338,6 +3354,12 @@ function handleAddProduct(data) {
   }
 }
 
+// `catalog` has no edited_by/history column (adding one is a bigger schema
+// decision, out of scope here) — so price/cost/limit/active changes are
+// logged to the group_staff LINE chat instead, giving at least a
+// searchable trail of who changed what and by how much. staff_name is
+// optional (Streamlit doesn't have per-user accounts yet), so an
+// unattributed edit still goes through — just logged as "ไม่ระบุชื่อ".
 function handleUpdateProduct(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
@@ -3345,29 +3367,51 @@ function handleUpdateProduct(data) {
     var row = getSupabaseRow_("catalog", "name", data.name);
     if (!row) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบสินค้า: " + data.name }))); }
 
+    var staffName = String(data.staff_name || "").trim();
+    var changeLog = [];
+    var logNumField = function(field, label, newVal) {
+      var oldVal = Number(row[field]) || 0;
+      if (newVal !== oldVal) changeLog.push(label + ": " + oldVal + " → " + newVal);
+    };
+
     var newName = String(data.new_name || "").trim();
     if (newName && newName !== data.name) {
       var dup = getSupabaseRow_("catalog", "name", newName);
       if (dup) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "มีสินค้าชื่อนี้อยู่แล้ว" }))); }
       var renameRes = _renameProductRpc_(data.name, newName);
       if (!renameRes.ok) { lock.releaseLock(); throw new Error("เปลี่ยนชื่อสินค้าไม่สำเร็จ: " + renameRes.text); }
+      changeLog.push("ชื่อ: " + data.name + " → " + newName);
       row.name = newName;
     }
 
     if (data.category !== undefined) row.category = data.category;
-    if (data.cost_box !== undefined) row.cost_box = Number(data.cost_box) || 0;
-    if (data.cost_pack !== undefined) row.cost_p = Number(data.cost_pack) || 0;
-    if (data.price_box !== undefined) row.price_box = Number(data.price_box) || 0;
-    if (data.price_pack !== undefined) row.price_pack = Number(data.price_pack) || 0;
+    if (data.cost_box !== undefined) { logNumField("cost_box", "ต้นทุน/กล่อง", Number(data.cost_box) || 0); row.cost_box = Number(data.cost_box) || 0; }
+    if (data.cost_pack !== undefined) { logNumField("cost_p", "ต้นทุน/ซอง", Number(data.cost_pack) || 0); row.cost_p = Number(data.cost_pack) || 0; }
+    if (data.price_box !== undefined) { logNumField("price_box", "ราคา/กล่อง", Number(data.price_box) || 0); row.price_box = Number(data.price_box) || 0; }
+    if (data.price_pack !== undefined) { logNumField("price_pack", "ราคา/ซอง", Number(data.price_pack) || 0); row.price_pack = Number(data.price_pack) || 0; }
     if (data.limit_box !== undefined) row.limit_box = data.limit_box === "" ? null : Number(data.limit_box);
     if (data.limit_pack !== undefined) row.limit_pack = data.limit_pack === "" ? null : Number(data.limit_pack);
-    if (data.active !== undefined) row.active = data.active ? "TRUE" : "FALSE";
+    if (data.active !== undefined) {
+      var newActive = data.active ? "TRUE" : "FALSE";
+      if (String(row.active).toUpperCase() !== newActive) changeLog.push("สถานะ: " + (data.active ? "เปิดขาย" : "ปิดขาย"));
+      row.active = newActive;
+    }
     if (data.image_url !== undefined) row.image_url = data.image_url || "";
     if (data.barcode !== undefined) row.barcode = data.barcode || "";
     if (data.notice !== undefined) row.notice = data.notice || "";
     if (data.slug !== undefined) row.slug = data.slug || "";
     CacheService.getScriptCache().remove("catalog_config");
     writeSupabaseRow_("catalog", row, SUPABASE_CATALOG_HEADER, "name", lock);
+
+    if (changeLog.length > 0) {
+      var groupStaffEdit = _getConfigValue(null, "group_staff");
+      if (groupStaffEdit) {
+        var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
+        _linePush(groupStaffEdit, "✏️ " + (staffName || "ไม่ระบุชื่อ") + " แก้ไขสินค้า " + row.name + "\n" +
+          changeLog.map(function(c) { return "  - " + c; }).join("\n") + "\n" + now);
+      }
+    }
+
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}

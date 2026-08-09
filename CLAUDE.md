@@ -105,7 +105,14 @@ in-app tournament flow).
   query param: `confirm`, `staff`, `api`, or catalog/config for the default
   LIFF payload). Handles LINE webhook events, order writes, stock/shipment
   logic, and PIN-based branch/admin authorization (`BRANCH_CODES`,
-  `ADMIN_CODE` in the file — kept in sync with `liff/app.html`).
+  `ADMIN_CODE` — read from Script Properties, not hardcoded, since
+  2026-08-09's security audit found the old hardcoded values exposed via
+  this being a public repo). The actual PIN values live only in Script
+  Properties and must match what's entered in `liff/app.html`'s
+  `PIN_ADMIN`/`BRANCH_CODES` and `tools/screens/*.py`'s `WAKA_S`/
+  `ADMIN_CODE` constants — none of these should ever be the real, live
+  values again once rotated; treat any value currently in git history
+  (pre-rotation) as permanently burned.
 - **`liff/*.html`** — static frontend pages (customer ordering, staff
   fulfillment, warehouse, reports), each calling the GAS Web App URL
   directly via `fetch`. Deployed to Vercel. These files are tracked

@@ -561,10 +561,10 @@
 <div id="partialModal"></div>
 
 <script>
-const WAKA_S = 'wk26xK9mPqRt';
+const WAKA_S = 'SEpVTmIUFwEUgvVflPPIuv1gDhhiqSKRVjjGG34z';
 const G = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec?_s=' + WAKA_S;
-const PIN_ADMIN = 'waka99';
-const BRANCH_CODES = { 'ts01': 'ต้นสักคอร์เนอร์', 'mt01': 'เมืองทองธานี', 'sn01': 'ศรีนครินทร์' };
+const PIN_ADMIN = 't52mm48m3';
+const BRANCH_CODES = { 'zgxpdghq': 'ต้นสักคอร์เนอร์', 'mzkm8qxh': 'เมืองทองธานี', 'snypvx4n': 'ศรีนครินทร์' };
 const LIFF_BASE = 'https://liff.line.me/2010457385-UpJLXxJ0';
 let products = [], centralStock = [], branchSummary = {}, selectedProduct = null;
 let scanner = null, scannerNew = null;
@@ -739,12 +739,14 @@ function renderOrders() {
 }
 
 async function cancelOrder(orderId, btn) {
+  const staff_name = prompt('ยกเลิกออเดอร์ #' + orderId + '\nกรอกชื่อพนักงานที่ยกเลิก:');
+  if (staff_name === null || !staff_name.trim()) return;
   const reason = prompt('เหตุผลการยกเลิก (ว่างได้):') ;
   if (reason === null) return;
   if (!confirm('ยืนยันยกเลิกออเดอร์ #' + orderId + '?\n\nระบบจะส่ง LINE แจ้งลูกค้าและคืน stock อัตโนมัติ')) return;
   btn.disabled = true; btn.textContent = 'กำลังยกเลิก...';
   try {
-    const r = await fetch(G + '&action=api&do=cancel_order&order=' + encodeURIComponent(orderId) + '&reason=' + encodeURIComponent(reason || ''));
+    const r = await fetch(G + '&action=api&do=cancel_order&order=' + encodeURIComponent(orderId) + '&reason=' + encodeURIComponent(reason || '') + '&staff_name=' + encodeURIComponent(staff_name.trim()));
     const d = await r.json();
     if (d.ok) { toast('ยกเลิกแล้ว ✅ แจ้งลูกค้าทาง LINE แล้ว'); loadDashboard(); }
     else { alert(d.error || 'ผิดพลาด'); btn.disabled = false; btn.textContent = '❌ ยกเลิกออเดอร์'; }

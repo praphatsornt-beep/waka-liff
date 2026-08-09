@@ -65,7 +65,10 @@ with st.form("bank_settings_form"):
     bank_account_name_en = b4.text_input("ชื่อบัญชี (Eng, คั่นหลายชื่อด้วย |)", value=cfg.get("bank_account_name_en", ""))
     b5, b6 = st.columns(2)
     delivery_fee = b5.number_input("ค่าจัดส่ง (บาท)", min_value=0, value=int(cfg.get("delivery_fee") or 0), step=1)
-    admin_pin = b6.text_input("PIN แอดมิน", value=cfg.get("admin_pin", "") or "waka99")
+    admin_pin = b6.text_input(
+        "PIN แอดมิน (ไม่ใช้งานจริง — ค่าที่ตรวจสอบจริงอยู่ใน GAS Script Properties)",
+        value=cfg.get("admin_pin", ""),
+    )
     if st.form_submit_button("บันทึก"):
         try:
             set_config({
