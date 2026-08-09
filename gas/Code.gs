@@ -430,9 +430,6 @@ function doGet(e) {
     if (action === "confirm") {
       return handleCustomerConfirm(e.parameter.order || "", e);
     }
-    if (action === "staff") {
-      return handleStaffPage(e.parameter.order || "", e.parameter.do || "");
-    }
     if (action === "api") {
       return handleApi(e.parameter);
     }
@@ -1338,99 +1335,6 @@ function handleTournamentRegister(data) {
   }
 }
 
-function handleStaffPage(orderId, action) {
-  if (!orderId) return HtmlService.createHtmlOutput("<h2>ไม่พบออเดอร์</h2>");
-  var order = getSupabaseOrder_(orderId);
-  if (!order) return HtmlService.createHtmlOutput("<h2>ไม่พบออเดอร์ #" + orderId + "</h2>");
-
-  var gasUrl = ScriptApp.getService().getUrl();
-  var ff = order.fulfillment || "รอเตรียม";
-  var branch = order.branch || "";
-  var isDelivery = branch === "จัดส่ง";
-  var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
-
-  if (action === "shipping") {
-    order.fulfillment = "กำลังจัดส่งไปสาขา";
-    order.fulfilled_at = now;
-    ff = order.fulfillment;
-    writeSupabaseOrder_(order);
-    _clearDashCache();
-  } else if (action === "ready") {
-    order.fulfillment = "พร้อมรับ";
-    order.fulfilled_at = now;
-    ff = order.fulfillment;
-    writeSupabaseOrder_(order);
-    _clearDashCache();
-    if (order.line_user_id) {
-      var trackUrl2 = "https://waka-liff.vercel.app/confirm.html?order=" + orderId;
-      _linePush(order.line_user_id, "สินค้าพร้อมรับที่สาขา" + branch + " แล้ว!\n\nออเดอร์: #" + orderId + "\n\nดูสถานะ:\n" + trackUrl2);
-    }
-  } else if (action === "handover") {
-    var ffValue = isDelivery ? "จัดส่งแล้ว" : "สาขายืนยัน";
-    order.fulfillment = ffValue;
-    order.staff_confirmed_at = now;
-    ff = ffValue;
-    writeSupabaseOrder_(order);
-    _clearDashCache();
-    if (order.line_user_id) {
-      var trackUrl3 = "https://waka-liff.vercel.app/confirm.html?order=" + orderId;
-      _linePush(order.line_user_id, "สาขาส่งมอบสินค้าแล้ว กรุณากดยืนยันรับของ\n\nออเดอร์: #" + orderId + "\n\nกดยืนยัน:\n" + trackUrl3);
-    }
-  }
-
-  var items = Array.isArray(order.items_json) ? order.items_json : [];
-  var itemsHtml = "";
-  for (var idx = 0; idx < items.length; idx++) {
-    var it = items[idx];
-    var unit = it.type === "box" ? "กล่อง" : "ซอง";
-    var badge = "";
-    if (it.cancelled_at) badge = ' <span style="color:#d64545;font-size:11px">[ยกเลิก]</span>';
-    else if (it.handed_at) badge = ' <span style="color:#2d8f4e;font-size:11px">✅ ส่งมอบแล้ว</span>';
-    else if (it.ready_at) badge = ' <span style="color:#d97706;font-size:11px">⏳ พร้อมรับ</span>';
-    itemsHtml += "<div style='margin:4px 0'>" + it.name + " (" + unit + ") x" + it.qty + badge + "</div>";
-  }
-
-  var baseUrl = gasUrl + "?action=staff&order=" + orderId + "&do=";
-  var btnStyle = "display:block;width:100%;padding:14px;border:none;border-radius:10px;font-size:16px;font-weight:bold;color:#fff;cursor:pointer;margin:8px 0;text-decoration:none;text-align:center";
-
-  var buttonsHtml = "";
-  if (ff === "รอเตรียม" && !isDelivery) {
-    buttonsHtml = '<a href="' + baseUrl + 'shipping" style="' + btnStyle + ';background:#2196F3">📤 จัดส่งไปสาขาแล้ว</a>';
-  } else if (ff === "กำลังจัดส่งไปสาขา") {
-    buttonsHtml = '<a href="' + baseUrl + 'ready" style="' + btnStyle + ';background:#FF9800">📍 ถึงสาขาแล้ว / พร้อมรับ</a>';
-  } else if (ff === "พร้อมรับ" || ff === "บางส่วน") {
-    buttonsHtml = '<a href="' + baseUrl + 'handover" style="' + btnStyle + ';background:#06c755">🤝 ส่งมอบสินค้าแล้ว</a>';
-  } else if (ff === "รับบางส่วนแล้ว") {
-    buttonsHtml = '<div style="text-align:center;padding:12px;background:#fff8e1;border-radius:10px;color:#d97706;font-weight:bold;margin-bottom:8px">📦 ส่งมอบบางส่วนแล้ว รอสินค้าที่เหลือ</div>';
-  } else if (ff === "รอเตรียม" && isDelivery) {
-    buttonsHtml = '<a href="' + baseUrl + 'handover" style="' + btnStyle + ';background:#06c755">🚚 จัดส่งพัสดุแล้ว</a>';
-  } else if (ff === "สาขายืนยัน" || ff === "รับแล้ว") {
-    buttonsHtml = '<div style="text-align:center;padding:16px;background:#f0fbf4;border-radius:10px;color:#06c755;font-weight:bold">✅ ดำเนินการแล้ว</div>';
-  }
-
-  if (action) {
-    buttonsHtml = '<div style="text-align:center;padding:16px;background:#f0fbf4;border-radius:10px;margin-bottom:12px"><b style="color:#06c755">✅ อัปเดตแล้ว!</b><br><span style="color:#888">' + now + '</span></div>' + buttonsHtml;
-  }
-
-  var html = '<div style="max-width:420px;margin:0 auto;padding:20px;font-family:sans-serif">'
-    + '<h2 style="text-align:center;color:#333">📋 ออเดอร์ #' + orderId + '</h2>'
-    + '<div style="background:#f9f9f9;border-radius:10px;padding:14px;margin:12px 0">'
-    + '<div><b>ลูกค้า:</b> ' + (order.display_name || "") + ' (' + (order.real_name || "") + ')</div>'
-    + '<div><b>โทร:</b> ' + (order.phone || "") + '</div>'
-    + '<div><b>' + (isDelivery ? '🚚 จัดส่งพัสดุ' : '📦 รับที่สาขา: ' + branch) + '</b></div>'
-    + (isDelivery && order.address ? '<div><b>ที่อยู่:</b> ' + order.address + '</div>' : '')
-    + '</div>'
-    + '<div style="background:#fff;border:1px solid #eee;border-radius:10px;padding:14px;margin:12px 0">'
-    + '<div style="font-weight:bold;margin-bottom:8px">🎴 รายการ</div>' + itemsHtml
-    + '<div style="margin-top:8px;font-weight:bold;color:#06c755">ยอดรวม: ' + order.total + ' บาท</div>'
-    + '</div>'
-    + '<div style="text-align:center;margin:12px 0;color:#888">สถานะ: <b>' + ff + '</b></div>'
-    + buttonsHtml
-    + '</div>';
-
-  return HtmlService.createHtmlOutput(html);
-}
-
 function handleApi(params) {
   var action = params.do || "";
 
@@ -1438,9 +1342,9 @@ function handleApi(params) {
     var q = String(params.q || "").toLowerCase().trim();
     if (!q) return _cors(ContentService.createTextOutput(JSON.stringify({ orders: [] })));
     // Optional branch scoping — app.html's branch-portal search passes this
-    // so staff only find/handover their own branch's orders; staff.html's
-    // standalone order lookup (reached from a per-order LINE link, no branch
-    // context at all) omits it and keeps searching every branch, unchanged.
+    // so staff only find/handover their own branch's orders; other callers
+    // (e.g. an admin-wide lookup with no branch context) omit it and keep
+    // searching every branch, unchanged.
     var seBranch = String(params.branch || "").trim();
     if (seBranch && !_branchAuthorized(params.code, seBranch)) {
       return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));

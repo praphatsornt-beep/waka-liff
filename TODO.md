@@ -24,9 +24,11 @@ products/tournament_*) **ตัดสินใจแล้วว่าเก็�
 - `credentials.json`/`token.json`/`refresh_token.py` (Google OAuth) **ยืนยันแล้วว่าไม่มีอะไรใช้จริง** ตอนนี้ — Streamlit ทุกหน้าอ่าน Supabase ตรงหมดแล้ว (2026-08) แต่**ยังไม่ลบไฟล์/workflow** จนกว่าจะถามยืนยันอีกครั้ง
 
 ### รอทำ (ยังไม่ลบ เพราะยังมีใครลิงก์ถึง/ยังไม่มั่นใจ 100%)
-- `staff.html` — ไม่มีใครลิงก์ถึงแล้ว แต่รอให้มั่นใจว่า `app.html?order=` ใช้แทนได้ครบจริงก่อนค่อยลบไฟล์
-- `receive.html` — orphan อยู่แล้ว (ไม่มีใครลิงก์ถึง) แต่ยังไม่ลบ
 - ลบ `credentials.json`/`token.json`/`refresh_token.py`/`workflows/setup_google_auth.md` — ยืนยันแล้วว่าไม่มีโค้ดจุดไหนใช้ แต่รอถามก่อนลบจริง (ตามที่ตกลงไว้)
+
+### ทำแล้ว (security audit, 2026-08-09)
+- ลบ `liff/staff.html`, `liff/receive.html` — orphan ทั้งคู่ (0 ที่เชื่อมโยงถึง) ยืนยันด้วย grep ทั่ว repo แล้วก่อนลบ
+- ลบ `handleStaffPage()` + route `action=staff` ออกจาก `gas/Code.gs` — เป็น dead code หลังลบ `staff.html` (self-reference เดียวที่เหลือคือปุ่มในหน้าตัวเอง) และเป็นจุด Critical XSS (C-3 ในรายงาน audit — ชื่อ/เบอร์/ที่อยู่ลูกค้าไม่ถูก escape) แก้แบบลบทิ้งทั้งหมดแทนการ patch escape
 
 ---
 
