@@ -20,7 +20,7 @@ products/tournament_*) **ตัดสินใจแล้วว่าเก็�
 - [x] ลบ `SpreadsheetApp.openById(SHEET_ID)` ที่ตายแล้วใน GAS 6 จุด (`doPost`, `handleWakagymRegister`, `handleTournamentRegister`, `handleCreateShipment`, `handleHandoverOrder`, `handlePartialCancelItems`) — เปิด Sheet ทิ้งเปล่าๆทุกครั้งที่มี order/ลงทะเบียน/ส่งของ ไม่มีใครใช้จริงเพราะ `_getConfigValue` อ่าน Supabase อยู่แล้ว
 
 ### หมายเหตุ
-- `notifyBranch()` ใน `gas/Code.gs` เป็น **dead code** (ไม่มีใครเรียกใช้จริง) — เจอตอนไล่เช็ค 2026-08-06 เคยแก้ `staffUrl` ข้างในให้ชี้ `app.html?order=` ไปแล้วแต่ไม่มีผลอะไรเพราะไม่ถูกเรียก ตัดสินใจ**ปล่อยไว้ก่อน ไม่ลบไม่ต่อสาย** จนกว่าจะมีเหตุผลชัดเจนกว่านี้
+- ลบ `notifyBranch()`, `syncRowToSupabase_()`, `_ensureTab()`, `backfillPartialReadyNotifiedAt`, `testPartialFlow`, `testWakagymFlow`, `_testWgCleanup` ออกจาก `gas/Code.gs` แล้ว (2026-08-09) — dead code ทั้งหมด (0 caller จริง หลังเช็คทั้งไฟล์) ยกเว้น 2 ตัวหลังที่เป็น test function ที่ผลลัพธ์กลายเป็น false-positive ไปแล้วเพราะเทสต์ข้อมูลใน Sheet ที่ระบบจริงไม่ได้ใช้แล้ว
 - `credentials.json`/`token.json`/`refresh_token.py` (Google OAuth) **ยืนยันแล้วว่าไม่มีอะไรใช้จริง** ตอนนี้ — Streamlit ทุกหน้าอ่าน Supabase ตรงหมดแล้ว (2026-08) แต่**ยังไม่ลบไฟล์/workflow** จนกว่าจะถามยืนยันอีกครั้ง
 
 ### รอทำ (ยังไม่ลบ เพราะยังมีใครลิงก์ถึง/ยังไม่มั่นใจ 100%)

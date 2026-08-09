@@ -100,7 +100,7 @@ in-app tournament flow).
 
 ## The four runtime pieces
 
-- **`gas/Code.gs`** (single ~3,800-line file) — the backend. Deployed as a
+- **`gas/Code.gs`** (single ~3,600-line file) — the backend. Deployed as a
   Google Apps Script Web App (`doGet`/`doPost`, dispatched by an `action`
   query param: `confirm`, `staff`, `api`, or catalog/config for the default
   LIFF payload). Handles LINE webhook events, order writes, stock/shipment
@@ -152,12 +152,14 @@ A separate spreadsheet (`REPORT_SHEET_ID`, the "WAKA export" sheet) is
 written by `mirrorToReportSheet_()` as a best-effort, human-readable mirror
 of every Supabase-primary write — never authoritative, never blocking, and
 safe to ignore for anything code-related. The original `SHEET_ID` spreadsheet
-has no remaining production read/write path — its only uses now are
-`getConfig_()`'s fallback if Supabase is unreachable, and a handful of
-one-time/dev-only functions at the bottom of `gas/Code.gs`
+has no remaining production read/write path — its only use now is
+`getConfig_()`'s fallback if Supabase is unreachable. The one-time/dev-only
+functions that used to live at the bottom of `gas/Code.gs`
 (`backfillPartialReadyNotifiedAt`, `testPartialFlow`, `testWakagymFlow`,
-`_testWgCleanup`) that operate on legacy Sheet-era rows and are only ever
-run manually from the Apps Script editor, never from a live request.
+`_testWgCleanup`) were removed 2026-08-09 — the latter two had gone stale
+(they asserted against the legacy Sheet tabs directly, not Supabase, so
+their "✅ ทุก assertion ผ่าน" logs no longer reflected how the live system
+actually behaves) and the backfill had already done its one-time job.
 Streamlit has no Google Sheets dependency left either — every screen reads
 Supabase directly via `service_role`; the `credentials.json`/`token.json`
 OAuth flow (`tools/refresh_token.py`) is unused by anything in the current
