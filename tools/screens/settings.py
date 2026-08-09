@@ -63,12 +63,7 @@ with st.form("bank_settings_form"):
     b3, b4 = st.columns(2)
     bank_account_name = b3.text_input("ชื่อบัญชี (ไทย, คั่นหลายชื่อด้วย |)", value=cfg.get("bank_account_name", ""))
     bank_account_name_en = b4.text_input("ชื่อบัญชี (Eng, คั่นหลายชื่อด้วย |)", value=cfg.get("bank_account_name_en", ""))
-    b5, b6 = st.columns(2)
-    delivery_fee = b5.number_input("ค่าจัดส่ง (บาท)", min_value=0, value=int(cfg.get("delivery_fee") or 0), step=1)
-    admin_pin = b6.text_input(
-        "PIN แอดมิน (ไม่ใช้งานจริง — ค่าที่ตรวจสอบจริงอยู่ใน GAS Script Properties)",
-        value=cfg.get("admin_pin", ""),
-    )
+    delivery_fee = st.number_input("ค่าจัดส่ง (บาท)", min_value=0, value=int(cfg.get("delivery_fee") or 0), step=1)
     if st.form_submit_button("บันทึก"):
         try:
             set_config({
@@ -77,7 +72,6 @@ with st.form("bank_settings_form"):
                 "bank_account_name": bank_account_name.strip(),
                 "bank_account_name_en": bank_account_name_en.strip(),
                 "delivery_fee": delivery_fee,
-                "admin_pin": admin_pin.strip(),
             })
             st.success("บันทึกแล้ว")
             st.rerun()
@@ -85,22 +79,7 @@ with st.form("bank_settings_form"):
             st.error(f"บันทึกไม่ได้: {e}")
 
 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
-with st.form("pin_settings_form"):
-    st.subheader("PIN พนักงานแต่ละสาขา")
-    pin_inputs = {}
-    cols = st.columns(len(BRANCHES))
-    for col, branch in zip(cols, BRANCHES):
-        pin_inputs[branch] = col.text_input(branch, value=cfg.get(f"staff_pin_{branch}", ""))
-    if st.form_submit_button("บันทึก PIN"):
-        try:
-            set_config({f"staff_pin_{b}": v.strip() for b, v in pin_inputs.items()})
-            st.success("บันทึก PIN แล้ว")
-            st.rerun()
-        except Exception as e:
-            st.error(f"บันทึกไม่ได้: {e}")
-
-st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+st.caption("PIN แอดมิน/สาขาแก้ที่ Apps Script → Project Settings → Script Properties (ADMIN_CODE/BRANCH_CODES) — ฟอร์มที่เคยอยู่ตรงนี้เขียนลง config คีย์ที่ไม่มีอะไรอ่านจริง จึงเอาออกแล้ว (2026-08-09)")
 
 with st.expander("ตั้งค่าขั้นสูง"):
     covered = {"bank_name", "bank_account", "bank_account_name", "bank_account_name_en", "delivery_fee", "admin_pin"}
