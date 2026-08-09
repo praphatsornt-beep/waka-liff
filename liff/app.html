@@ -714,13 +714,13 @@ function renderOrders() {
     const activeItemCount = items.filter(i=>!i.cancelled_at).length;
     const readyBtnLabel = activeItemCount>1?'📣 แจ้งพร้อมรับ (บางชิ้น)':'📣 แจ้งพร้อมรับ';
     const itemsJson = esc(JSON.stringify(items)).replace(/'/g,'&#39;');
-    const itemsSummary = items.map(i=>`${i.name} x${i.qty}`).join(', ');
+    const itemsSummaryHtml = items.map(i=>`<div style="font-size:11px;color:#B8A896;margin-top:2px">${esc(i.name)} x${i.qty}</div>`).join('');
     return `<div class="order-card" style="cursor:pointer;margin-bottom:8px" onclick="this.querySelector('.od').style.display=this.querySelector('.od').style.display==='none'?'block':'none'">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
         <div style="min-width:0;flex:1;margin-right:8px">
           <div style="font-weight:700;font-size:13px;color:#2C1810">${esc(o.real_name||o.display_name||'-')}</div>
           <div style="font-size:11px;color:#9A8878;margin-top:2px">#${esc(o.order_id)} · ${esc(o.branch)}</div>
-          ${itemsSummary?`<div style="font-size:11px;color:#B8A896;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(itemsSummary)}</div>`:''}
+          ${itemsSummaryHtml}
         </div>
         <div style="text-align:right;flex-shrink:0;margin-left:8px">
           <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;color:#4A3728">฿${Number(o.total).toLocaleString()}</div>
