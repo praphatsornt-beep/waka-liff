@@ -1291,8 +1291,8 @@ function handleApi(params) {
       order.customer_confirmed_at = now;
       if (uid) {
         var doneMsg = isDelivery
-          ? "📦 จัดส่งสินค้าเรียบร้อยแล้ว\nออเดอร์: #" + orderId + "\n\nขอบคุณที่อุดหนุน WAKA SPACE ครับ 🙏\n\nหากคุณยังไม่ได้รับพัสดุ กรุณาติดต่อแอดมินโดยด่วน"
-          : "🎉 ได้รับสินค้าเรียบร้อยแล้ว\nออเดอร์: #" + orderId + "\n\nขอบคุณที่อุดหนุน WAKA SPACE ครับ 🙏\n\nหากคุณยังไม่ได้รับสินค้า กรุณาติดต่อแอดมินโดยด่วน";
+          ? "🎉 WAKA ได้จัดส่งสินค้าครบทุกชิ้นตามคำสั่งซื้อแล้ว\nออเดอร์: #" + orderId + "\n\nขอบคุณที่อุดหนุน WAKA SPACE ครับ 🙏\n\nหากคุณยังไม่ได้รับพัสดุ กรุณาติดต่อแอดมินโดยด่วน"
+          : "🎉 WAKA ได้ส่งมอบสินค้าครบทุกชิ้นตามคำสั่งซื้อแล้ว\nออเดอร์: #" + orderId + "\n\nขอบคุณที่อุดหนุน WAKA SPACE ครับ 🙏\n\nหากคุณยังไม่ได้รับสินค้า กรุณาติดต่อแอดมินโดยด่วน";
         _linePush(uid, doneMsg);
       }
     }
@@ -2725,7 +2725,7 @@ function handleHandoverOrder(data) {
       var pendingItems = items.filter(function(it) { return !it.handed_at && !it.cancelled_at; });
       var msg;
       if (allDone) {
-        msg = "🎉 ได้รับสินค้าเรียบร้อยแล้ว\nออเดอร์: #" + data.order_id + "\n\nขอบคุณที่อุดหนุน WAKA SPACE ครับ 🙏\n\nหากคุณยังไม่ได้รับสินค้า กรุณาติดต่อแอดมินโดยด่วน";
+        msg = "🎉 WAKA ได้ส่งมอบสินค้าครบทุกชิ้นตามคำสั่งซื้อแล้ว\nออเดอร์: #" + data.order_id + "\n\nขอบคุณที่อุดหนุน WAKA SPACE ครับ 🙏\n\nหากคุณยังไม่ได้รับสินค้า กรุณาติดต่อแอดมินโดยด่วน";
       } else {
         msg = "📦 ส่งมอบสินค้าบางส่วนแล้ว\nออเดอร์: #" + data.order_id + "\n\n✅ รับแล้ว:\n" +
           handoverNames.map(function(n) { return "- " + n; }).join("\n") +
