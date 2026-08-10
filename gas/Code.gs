@@ -78,6 +78,23 @@ function pushToSupabase_(table, row) {
   }
 }
 
+// บันทึกทุกการกระทำที่มีผลต่อข้อมูลจริงลง staff_actions เพื่อตรวจสอบย้อนหลัง
+// ได้ว่าใครทำอะไร เมื่อไหร่ — best-effort เหมือน pushToSupabase_ ทั่วไป (fail
+// เงียบๆ แค่ log) เพราะการบันทึก audit log ต้องไม่มีทางไปบล็อกการกระทำจริงที่
+// มันกำลังบันทึกอยู่ ไม่มีชื่อพนักงาน = ข้าม ไม่บันทึกอะไรเลย (กันแถวที่ตรวจ
+// สอบย้อนหลังไม่ได้อยู่ดีปนอยู่ในตาราง)
+function _logStaffAction_(staffName, branch, action, targetId, detail) {
+  var name = String(staffName || "").trim();
+  if (!name) return;
+  pushToSupabase_("staff_actions", {
+    staff_name: name,
+    branch: branch || null,
+    action: action,
+    target_id: targetId || null,
+    detail: detail || null,
+  });
+}
+
 // ── orders: Supabase is the sole store of record ────────────────────────
 
 // Reads the current full order row from Supabase. items_json comes back
@@ -1641,6 +1658,7 @@ function handleApi(params) {
     }
     _clearDashCache();
     writeSupabaseOrder_(order);
+    _logStaffAction_(cancelStaffName, order.branch, "cancel_order", orderId, cancelReason || null);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   }
 
@@ -2429,11 +2447,12 @@ function verifySlipWithClaude(base64) {
 }
 
 // ── Shipment: สร้างล็อตส่งสาขา ──────────────────────────────────────────────
-// data: { to_branch, items: [{name, qty_box, qty_pack, qty_box_extra, qty_pack_extra}] }
+// data: { to_branch, items: [{name, qty_box, qty_pack, qty_box_extra, qty_pack_extra}], staff_name }
 function handleCreateShipment(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
+    var staffName = String(data.staff_name || "").trim();
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
     var nowDisplay = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
     var shipId = "SH" + Utilities.formatDate(new Date(), "Asia/Bangkok", "yyMMddHHmmss");
@@ -2479,6 +2498,7 @@ function handleCreateShipment(data) {
         _linePush(groupId, "📦 สร้างล็อตส่งสาขา " + (data.to_branch || "") + "\n\n" + shipId + " — " + nowDisplay + "\n\n" + itemLines + "\n\nเมื่อสินค้าถึงสาขาแล้ว กดรับของที่:\n" + receiveUrl);
       }
     } catch(_) {}
+    _logStaffAction_(staffName, data.to_branch, "create_shipment", shipId, null);
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, shipment_id: shipId })));
   } catch (err) {
@@ -2488,10 +2508,12 @@ function handleCreateShipment(data) {
 }
 
 // ── Shipment: ยกเลิกลอต + คืนสต็อกกลาง ─────────────────────────────────────
+// data: { shipment_id, staff_name }
 function handleCancelShipment(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
+    var staffName = String(data.staff_name || "").trim();
     // shipment_id isn't a unique key (see supabase/schema.sql — historical
     // Sheet-era duplicates exist), so fetch every row with this shipment_id
     // and take the first one that isn't already received/cancelled, same
@@ -2528,6 +2550,7 @@ function handleCancelShipment(data) {
     if (!csPatchRes.ok) throw new Error("Supabase shipments cancel failed: " + csPatchRes.text);
     lock.releaseLock();
     if (csChangedNames.length) _pushCatalogRows_(csCatRows, csChangedNames);
+    _logStaffAction_(staffName, null, "cancel_shipment", data.shipment_id, null);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch(err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -2626,6 +2649,7 @@ function handleReceiveShipment(data) {
       }).join("\n");
       _linePush(groupStaffReceive, "📥 " + staffName + " รับของจากคลังที่สาขา " + branch + " แล้ว\nล็อต: " + data.shipment_id + "\n\n" + receiveItemsText);
     }
+    _logStaffAction_(staffName, branch, "receive_shipment", data.shipment_id, null);
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now })));
   } catch (err) {
@@ -2728,6 +2752,7 @@ function handleHandoverOrder(data) {
     }
 
     writeSupabaseOrder_(order, lock);
+    _logStaffAction_(staffName, branch, "handover_order", data.order_id, newFf);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now, fulfillment: newFf })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -2736,12 +2761,13 @@ function handleHandoverOrder(data) {
 }
 
 // ── แจ้งพร้อมรับบางส่วน ─────────────────────────────────────────────────────
-// data: { order_id, indices: [0,1,...] } — zero-based index ของ items ที่พร้อม
+// data: { order_id, indices: [0,1,...], staff_name } — zero-based index ของ items ที่พร้อม
 function handlePartialReady(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
     var indices = data.indices || [];
+    var staffName = String(data.staff_name || "").trim();
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
 
     var order = getSupabaseOrder_(data.order_id);
@@ -2804,6 +2830,7 @@ function handlePartialReady(data) {
     }
 
     writeSupabaseOrder_(order, lock);
+    _logStaffAction_(staffName, branch, "partial_ready", data.order_id, newFf);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, fulfillment: newFf })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -2812,13 +2839,14 @@ function handlePartialReady(data) {
 }
 
 // ── ยกเลิกบางชิ้นในออเดอร์ ──────────────────────────────────────────────────
-// data: { order_id, indices: [0,1,...], reason: "..." }
+// data: { order_id, indices: [0,1,...], reason: "...", staff_name }
 function handlePartialCancelItems(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
     var indices = data.indices || [];
     var reason = String(data.reason || "");
+    var staffName = String(data.staff_name || "").trim();
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
 
     var order = getSupabaseOrder_(data.order_id);
@@ -2875,6 +2903,7 @@ function handlePartialCancelItems(data) {
     }
 
     writeSupabaseOrder_(order, lock);
+    _logStaffAction_(staffName, branch, "partial_cancel_items", data.order_id, cancelledItems.length + " รายการ" + (reason ? " — " + reason : ""));
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, cancelled: cancelledItems.length })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -2953,14 +2982,15 @@ function handleConfirmSlip(data) {
     }
 
     writeSupabaseOrder_(order, lock);
+    _logStaffAction_(confirmStaffName, branch, "confirm_slip", orderId, null);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
   } finally {
-    // writeSupabaseOrder_ already released the lock on the success path
-    // (before its mirror step) — this is a safety-net re-release for the
-    // early-return/error paths above that never reached that call, and is a
-    // harmless no-op if the lock is already free.
+    // writeSupabaseOrder_ already released the lock on the success path —
+    // this is a safety-net re-release for the early-return/error paths
+    // above that never reached that call, and is a harmless no-op if the
+    // lock is already free.
     try { lock.releaseLock(); } catch (_) {}
   }
 }
@@ -2992,6 +3022,7 @@ function handleRejectSlip(data) {
     }
 
     writeSupabaseOrder_(order, lock);
+    _logStaffAction_(rejectStaffName, order.branch, "reject_slip", orderId, reason || null);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
@@ -3070,11 +3101,12 @@ function handleNotifyTournamentPlayers(data) {
 }
 
 // ── เพิ่มสต็อกสินค้าเดิม ──
-// data: { name, add_box, add_pack }
+// data: { name, add_box, add_pack, staff_name }
 function handleAddStock(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
+    var staffName = String(data.staff_name || "").trim();
     var row = getSupabaseRow_("catalog", "name", data.name);
     if (!row) {
       lock.releaseLock();
@@ -3086,6 +3118,8 @@ function handleAddStock(data) {
     if (data.limit_pack !== undefined && data.limit_pack !== null) row.limit_pack = Number(data.limit_pack);
     CacheService.getScriptCache().remove("catalog_config");
     writeSupabaseRow_("catalog", row, SUPABASE_CATALOG_HEADER, "name", lock);
+    var addStockDetail = (data.add_box ? "+" + data.add_box + " กล่อง " : "") + (data.add_pack ? "+" + data.add_pack + " ซอง" : "");
+    _logStaffAction_(staffName, null, "add_stock", data.name, addStockDetail || null);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -3094,11 +3128,12 @@ function handleAddStock(data) {
 }
 
 // ── เพิ่มสินค้าใหม่ใน catalog ──
-// data: { name, category, price_box, price_pack, cost_box, cost_pack, barcode, initial_box, initial_pack }
+// data: { name, category, price_box, price_pack, cost_box, cost_pack, barcode, initial_box, initial_pack, staff_name }
 function handleAddProduct(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
+    var staffName = String(data.staff_name || "").trim();
     var existing = getSupabaseRow_("catalog", "name", data.name);
     if (existing) {
       lock.releaseLock();
@@ -3125,6 +3160,7 @@ function handleAddProduct(data) {
     };
     CacheService.getScriptCache().remove("catalog_config");
     writeSupabaseRow_("catalog", newRow, SUPABASE_CATALOG_HEADER, "name", lock);
+    _logStaffAction_(staffName, null, "add_product", newRow.name, newId);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -3188,6 +3224,7 @@ function handleUpdateProduct(data) {
         _linePush(groupStaffEdit, "✏️ " + (staffName || "ไม่ระบุชื่อ") + " แก้ไขสินค้า " + row.name + "\n" +
           changeLog.map(function(c) { return "  - " + c; }).join("\n") + "\n" + now);
       }
+      _logStaffAction_(staffName, null, "update_product", row.name, changeLog.join("; "));
     }
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
@@ -3243,6 +3280,7 @@ function handleWithdrawStock(data) {
       _linePush(groupStaffWithdraw, "📤 " + staffName + " เบิก " + name + " x" + qty + " " + unitLabel + " จากสาขา " + branch +
         (reason ? "\nเหตุผล: " + reason : ""));
     }
+    _logStaffAction_(staffName, branch, "withdraw_stock", name, qty + (type === "box" ? " กล่อง" : " ซอง") + (reason ? " — " + reason : ""));
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
@@ -3252,12 +3290,13 @@ function handleWithdrawStock(data) {
 }
 
 // ── คืนสต็อกจากสาขากลับคลังกลาง ──────────────────────────────────────────
-// data: { branch, name, qty_box, qty_pack }
+// data: { branch, name, qty_box, qty_pack, staff_name }
 function handleReturnStock(data) {
   var branch  = String(data.branch   || "").trim();
   var name    = String(data.name     || "").trim();
   var qtyBox  = Number(data.qty_box  || 0);
   var qtyPack = Number(data.qty_pack || 0);
+  var staffName = String(data.staff_name || "").trim();
 
   if (!branch || !name || (qtyBox <= 0 && qtyPack <= 0)) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ข้อมูลไม่ครบ" })));
@@ -3294,6 +3333,7 @@ function handleReturnStock(data) {
     if (!srRes.ok) throw new Error("Supabase stock_returns write failed: " + srRes.text);
     CacheService.getScriptCache().remove("catalog_config");
     lock.releaseLock();
+    _logStaffAction_(staffName, branch, "return_stock", name, "Box:" + qtyBox + " Pack:" + qtyPack);
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
@@ -3389,6 +3429,7 @@ function handleWalkinSale(data) {
       }).join("\n");
       _linePush(groupStaffWalkin, "🛒 " + staffName + " ขายหน้าร้านที่สาขา " + branch + " ฿" + total + " (" + payLabel + ")\n\n" + walkinItemsText);
     }
+    _logStaffAction_(staffName, branch, "walkin_sale", saleId, "฿" + total);
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, sale_id: saleId, total: total })));
   } catch (err) {

@@ -485,9 +485,10 @@ tournament_pg = st.Page("screens/tournament.py", title="ทัวร์นาเ
 wakagym_pg = st.Page("screens/wakagym.py", title="WAKA GYM", icon="🏋️", url_path="wakagym")
 stock_pg = st.Page("screens/stock.py", title="สต็อกและสินค้า", icon="📦", url_path="stock")
 report_pg = st.Page("screens/report.py", title="รายงาน", icon="📊", url_path="report")
+audit_log_pg = st.Page("screens/audit_log.py", title="ประวัติการทำงาน", icon="🕓", url_path="audit-log")
 settings_pg = st.Page("screens/settings.py", title="ตั้งค่า", icon="⚙️", url_path="settings")
 
-pg = st.navigation({"เมนูหลัก": [home_pg, orders_pg, stock_pg, report_pg, tournament_pg, wakagym_pg, settings_pg]})
+pg = st.navigation({"เมนูหลัก": [home_pg, orders_pg, stock_pg, report_pg, audit_log_pg, tournament_pg, wakagym_pg, settings_pg]})
 
 with st.sidebar:
     if st.button("🔄 โหลดใหม่", use_container_width=True):

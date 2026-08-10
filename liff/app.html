@@ -788,9 +788,11 @@ async function submitPartialReady(orderId) {
   const checked = [...document.querySelectorAll('#prItemList input[type=checkbox]:checked')];
   if (!checked.length) { alert('เลือกสินค้าอย่างน้อย 1 รายการ'); return; }
   const indices = checked.map(cb => +cb.dataset.idx);
+  const staff_name = prompt('แจ้งพร้อมรับออเดอร์ #' + orderId + '\nกรอกชื่อพนักงาน:');
+  if (staff_name === null || !staff_name.trim()) return;
   document.getElementById('partialModal').innerHTML = '';
   try {
-    const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'partialReady', order_id: orderId, indices, code: _authCode() }) });
+    const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'partialReady', order_id: orderId, indices, staff_name: staff_name.trim(), code: _authCode() }) });
     const d = await r.json();
     if (d.ok) { toast('แจ้งพร้อมรับแล้ว · LINE ส่งลูกค้าแล้ว'); loadDashboard(); loadBrOrders(); searchOrders(); }
     else alert(d.error || 'ผิดพลาด');
@@ -834,9 +836,11 @@ async function submitCancelItems(orderId) {
   if (!checked.length) { alert('เลือกรายการที่ต้องการยกเลิก'); return; }
   const indices = checked.map(cb => +cb.dataset.idx);
   const reason = document.getElementById('ciReason').value.trim();
+  const staff_name = prompt('ยกเลิกสินค้าบางรายการ ออเดอร์ #' + orderId + '\nกรอกชื่อพนักงาน:');
+  if (staff_name === null || !staff_name.trim()) return;
   document.getElementById('partialModal').innerHTML = '';
   try {
-    const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'partialCancelItems', order_id: orderId, indices, reason, code: _authCode() }) });
+    const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'partialCancelItems', order_id: orderId, indices, reason, staff_name: staff_name.trim(), code: _authCode() }) });
     const d = await r.json();
     if (d.ok) { toast('ยกเลิก ' + d.cancelled + ' รายการแล้ว'); loadDashboard(); loadBrOrders(); searchOrders(); }
     else alert(d.error || 'ผิดพลาด');
@@ -990,8 +994,10 @@ async function submitAddStock() {
   const lb=gid('editLimitBox').value,lp=gid('editLimitPack').value;
   const limChanged=(lb!==''||lp!=='');
   if(ab<=0&&ap<=0&&!limChanged)return alert('ใส่จำนวนหรือแก้ limit');
+  const staff_name=prompt('เพิ่มสต็อก '+selectedProduct.name+'\nกรอกชื่อพนักงาน:');
+  if(staff_name===null||!staff_name.trim())return;
   const b=gid('addStockBtn');b.disabled=1;b.textContent='บันทึก...';
-  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'addStock',name:selectedProduct.name,category:selectedProduct.category,add_box:ab,add_pack:ap,limit_box:lb===''?null:+lb,limit_pack:lp===''?null:+lp})});const d=await r.json();
+  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'addStock',name:selectedProduct.name,category:selectedProduct.category,add_box:ab,add_pack:ap,limit_box:lb===''?null:+lb,limit_pack:lp===''?null:+lp,staff_name:staff_name.trim()})});const d=await r.json();
     if(d.ok){let m=selectedProduct.name+': ';if(ab>0)m+='+'+ab+' Box ';if(ap>0)m+='+'+ap+' Pack';if(limChanged)m+=' (limit อัปเดต)';toast(m);selectedProduct.stock_box=(selectedProduct.stock_box||0)+ab;selectedProduct.stock_pack=(selectedProduct.stock_pack||0)+ap;if(lb!=='')selectedProduct.limit_box=+lb;if(lp!=='')selectedProduct.limit_pack=+lp;showProduct(selectedProduct);}
     else alert(d.error||'ผิดพลาด');
   }catch(e){alert('บันทึกไม่ได้');}b.disabled=0;b.textContent='✅ เพิ่มสต็อก';
@@ -1201,7 +1207,9 @@ async function searchOrders() {
 
 async function confirmSlip(oid) {
   if(!confirm('ยืนยันสลิปออเดอร์ #'+oid+' + ส่ง LINE แจ้งลูกค้า?'))return;
-  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'confirmSlip',order_id:oid})});const d=await r.json();
+  const staff_name=prompt('กรอกชื่อพนักงานที่ยืนยันสลิป:');
+  if(staff_name===null||!staff_name.trim())return;
+  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'confirmSlip',order_id:oid,staff_name:staff_name.trim()})});const d=await r.json();
     if(d.ok){toast('ยืนยันสลิป + แจ้งลูกค้าแล้ว');loadDashboard();}else alert(d.error||'ผิดพลาด');
   }catch(e){alert('ผิดพลาด');}
 }

@@ -518,13 +518,15 @@ async function createShipment() {
 
   const totalItems = items.reduce((sum, it) => sum + it.qty_box + it.qty_pack + it.qty_box_extra + it.qty_pack_extra, 0);
   if (!confirm('ส่งไปสาขา ' + branch + ' รวม ' + totalItems + ' ชิ้น\nยืนยัน?')) return;
+  const staff_name = prompt('กรอกชื่อพนักงานที่สร้างล็อตนี้:');
+  if (staff_name === null || !staff_name.trim()) return;
 
   if (btn) { btn.disabled = true; btn.textContent = 'กำลังสร้าง...'; }
 
   try {
     const res = await fetch(GAS_URL, {
       method: 'POST',
-      body: JSON.stringify({ _action: 'createShipment', to_branch: branch, items })
+      body: JSON.stringify({ _action: 'createShipment', to_branch: branch, items, staff_name: staff_name.trim() })
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
@@ -586,11 +588,13 @@ async function loadHistory() {
 
 async function cancelShipment(shipmentId, btn) {
   if (!confirm('ยกเลิกลอต ' + shipmentId + '?\n\nระบบจะคืนสต็อกกลางให้อัตโนมัติ')) return;
+  const staff_name = prompt('กรอกชื่อพนักงานที่ยกเลิกล็อตนี้:');
+  if (staff_name === null || !staff_name.trim()) return;
   btn.disabled = true; btn.textContent = 'กำลังยกเลิก...';
   try {
     const res = await fetch(GAS_URL, {
       method: 'POST',
-      body: JSON.stringify({ _action: 'cancelShipment', shipment_id: shipmentId })
+      body: JSON.stringify({ _action: 'cancelShipment', shipment_id: shipmentId, staff_name: staff_name.trim() })
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
@@ -605,11 +609,13 @@ async function cancelShipment(shipmentId, btn) {
 
 async function receiveShipment(shipmentId) {
   if (!confirm('ยืนยันว่าสาขาได้รับของล็อต ' + shipmentId + ' ครบแล้ว?\n\nระบบจะ:\n- อัปเดตสต็อกสาขา\n- แจ้งลูกค้าทุกคนที่มีออเดอร์')) return;
+  const staff_name = prompt('กรอกชื่อพนักงานที่รับของ:');
+  if (staff_name === null || !staff_name.trim()) return;
 
   try {
     const res = await fetch(GAS_URL, {
       method: 'POST',
-      body: JSON.stringify({ _action: 'receiveShipment', shipment_id: shipmentId })
+      body: JSON.stringify({ _action: 'receiveShipment', shipment_id: shipmentId, staff_name: staff_name.trim() })
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
@@ -726,10 +732,12 @@ async function returnStockItem(branch, name, maxBox, maxPack) {
   if (qtyBox  > 0) lines.push('กล่อง: ' + qtyBox);
   if (qtyPack > 0) lines.push('ซอง: '  + qtyPack);
   if (!confirm('คืน ' + name + '\nจาก ' + branch + ' → คลังกลาง\n' + lines.join('\n') + '\n\nสต็อกกลางจะเพิ่มขึ้นอัตโนมัติ')) return;
+  const staff_name = prompt('กรอกชื่อพนักงานที่คืนสต็อก:');
+  if (staff_name === null || !staff_name.trim()) return;
   try {
     const res = await fetch(GAS_URL, {
       method: 'POST',
-      body: JSON.stringify({ _action: 'returnStock', branch, name, qty_box: qtyBox, qty_pack: qtyPack })
+      body: JSON.stringify({ _action: 'returnStock', branch, name, qty_box: qtyBox, qty_pack: qtyPack, staff_name: staff_name.trim() })
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);

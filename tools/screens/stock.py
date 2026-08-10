@@ -518,28 +518,6 @@ with tab_walkin:
         st.markdown(kpi_card("ยอดขายหน้าร้านรวม", f"฿{total_sold:,.0f}", TEXT2), unsafe_allow_html=True)
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-        if not sales_show.empty:
-            by_staff = sales_show.assign(
-                total_num=pd.to_numeric(sales_show["total"], errors="coerce").fillna(0),
-                staff_name=sales_show["staff_name"].replace("", None).fillna("ไม่ระบุ"),
-            )
-            by_staff = (
-                by_staff.groupby("staff_name")
-                .agg(ยอดขาย=("total_num", "sum"), จำนวนรายการ=("sale_id", "count"))
-                .reset_index()
-                .rename(columns={"staff_name": "พนักงาน"})
-                .sort_values("ยอดขาย", ascending=False)
-            )
-            with st.expander(f"📊 สรุปยอดขายหน้าร้านตามพนักงาน ({len(by_staff)} คน)"):
-                st.dataframe(by_staff, use_container_width=True, hide_index=True)
-                st.download_button(
-                    "⬇️ ดาวน์โหลดสรุปตามพนักงาน (CSV)",
-                    by_staff.to_csv(index=False).encode("utf-8-sig"),
-                    file_name="waka_walkin_sales_by_staff.csv", mime="text/csv",
-                    key="dl_walkin_by_staff",
-                )
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
         if sales_show.empty:
             st.caption("ไม่มีรายการขายหน้าร้านของสาขานี้")
         for _, r in sales_show.iterrows():

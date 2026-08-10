@@ -711,6 +711,9 @@ async function saveProduct() {
   const name = _isEdit ? document.getElementById('editName').value : document.getElementById('fName').value.trim();
   if (!name) { msg.textContent = 'กรุณาใส่ชื่อสินค้า'; msg.className = 'drawer-msg err'; btn.disabled = false; return; }
 
+  const staff_name = prompt('กรอกชื่อพนักงานที่' + (_isEdit ? 'แก้ไข' : 'เพิ่ม') + 'สินค้านี้:');
+  if (staff_name === null || !staff_name.trim()) { btn.disabled = false; return; }
+
   const payload = {
     _action:    _isEdit ? 'updateProduct' : 'addProduct',
     name,
@@ -724,6 +727,7 @@ async function saveProduct() {
     limit_pack: document.getElementById('fLimitPack').value,
     notice:     document.getElementById('fNotice').value.trim(),
     image_url:  document.getElementById('fImageUrl').value,
+    staff_name: staff_name.trim(),
   };
   if (!_isEdit) {
     payload.initial_box  = Number(document.getElementById('fInitBox').value)  || 0;

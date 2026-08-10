@@ -203,6 +203,25 @@ create table if not exists walkin_sales (
   staff_name           text
 );
 
+-- Central audit log for every staff-attributed action across the LIFF app
+-- (gas/Code.gs's _logStaffAction_) — one row per action, so "who did what,
+-- when, at which branch" can be checked from a single place instead of
+-- hunting through per-table notes fields or ephemeral LINE group messages.
+-- Best-effort write (never blocks the real action it's describing) and
+-- skipped entirely when no staff name was given, so it only ever contains
+-- attributable rows.
+create table if not exists staff_actions (
+  id           bigint generated always as identity primary key,
+  created_at   timestamptz not null default now(),
+  staff_name   text not null,
+  branch       text,
+  action       text not null,
+  target_id    text,
+  detail       text
+);
+create index if not exists staff_actions_created_at_idx on staff_actions (created_at desc);
+create index if not exists staff_actions_staff_name_idx on staff_actions (staff_name);
+
 -- RLS on, no policies: only the service_role key (server-side only) can
 -- read/write. The anon/public key gets nothing unless a policy is added later.
 alter table orders enable row level security;
@@ -219,6 +238,7 @@ alter table tournament_events enable row level security;
 alter table tournament_categories enable row level security;
 alter table withdrawals enable row level security;
 alter table walkin_sales enable row level security;
+alter table staff_actions enable row level security;
 
 -- service_role bypasses RLS but still needs the underlying table grants —
 -- "Automatically expose new tables" was left off when creating the project,
@@ -237,6 +257,7 @@ grant select, insert, update, delete on public.tournament_events to service_role
 grant select, insert, update, delete on public.tournament_categories to service_role;
 grant select, insert, update, delete on public.withdrawals to service_role;
 grant select, insert, update, delete on public.walkin_sales to service_role;
+grant select, insert, update, delete on public.staff_actions to service_role;
 grant usage, select on all sequences in schema public to service_role;
 
 -- ── Migration (2026-08): stable product id, safe rename ────────────────────
@@ -273,3 +294,22 @@ grant usage, select on all sequences in schema public to service_role;
 -- Run in the Supabase SQL editor. Additive, nullable — no backfill needed,
 -- historical sales made before this column existed just show blank staff.
 -- alter table walkin_sales add column if not exists staff_name text;
+
+-- ── Migration (2026-08-09): staff_actions audit log ─────────────────────────
+-- Run in the Supabase SQL editor, in this exact order. New table — nothing
+-- reads/writes it until gas/Code.gs's next deploy, so this is safe to run
+-- ahead of that deploy.
+--
+-- create table if not exists staff_actions (
+--   id           bigint generated always as identity primary key,
+--   created_at   timestamptz not null default now(),
+--   staff_name   text not null,
+--   branch       text,
+--   action       text not null,
+--   target_id    text,
+--   detail       text
+-- );
+-- create index if not exists staff_actions_created_at_idx on staff_actions (created_at desc);
+-- create index if not exists staff_actions_staff_name_idx on staff_actions (staff_name);
+-- alter table staff_actions enable row level security;
+-- grant select, insert, update, delete on public.staff_actions to service_role;
