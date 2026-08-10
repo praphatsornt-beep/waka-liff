@@ -309,10 +309,11 @@ function _cors(output) {
   return output.setMimeType(ContentService.MimeType.JSON);
 }
 
-// GET: โหลด catalog หรือ ลูกค้ากดยืนยันรับของ
-// Public (ไม่ต้อง _s): catalog, confirm, order_status, customer_confirm, wakagym_status
+// GET: โหลด catalog หรือลูกค้าดูสถานะออเดอร์ (ไม่มีปุ่มกดยืนยันรับของแล้ว —
+// พนักงานกดส่งมอบก็ปิด order ทันที ดู confirm.html)
+// Public (ไม่ต้อง _s): catalog, confirm, order_status, wakagym_status
 // Staff only (ต้อง _s): ทุกอย่างอื่น
-var PUBLIC_API_DOS = ["order_status", "customer_confirm", "wakagym_status",
+var PUBLIC_API_DOS = ["order_status", "wakagym_status",
                      "tournament_status", "tournament_reg_status"];
 
 function doGet(e) {
@@ -1283,9 +1284,17 @@ function handleApi(params) {
       order.fulfilled_at = now;
       if (uid) _linePush(uid, "สินค้าพร้อมรับที่สาขา" + branch + " แล้ว!\n\nออเดอร์: #" + orderId + "\n\nดูสถานะ:\n" + trackUrl);
     } else if (newStatus === "handover") {
+      // ยกเลิกขั้นตอน "ลูกค้ากดยืนยันรับของ" — พนักงานกดส่งมอบ/จัดส่งถือว่า
+      // order จบทันที ไม่ต้องรอลูกค้ากดยืนยันอีกขั้น (ตามคำขอเจ้าของร้าน)
       order.fulfillment = isDelivery ? "จัดส่งแล้ว" : "สาขายืนยัน";
       order.staff_confirmed_at = now;
-      if (uid) _linePush(uid, "สาขาส่งมอบสินค้าแล้ว กรุณากดยืนยันรับของ\n\nออเดอร์: #" + orderId + "\n\nกดยืนยัน:\n" + trackUrl);
+      order.customer_confirmed_at = now;
+      if (uid) {
+        var doneMsg = isDelivery
+          ? "📦 จัดส่งสินค้าเรียบร้อยแล้ว\nออเดอร์: #" + orderId + "\n\nขอบคุณที่อุดหนุน WAKA SPACE ครับ 🙏\n\nหากคุณยังไม่ได้รับพัสดุ กรุณาติดต่อแอดมินโดยด่วน"
+          : "🎉 ได้รับสินค้าเรียบร้อยแล้ว\nออเดอร์: #" + orderId + "\n\nขอบคุณที่อุดหนุน WAKA SPACE ครับ 🙏\n\nหากคุณยังไม่ได้รับสินค้า กรุณาติดต่อแอดมินโดยด่วน";
+        _linePush(uid, doneMsg);
+      }
     }
     _clearDashCache();
     writeSupabaseOrder_(order);
@@ -1308,28 +1317,6 @@ function handleApi(params) {
       timestamp: sr.timestamp || "",
       total: sr.total || 0,
     })));
-  }
-
-  if (action === "customer_confirm") {
-    var orderId = params.order || "";
-    if (!orderId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing order" })));
-    var order = getSupabaseOrder_(orderId);
-    if (!order) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
-
-    var staffAt = order.staff_confirmed_at || "";
-    var custAt = order.customer_confirmed_at || "";
-    var ff = String(order.fulfillment || "");
-    if (custAt && ff === "รับแล้ว") return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, already: true })));
-    if (!staffAt) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "staff ยังไม่ส่งมอบ" })));
-    // ถ้าออเดอร์ยังมีสินค้าค้างอยู่ → บอกลูกค้าแต่ไม่ปิด order
-    if (ff === "รับบางส่วนแล้ว") {
-      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, partial: true, msg: "รับของบางส่วนเรียบร้อยแล้ว สินค้าที่เหลือจะแจ้งให้ทราบเมื่อพร้อม" })));
-    }
-    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
-    order.customer_confirmed_at = now;
-    order.fulfillment = "รับแล้ว";
-    writeSupabaseOrder_(order);
-    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now })));
   }
 
   // ── ออเดอร์ของสาขา ──
@@ -1576,7 +1563,9 @@ function handleApi(params) {
     // SQL because fulfillment เป็น NULL ได้สำหรับออเดอร์ใหม่ที่ยังไม่ขยับสถานะ
     // เลย, ตัวกรอง SQL แบบ not.in/neq จะดรอป NULL แถวเหล่านั้นทิ้งไปเงียบๆ (บั๊ก
     // เดียวกับที่คอมเมนต์ไว้ใน branch_summary ด้านบน)
-    var dDoneFulfillment = ["รับแล้ว", "สาขายืนยัน", "ยกเลิก"];
+    // "จัดส่งแล้ว" (delivery) นับเป็น done ด้วย เพราะพนักงานกดส่งมอบก็ปิด order
+    // ทันทีแล้ว ไม่มีขั้นตอนรอลูกค้ากดยืนยันรับของแยกต่างหากอีกต่อไป
+    var dDoneFulfillment = ["รับแล้ว", "สาขายืนยัน", "จัดส่งแล้ว", "ยกเลิก"];
     var dashSb = supabaseSelect_("orders", "select=order_id,real_name,display_name,phone,items_json,total,slip_status,fulfillment,branch,address,timestamp&order=timestamp.desc&limit=300");
     var dOrdersToday = 0, dRevenueToday = 0;
     var dRecentOrders = [];
@@ -2720,21 +2709,23 @@ function handleHandoverOrder(data) {
     }
     order.items_json = items;
 
-    // กำหนด fulfillment ใหม่
+    // กำหนด fulfillment ใหม่ — ส่งมอบครบแล้วถือว่า order จบทันที ไม่ต้องรอลูกค้า
+    // กดยืนยันรับของอีกขั้น (ยกเลิกปุ่มนั้นไปแล้วตามคำขอเจ้าของร้าน — พนักงาน
+    // เป็นคนยืนยันการส่งมอบเอง ถ้าลูกค้าไม่ได้รับจริงๆ ให้ติดต่อแอดมินแทน)
     var allDone = items.every(function(it) { return !!it.handed_at || !!it.cancelled_at; });
-    var newFf = allDone ? "สาขายืนยัน" : "รับบางส่วนแล้ว";
+    var newFf = allDone ? "รับแล้ว" : "รับบางส่วนแล้ว";
     order.fulfillment = newFf;
     order.staff_confirmed_at = now;
+    if (allDone) order.customer_confirmed_at = now;
     _clearDashCache();
 
     // แจ้งลูกค้า
     var uid = order.line_user_id || "";
     if (uid) {
-      var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + data.order_id;
       var pendingItems = items.filter(function(it) { return !it.handed_at && !it.cancelled_at; });
       var msg;
       if (allDone) {
-        msg = "สาขาส่งมอบสินค้าครบแล้ว กรุณากดยืนยันรับของ\n\nออเดอร์: #" + data.order_id + "\n\nกดยืนยัน:\n" + trackUrl;
+        msg = "🎉 ได้รับสินค้าเรียบร้อยแล้ว\nออเดอร์: #" + data.order_id + "\n\nขอบคุณที่อุดหนุน WAKA SPACE ครับ 🙏\n\nหากคุณยังไม่ได้รับสินค้า กรุณาติดต่อแอดมินโดยด่วน";
       } else {
         msg = "📦 ส่งมอบสินค้าบางส่วนแล้ว\nออเดอร์: #" + data.order_id + "\n\n✅ รับแล้ว:\n" +
           handoverNames.map(function(n) { return "- " + n; }).join("\n") +

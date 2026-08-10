@@ -67,32 +67,6 @@
       height: 18px;
     }
     .step-line.done { border-color: var(--green); }
-    .confirm-btn {
-      display: block;
-      width: 100%;
-      padding: 16px;
-      background: var(--green);
-      color: #fff;
-      border: none;
-      border-radius: 14px;
-      font-size: 16px;
-      font-weight: 700;
-      font-family: inherit;
-      cursor: pointer;
-      margin-top: 20px;
-      transition: opacity .2s;
-    }
-    .confirm-btn:disabled {
-      opacity: .5;
-      cursor: not-allowed;
-    }
-    .confirm-btn:hover:not(:disabled) { opacity: .9; }
-    .ask-text {
-      text-align: center;
-      color: var(--text-secondary);
-      font-size: 14px;
-      margin-top: 16px;
-    }
     .success-box {
       text-align: center;
       padding: 20px;
@@ -165,26 +139,25 @@ async function loadOrder() {
 function renderTimeline(d) {
   const ff = d.fulfillment || 'รอเตรียม';
   const slipSt = d.slip_status || '';
-  const staffAt = d.staff_confirmed_at || '';
-  const custAt = d.customer_confirmed_at || '';
+  // พนักงานกดส่งมอบ/จัดส่ง ก็ปิด order ทันที ไม่มีปุ่มให้ลูกค้ากดยืนยันรับของ
+  // อีกขั้นแล้ว — custAt ถูก set มาพร้อมกับ staffAt เสมอในตอนนี้
+  const custAt = d.customer_confirmed_at || d.staff_confirmed_at || '';
   const branch = d.branch || '';
   const isDelivery = branch === 'จัดส่ง';
   const ts = d.timestamp || '';
+  const isDone = ff === 'จัดส่งแล้ว' || ff === 'รับแล้ว';
 
   const steps = [];
   steps.push({ label: 'สั่งซื้อสำเร็จ', done: true, time: ts ? ts.substring(0, 16).replace('T', ' ') : '' });
   steps.push({ label: 'ยืนยันชำระเงิน', done: slipSt === 'ยืนยัน', time: slipSt === 'ยืนยัน' ? 'ผ่าน' : '' });
 
   if (isDelivery) {
-    steps.push({ label: 'จัดส่งแล้ว', done: ff === 'จัดส่งแล้ว' || ff === 'รับแล้ว', time: '' });
+    steps.push({ label: 'จัดส่งแล้ว', done: isDone, time: '' });
   } else {
     steps.push({ label: 'กำลังจัดส่งไปสาขา', done: ['กำลังจัดส่งไปสาขา','พร้อมรับ','สาขายืนยัน','รับแล้ว'].includes(ff), time: '' });
     steps.push({ label: 'พร้อมรับที่สาขา' + branch, done: ['พร้อมรับ','สาขายืนยัน','รับแล้ว'].includes(ff), time: '' });
-    steps.push({ label: 'สาขาส่งมอบ', done: !!staffAt, time: staffAt });
+    steps.push({ label: 'ได้รับสินค้าเรียบร้อย', done: !!custAt, time: custAt });
   }
-  steps.push({ label: 'ลูกค้ายืนยันรับ', done: !!custAt, time: custAt });
-
-  const canConfirm = !custAt && !!staffAt;
 
   let html = '<h2>📦 สถานะออเดอร์</h2>';
   html += '<div class="order-id">#' + escHtml(orderId) + '</div>';
@@ -207,37 +180,11 @@ function renderTimeline(d) {
   }
   html += '</div>';
 
-  if (custAt) {
-    html += '<div class="success-box"><h3>✅ ยืนยันรับของสำเร็จ!</h3><p>บันทึกเมื่อ: ' + escHtml(custAt) + '</p></div>';
-  } else if (canConfirm) {
-    html += '<div class="ask-text">ได้รับสินค้าเรียบร้อยแล้วใช่ไหมครับ?</div>';
-    html += '<button class="confirm-btn" id="confirmBtn" onclick="doConfirm()">✅ ยืนยันรับของแล้ว</button>';
+  if (custAt || isDone) {
+    html += '<div class="success-box"><h3>✅ ได้รับสินค้าเรียบร้อยแล้ว!</h3><p>ขอบคุณที่อุดหนุน WAKA SPACE — หากคุณยังไม่ได้รับสินค้าจริง กรุณาติดต่อแอดมินโดยด่วน</p></div>';
   }
 
   document.getElementById('main').innerHTML = html;
-}
-
-async function doConfirm() {
-  const btn = document.getElementById('confirmBtn');
-  if (!btn) return;
-  btn.disabled = true;
-  btn.textContent = 'กำลังบันทึก...';
-
-  try {
-    const res = await fetch(GAS_URL + '&action=api&do=customer_confirm&order=' + encodeURIComponent(orderId));
-    const data = await res.json();
-    if (data.error) {
-      alert(data.error);
-      btn.disabled = false;
-      btn.textContent = '✅ ยืนยันรับของแล้ว';
-      return;
-    }
-    loadOrder();
-  } catch (err) {
-    alert('เกิดข้อผิดพลาด: ' + err.message);
-    btn.disabled = false;
-    btn.textContent = '✅ ยืนยันรับของแล้ว';
-  }
 }
 
 function escHtml(s) {
