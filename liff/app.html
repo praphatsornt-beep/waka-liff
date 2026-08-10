@@ -1342,9 +1342,10 @@ async function loadWalkinHistory() {
       let items = []; try { items = JSON.parse(s.items_json || '[]'); } catch (_) {}
       const itemsText = items.map(i => `${i.name} x${i.qty}`).join(', ');
       const payLabel = s.payment_method === 'cash' ? '💵 เงินสด' : ('📱 โอน' + (s.bank ? ' ' + s.bank : ''));
+      const staffLine = s.staff_name ? ` · 👤 ${esc(s.staff_name)}` : '';
       return `<div style="padding:8px 0;border-bottom:1px solid #f0ede8">
         <div style="display:flex;justify-content:space-between"><strong>฿${Number(s.total).toLocaleString()}</strong><span style="font-size:11px;color:var(--label)">${esc(s.timestamp)}</span></div>
-        <div style="font-size:12px;color:var(--text2)">${esc(itemsText)} · ${payLabel}</div>
+        <div style="font-size:12px;color:var(--text2)">${esc(itemsText)} · ${payLabel}${staffLine}</div>
       </div>`;
     }).join('');
   } catch (e) {
