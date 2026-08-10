@@ -309,9 +309,43 @@ const BRANCH_CODES = { 'ts01': 'ต้นสักคอร์เนอร์', 
 let branchSummary = {};
 let centralStock = [];
 
+// ── ชื่อพนักงาน: ถามครั้งเดียวตอน login แล้วใช้ซ้ำทุกจุด — คีย์เดียวกับ
+// app.html/products.html (origin เดียวกัน sessionStorage เลยใช้ร่วมกันได้)
+function ensureStaffName() {
+  let n = sessionStorage.getItem('waka_staff_name') || '';
+  if (!n) {
+    n = prompt('กรอกชื่อพนักงาน (ระบบจะจำไว้ตลอด session นี้ ไม่ต้องพิมพ์ซ้ำทุกครั้ง):');
+    if (n === null) return '';
+    n = n.trim();
+    if (n) { sessionStorage.setItem('waka_staff_name', n); renderStaffBadge(); }
+  }
+  return n;
+}
+function changeStaffName() {
+  const cur = sessionStorage.getItem('waka_staff_name') || '';
+  const n = prompt('เปลี่ยนชื่อพนักงาน:', cur);
+  if (n === null) return;
+  const t = n.trim();
+  if (t) { sessionStorage.setItem('waka_staff_name', t); renderStaffBadge(); }
+}
+function renderStaffBadge() {
+  const n = sessionStorage.getItem('waka_staff_name') || '';
+  if (!n) return;
+  let b = document.getElementById('staffBadge');
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'staffBadge';
+    b.onclick = changeStaffName;
+    b.style.cssText = 'position:fixed;top:8px;right:8px;z-index:999;background:var(--card-bg,#222);border:1px solid var(--card-border,#444);border-radius:20px;padding:6px 12px;font-size:12px;cursor:pointer;color:var(--text,#eee)';
+    document.body.appendChild(b);
+  }
+  b.textContent = '👤 ' + n;
+}
+
 if (sessionStorage.getItem('waka_portal_auth') === '1' && sessionStorage.getItem('waka_staff_role') === 'admin') {
   document.getElementById('pinOverlay').style.display = 'none';
   document.getElementById('app').style.display = 'block';
+  ensureStaffName(); renderStaffBadge();
   loadAll();
 }
 
@@ -321,6 +355,7 @@ function checkPin() {
     sessionStorage.setItem('waka_portal_auth', '1');
     document.getElementById('pinOverlay').style.display = 'none';
     document.getElementById('app').style.display = 'block';
+    ensureStaffName(); renderStaffBadge();
     loadAll();
   } else {
     document.getElementById('pinError').style.display = 'block';
@@ -518,8 +553,8 @@ async function createShipment() {
 
   const totalItems = items.reduce((sum, it) => sum + it.qty_box + it.qty_pack + it.qty_box_extra + it.qty_pack_extra, 0);
   if (!confirm('ส่งไปสาขา ' + branch + ' รวม ' + totalItems + ' ชิ้น\nยืนยัน?')) return;
-  const staff_name = prompt('กรอกชื่อพนักงานที่สร้างล็อตนี้:');
-  if (staff_name === null || !staff_name.trim()) return;
+  const staff_name = ensureStaffName();
+  if (!staff_name) return;
 
   if (btn) { btn.disabled = true; btn.textContent = 'กำลังสร้าง...'; }
 
@@ -588,8 +623,8 @@ async function loadHistory() {
 
 async function cancelShipment(shipmentId, btn) {
   if (!confirm('ยกเลิกลอต ' + shipmentId + '?\n\nระบบจะคืนสต็อกกลางให้อัตโนมัติ')) return;
-  const staff_name = prompt('กรอกชื่อพนักงานที่ยกเลิกล็อตนี้:');
-  if (staff_name === null || !staff_name.trim()) return;
+  const staff_name = ensureStaffName();
+  if (!staff_name) return;
   btn.disabled = true; btn.textContent = 'กำลังยกเลิก...';
   try {
     const res = await fetch(GAS_URL, {
@@ -609,8 +644,8 @@ async function cancelShipment(shipmentId, btn) {
 
 async function receiveShipment(shipmentId) {
   if (!confirm('ยืนยันว่าสาขาได้รับของล็อต ' + shipmentId + ' ครบแล้ว?\n\nระบบจะ:\n- อัปเดตสต็อกสาขา\n- แจ้งลูกค้าทุกคนที่มีออเดอร์')) return;
-  const staff_name = prompt('กรอกชื่อพนักงานที่รับของ:');
-  if (staff_name === null || !staff_name.trim()) return;
+  const staff_name = ensureStaffName();
+  if (!staff_name) return;
 
   try {
     const res = await fetch(GAS_URL, {
@@ -732,8 +767,8 @@ async function returnStockItem(branch, name, maxBox, maxPack) {
   if (qtyBox  > 0) lines.push('กล่อง: ' + qtyBox);
   if (qtyPack > 0) lines.push('ซอง: '  + qtyPack);
   if (!confirm('คืน ' + name + '\nจาก ' + branch + ' → คลังกลาง\n' + lines.join('\n') + '\n\nสต็อกกลางจะเพิ่มขึ้นอัตโนมัติ')) return;
-  const staff_name = prompt('กรอกชื่อพนักงานที่คืนสต็อก:');
-  if (staff_name === null || !staff_name.trim()) return;
+  const staff_name = ensureStaffName();
+  if (!staff_name) return;
   try {
     const res = await fetch(GAS_URL, {
       method: 'POST',

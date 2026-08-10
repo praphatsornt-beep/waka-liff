@@ -427,6 +427,39 @@ const WAKA_S = 'wk26xK9mPqRt';
 const G = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec?_s=' + WAKA_S;
 const PIN_ADMIN = 'waka99';
 
+// ── ชื่อพนักงาน: ถามครั้งเดียวตอน login แล้วใช้ซ้ำทุกจุด — คีย์เดียวกับ
+// app.html/warehouse.html (origin เดียวกัน sessionStorage เลยใช้ร่วมกันได้)
+function ensureStaffName() {
+  let n = sessionStorage.getItem('waka_staff_name') || '';
+  if (!n) {
+    n = prompt('กรอกชื่อพนักงาน (ระบบจะจำไว้ตลอด session นี้ ไม่ต้องพิมพ์ซ้ำทุกครั้ง):');
+    if (n === null) return '';
+    n = n.trim();
+    if (n) { sessionStorage.setItem('waka_staff_name', n); renderStaffBadge(); }
+  }
+  return n;
+}
+function changeStaffName() {
+  const cur = sessionStorage.getItem('waka_staff_name') || '';
+  const n = prompt('เปลี่ยนชื่อพนักงาน:', cur);
+  if (n === null) return;
+  const t = n.trim();
+  if (t) { sessionStorage.setItem('waka_staff_name', t); renderStaffBadge(); }
+}
+function renderStaffBadge() {
+  const n = sessionStorage.getItem('waka_staff_name') || '';
+  if (!n) return;
+  let b = document.getElementById('staffBadge');
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'staffBadge';
+    b.onclick = changeStaffName;
+    b.style.cssText = 'position:fixed;top:8px;right:8px;z-index:999;background:var(--card-bg,#222);border:1px solid var(--card-border,#444);border-radius:20px;padding:6px 12px;font-size:12px;cursor:pointer;color:var(--text,#eee)';
+    document.body.appendChild(b);
+  }
+  b.textContent = '👤 ' + n;
+}
+
 let _products = [];
 let _filter = 'all';
 let _isEdit = false;
@@ -441,6 +474,7 @@ function checkPin() {
     sessionStorage.setItem('waka_staff_role', 'admin');
     document.getElementById('pinOverlay').style.display = 'none';
     document.getElementById('app').style.display = 'block';
+    ensureStaffName(); renderStaffBadge();
     loadProducts();
   } else {
     const err = document.getElementById('pinError');
@@ -451,6 +485,7 @@ function checkPin() {
 if (sessionStorage.getItem('waka_portal_auth') === '1' && sessionStorage.getItem('waka_staff_role') === 'admin') {
   document.getElementById('pinOverlay').style.display = 'none';
   document.getElementById('app').style.display = 'block';
+  ensureStaffName(); renderStaffBadge();
   loadProducts();
 }
 
@@ -711,8 +746,8 @@ async function saveProduct() {
   const name = _isEdit ? document.getElementById('editName').value : document.getElementById('fName').value.trim();
   if (!name) { msg.textContent = 'กรุณาใส่ชื่อสินค้า'; msg.className = 'drawer-msg err'; btn.disabled = false; return; }
 
-  const staff_name = prompt('กรอกชื่อพนักงานที่' + (_isEdit ? 'แก้ไข' : 'เพิ่ม') + 'สินค้านี้:');
-  if (staff_name === null || !staff_name.trim()) { btn.disabled = false; return; }
+  const staff_name = ensureStaffName();
+  if (!staff_name) { btn.disabled = false; return; }
 
   const payload = {
     _action:    _isEdit ? 'updateProduct' : 'addProduct',

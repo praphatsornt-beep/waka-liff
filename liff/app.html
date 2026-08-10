@@ -574,6 +574,41 @@ function _authCode() { return userRole === 'admin' ? PIN_ADMIN : (sessionStorage
 function gid(id) { return document.getElementById(id); }
 function esc(s) { const d=document.createElement('div');d.textContent=s;return d.innerHTML; }
 
+// ── ชื่อพนักงาน: ถามครั้งเดียวตอน login แล้วใช้ซ้ำทุกจุดที่ต้องบันทึกผู้ทำรายการ
+// (แทนที่จะ prompt() ทุกครั้งที่กดปุ่ม) — เก็บใน sessionStorage คนละคีย์กับ
+// waka_branch/waka_staff_role เพราะ "ใคร" (คน) กับ "auth ว่าเข้าได้" เป็นคนละเรื่องกัน
+// sessionStorage ใช้ร่วมกันได้ข้ามหน้า (products.html, warehouse.html) เพราะเป็น origin เดียวกัน
+function ensureStaffName() {
+  let n = sessionStorage.getItem('waka_staff_name') || '';
+  if (!n) {
+    n = prompt('กรอกชื่อพนักงาน (ระบบจะจำไว้ตลอด session นี้ ไม่ต้องพิมพ์ซ้ำทุกครั้ง):');
+    if (n === null) return '';
+    n = n.trim();
+    if (n) { sessionStorage.setItem('waka_staff_name', n); renderStaffBadge(); }
+  }
+  return n;
+}
+function changeStaffName() {
+  const cur = sessionStorage.getItem('waka_staff_name') || '';
+  const n = prompt('เปลี่ยนชื่อพนักงาน:', cur);
+  if (n === null) return;
+  const t = n.trim();
+  if (t) { sessionStorage.setItem('waka_staff_name', t); renderStaffBadge(); toast('เปลี่ยนชื่อเป็น ' + t); }
+}
+function renderStaffBadge() {
+  const n = sessionStorage.getItem('waka_staff_name') || '';
+  if (!n) return;
+  let b = gid('staffBadge');
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'staffBadge';
+    b.onclick = changeStaffName;
+    b.style.cssText = 'position:fixed;top:8px;right:8px;z-index:999;background:var(--card-bg,#222);border:1px solid var(--card-border,#444);border-radius:20px;padding:6px 12px;font-size:12px;cursor:pointer;color:var(--text,#eee)';
+    document.body.appendChild(b);
+  }
+  b.textContent = '👤 ' + n;
+}
+
 function applyRole(role) {
   userRole = role;
   const adminOnly = ['nav_home','nav_warehouse'];
@@ -600,7 +635,7 @@ function checkPin() {
     sessionStorage.setItem('waka_tstaff_role','admin');
     sessionStorage.setItem('waka_tstaff_branch','ทั้งหมด');
     gid('pinOverlay').style.display='none'; gid('app').style.display='block';
-    applyRole('admin'); initApp(); _applyDeepLink();
+    applyRole('admin'); ensureStaffName(); renderStaffBadge(); initApp(); _applyDeepLink();
   } else if (BRANCH_CODES[val]) {
     sessionStorage.setItem('waka_app_auth','staff');
     sessionStorage.setItem('waka_portal_auth','1');
@@ -612,12 +647,13 @@ function checkPin() {
     sessionStorage.setItem('waka_branch', BRANCH_CODES[val]);
     sessionStorage.setItem('waka_branch_code', val);
     gid('pinOverlay').style.display='none'; gid('app').style.display='block';
-    applyRole('staff'); autoLoginBranch(BRANCH_CODES[val]); switchTab('branch'); initApp(); _applyDeepLink();
+    applyRole('staff'); ensureStaffName(); renderStaffBadge(); autoLoginBranch(BRANCH_CODES[val]); switchTab('branch'); initApp(); _applyDeepLink();
   } else { gid('pinError').style.display='block'; setTimeout(()=>gid('pinError').style.display='none',2000); }
 }
 const savedAuth = sessionStorage.getItem('waka_app_auth') || (sessionStorage.getItem('waka_portal_auth') === '1' ? sessionStorage.getItem('waka_staff_role') : null);
 if (savedAuth) {
   gid('pinOverlay').style.display='none'; gid('app').style.display='block'; applyRole(savedAuth);
+  ensureStaffName(); renderStaffBadge();
   const sb=sessionStorage.getItem('waka_branch') || sessionStorage.getItem('waka_staff_branch');
   const tabHash = window.location.hash.replace('#','');
   if(savedAuth==='staff'&&sb){autoLoginBranch(sb);switchTab('branch');}
@@ -742,8 +778,8 @@ function renderOrders() {
 }
 
 async function cancelOrder(orderId, btn) {
-  const staff_name = prompt('ยกเลิกออเดอร์ #' + orderId + '\nกรอกชื่อพนักงานที่ยกเลิก:');
-  if (staff_name === null || !staff_name.trim()) return;
+  const staff_name = ensureStaffName();
+  if (!staff_name) return;
   const reason = prompt('เหตุผลการยกเลิก (ว่างได้):') ;
   if (reason === null) return;
   if (!confirm('ยืนยันยกเลิกออเดอร์ #' + orderId + '?\n\nระบบจะส่ง LINE แจ้งลูกค้าและคืน stock อัตโนมัติ')) return;
@@ -788,8 +824,8 @@ async function submitPartialReady(orderId) {
   const checked = [...document.querySelectorAll('#prItemList input[type=checkbox]:checked')];
   if (!checked.length) { alert('เลือกสินค้าอย่างน้อย 1 รายการ'); return; }
   const indices = checked.map(cb => +cb.dataset.idx);
-  const staff_name = prompt('แจ้งพร้อมรับออเดอร์ #' + orderId + '\nกรอกชื่อพนักงาน:');
-  if (staff_name === null || !staff_name.trim()) return;
+  const staff_name = ensureStaffName();
+  if (!staff_name) return;
   document.getElementById('partialModal').innerHTML = '';
   try {
     const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'partialReady', order_id: orderId, indices, staff_name: staff_name.trim(), code: _authCode() }) });
@@ -836,8 +872,8 @@ async function submitCancelItems(orderId) {
   if (!checked.length) { alert('เลือกรายการที่ต้องการยกเลิก'); return; }
   const indices = checked.map(cb => +cb.dataset.idx);
   const reason = document.getElementById('ciReason').value.trim();
-  const staff_name = prompt('ยกเลิกสินค้าบางรายการ ออเดอร์ #' + orderId + '\nกรอกชื่อพนักงาน:');
-  if (staff_name === null || !staff_name.trim()) return;
+  const staff_name = ensureStaffName();
+  if (!staff_name) return;
   document.getElementById('partialModal').innerHTML = '';
   try {
     const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'partialCancelItems', order_id: orderId, indices, reason, staff_name: staff_name.trim(), code: _authCode() }) });
@@ -994,8 +1030,8 @@ async function submitAddStock() {
   const lb=gid('editLimitBox').value,lp=gid('editLimitPack').value;
   const limChanged=(lb!==''||lp!=='');
   if(ab<=0&&ap<=0&&!limChanged)return alert('ใส่จำนวนหรือแก้ limit');
-  const staff_name=prompt('เพิ่มสต็อก '+selectedProduct.name+'\nกรอกชื่อพนักงาน:');
-  if(staff_name===null||!staff_name.trim())return;
+  const staff_name=ensureStaffName();
+  if(!staff_name)return;
   const b=gid('addStockBtn');b.disabled=1;b.textContent='บันทึก...';
   try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'addStock',name:selectedProduct.name,category:selectedProduct.category,add_box:ab,add_pack:ap,limit_box:lb===''?null:+lb,limit_pack:lp===''?null:+lp,staff_name:staff_name.trim()})});const d=await r.json();
     if(d.ok){let m=selectedProduct.name+': ';if(ab>0)m+='+'+ab+' Box ';if(ap>0)m+='+'+ap+' Pack';if(limChanged)m+=' (limit อัปเดต)';toast(m);selectedProduct.stock_box=(selectedProduct.stock_box||0)+ab;selectedProduct.stock_pack=(selectedProduct.stock_pack||0)+ap;if(lb!=='')selectedProduct.limit_box=+lb;if(lp!=='')selectedProduct.limit_pack=+lp;showProduct(selectedProduct);}
@@ -1059,8 +1095,8 @@ function openBrView(s) {
   if(s==='orders'){gid('brOrders').style.display='block';loadBrOrders();}
   if(s==='handover')gid('brHandover').style.display='block';
   if(s==='bstock'){gid('brStock').style.display='block';loadBrStock();}
-  if(s==='withdraw'){gid('brWithdraw').style.display='block';loadWithdrawProductOptions();loadWithdrawals();}
-  if(s==='walkin'){gid('brWalkin').style.display='block';openWalkin();}
+  if(s==='withdraw'){gid('brWithdraw').style.display='block';gid('wdStaffName').value=ensureStaffName();loadWithdrawProductOptions();loadWithdrawals();}
+  if(s==='walkin'){gid('brWalkin').style.display='block';gid('wsStaffName').value=ensureStaffName();openWalkin();}
   if(s==='gym'){gid('brGym').style.display='block';gymOpen();}
 }
 function closeBrView() {
@@ -1090,8 +1126,8 @@ async function loadIncoming() {
 
 async function confirmReceive(id,btn) {
   if(btn.disabled)return; btn.disabled=true;
-  const staff_name=prompt('ยืนยันว่าได้รับของครบตามรายการ '+id+'\nกรอกชื่อพนักงานที่รับของ:');
-  if(staff_name===null||!staff_name.trim()){btn.disabled=false;return;}
+  const staff_name=ensureStaffName();
+  if(!staff_name){btn.disabled=false;return;}
   try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'receiveShipment',shipment_id:id,staff_name:staff_name.trim()})});const d=await r.json();
     if(d.ok||d.already){toast('รับของแล้ว — สต็อกอัปเดต + แจ้งลูกค้าแล้ว');loadIncoming();}
     else {alert(d.error);btn.disabled=false;}
@@ -1207,8 +1243,8 @@ async function searchOrders() {
 
 async function confirmSlip(oid) {
   if(!confirm('ยืนยันสลิปออเดอร์ #'+oid+' + ส่ง LINE แจ้งลูกค้า?'))return;
-  const staff_name=prompt('กรอกชื่อพนักงานที่ยืนยันสลิป:');
-  if(staff_name===null||!staff_name.trim())return;
+  const staff_name=ensureStaffName();
+  if(!staff_name)return;
   try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'confirmSlip',order_id:oid,staff_name:staff_name.trim()})});const d=await r.json();
     if(d.ok){toast('ยืนยันสลิป + แจ้งลูกค้าแล้ว');loadDashboard();}else alert(d.error||'ผิดพลาด');
   }catch(e){alert('ผิดพลาด');}
@@ -1216,8 +1252,8 @@ async function confirmSlip(oid) {
 
 async function handoverOrder(oid,src,btn) {
   if(btn){if(btn.disabled)return; btn.disabled=true;}
-  const staff_name=prompt('ส่งมอบออเดอร์ #'+oid+'\nกรอกชื่อพนักงานที่ส่งมอบ:');
-  if(staff_name===null||!staff_name.trim()){if(btn)btn.disabled=false;return;}
+  const staff_name=ensureStaffName();
+  if(!staff_name){if(btn)btn.disabled=false;return;}
   try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'handoverOrder',order_id:oid,code:_authCode(),staff_name:staff_name.trim()})});const d=await r.json();
     if(d.ok){
       const msg=d.fulfillment==='รับบางส่วนแล้ว'?'ส่งมอบบางส่วนแล้ว — แจ้ง LINE แล้ว':'ส่งมอบครบแล้ว — รอลูกค้ายืนยัน';
@@ -1244,6 +1280,7 @@ async function submitWithdraw() {
   const type=gid('wdType').value,qty=+gid('wdQty').value||0,reason=gid('wdReason').value;
   if(qty<=0)return alert('ใส่จำนวน');
   const staff_name=gid('wdStaffName').value.trim();if(!staff_name)return alert('กรอกชื่อพนักงาน');
+  sessionStorage.setItem('waka_staff_name',staff_name);
   try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'withdrawStock',branch,name,type,qty,reason,staff_name,code:_authCode()})});const d=await r.json();
     if(d.ok){toast('เบิก '+name+' x'+qty);gid('wdQty').value=1;loadBrStock();loadWithdrawals();}
     else alert(d.error||'ผิดพลาด');
@@ -1322,6 +1359,7 @@ async function wsSubmitSale() {
   const payment_method = gid('wsPayMethod').value;
   const bank = gid('wsBank').value.trim();
   const staff_name = gid('wsStaffName').value.trim(); if (!staff_name) { alert('กรอกชื่อพนักงาน'); return; }
+  sessionStorage.setItem('waka_staff_name', staff_name);
   try {
     const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'walkinSale', branch, items: wsCart, payment_method, bank, staff_name, code: _authCode() }) });
     const d = await r.json();
