@@ -10,7 +10,6 @@ function warmup() {
 
 const PROPS         = PropertiesService.getScriptProperties();
 const LINE_TOKEN    = PROPS.getProperty("LINE_TOKEN");
-const SHEET_ID      = PROPS.getProperty("SHEET_ID");
 const SCRIPT_SECRET = PROPS.getProperty("SCRIPT_SECRET") || "";
 
 // Branch login codes (mirrors BRANCH_CODES/PIN_ADMIN in liff/app.html) — kept
@@ -47,16 +46,8 @@ function _branchAuthorized(code, branch) {
 const SUPABASE_URL         = PROPS.getProperty("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_KEY = PROPS.getProperty("SUPABASE_SERVICE_KEY") || "";
 
-// Separate spreadsheet (not SHEET_ID) that mirrors Supabase-primary tables
-// for human reading (partners etc.) — set once the sheet exists. Empty =
-// mirroring is skipped everywhere, no error.
-const REPORT_SHEET_ID = PROPS.getProperty("REPORT_SHEET_ID") || "";
-
-// ── Supabase dual-write (best-effort mirror, Sheets stays authoritative) ────
-// Sheets remains the source of truth for every write in this file. These
-// helpers only keep Supabase's mirror of orders/tournament_reg/wakagym_reg
-// current for Streamlit + LIFF reads. A Supabase outage must NEVER break a
-// real order — never throws, never retried, just logged and ignored.
+// ── Supabase writes — Supabase is the sole store of record for every table
+// in this file. No Google Sheet is read from or written to anywhere below.
 function pushToSupabase_(table, row) {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return { ok: false, code: 0, text: "SUPABASE_URL/SUPABASE_SERVICE_KEY not set" };
   try {
@@ -87,21 +78,7 @@ function pushToSupabase_(table, row) {
   }
 }
 
-// Every order write already builds sheetRowToObject_(SUPABASE_ORDERS_HEADER,
-// rowArr, ["items_json"]) before pushing to Supabase — this wraps that same
-// call plus a mirror into the "WAKA export" report sheet's `orders` tab, so
-// every write path gets both for free with one call instead of two.
-function pushOrderToSupabase_(rowArr) {
-  var obj = sheetRowToObject_(SUPABASE_ORDERS_HEADER, rowArr, ["items_json"]);
-  pushToSupabase_("orders", obj);
-  mirrorToReportSheet_("orders", SUPABASE_ORDERS_HEADER, "order_id", obj);
-  return obj;
-}
-
-// ── orders: Supabase-primary (Phase 2) ──────────────────────────────────
-// The "WAKA ORDER" Sheet is no longer written to for orders — Supabase is
-// the store of record, and mirrorToReportSheet_ keeps the "WAKA export"
-// sheet's `orders` tab as the human-readable backup/display copy instead.
+// ── orders: Supabase is the sole store of record ────────────────────────
 
 // Reads the current full order row from Supabase. items_json comes back
 // already parsed (a real array, not a JSON string) since it's a native
@@ -112,33 +89,23 @@ function getSupabaseOrder_(orderId) {
 }
 
 // Upserts the full order object as the authoritative record. Throws on
-// failure — unlike the old best-effort pushToSupabase_/pushOrderToSupabase_,
-// a failed write here must fail the caller's action too, since there's no
-// Sheet write left to fall back on.
+// failure — there's no Sheet write to fall back on, so a failed write here
+// must fail the caller's action too.
 //
-// Optional `lock`: mirrorToReportSheet_ does a full getDataRange().getValues()
-// scan of the report sheet tab on every call — real latency that grows with
-// row count. Every caller here holds a script-wide LockService lock (shared
-// by EVERY concurrent GAS execution, not just this one), so if the lock is
-// still held during that scan, one slow mirror stalls every other in-flight
-// request system-wide, not just this one (confirmed live: bulk Streamlit
-// actions hitting 30s timeouts under this contention). The mirror is a
-// best-effort backup with no bearing on Supabase correctness, so once the
-// authoritative write succeeds, release the lock — passed in by the caller
-// as the last thing it does under lock — before doing the slow part.
+// Optional `lock`: releases the caller's script-wide lock (shared by EVERY
+// concurrent GAS execution) as soon as the authoritative write succeeds,
+// since nothing after that point (LINE notifications etc.) needs it held —
+// passed in by the caller as the last thing it does under lock.
 function writeSupabaseOrder_(obj, lock) {
   var res = pushToSupabase_("orders", obj);
   if (!res.ok) throw new Error("Supabase orders write failed: " + res.text);
   if (lock) { try { lock.releaseLock(); } catch (_) {} }
-  mirrorToReportSheet_("orders", SUPABASE_ORDERS_HEADER, "order_id", obj);
   return obj;
 }
 
-// Generic versions of the two helpers above, for migrating the remaining
-// Sheet-primary tables (wakagym_events, tournament_events,
-// tournament_categories, etc.) to Supabase-primary one at a time, same
-// pattern: read/write Supabase directly, mirror to the "WAKA export" sheet,
-// throw on write failure since there's no Sheet fallback once migrated.
+// Generic versions of the two helpers above, for every other
+// Supabase-primary table (wakagym_events, tournament_events,
+// tournament_categories, catalog, stock_branch, etc.).
 function getSupabaseRow_(table, keyCol, keyValue) {
   var rows = supabaseSelect_(table, "select=*&" + keyCol + "=eq." + encodeURIComponent(keyValue) + "&limit=1");
   return rows[0] || null;
@@ -148,7 +115,6 @@ function writeSupabaseRow_(table, obj, header, keyCol, lock) {
   var res = pushToSupabase_(table, obj);
   if (!res.ok) throw new Error("Supabase " + table + " write failed: " + res.text);
   if (lock) { try { lock.releaseLock(); } catch (_) {} }
-  mirrorToReportSheet_(table, header, keyCol, obj);
   return obj;
 }
 
@@ -214,10 +180,6 @@ function _renameProductRpc_(oldName, newName) {
   }
 }
 
-// ── Supabase-primary tables (config, stock_branch, shipments, tournament_*,
-// wakagym_events, player_stats — migrated one at a time). These tables read
-// and write Supabase directly instead of the Sheet; mirrorToReportSheet_
-// keeps a human-readable copy in the separate REPORT_SHEET_ID spreadsheet.
 function supabaseSelect_(table, query) {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return [];
   var url = SUPABASE_URL + "/rest/v1/" + table + (query ? "?" + query : "");
@@ -236,44 +198,7 @@ function supabaseSelect_(table, query) {
   return JSON.parse(res.getContentText());
 }
 
-// Upserts one row into REPORT_SHEET_ID's tab (creating the tab + header if
-// missing). Best-effort only — a report-sheet outage must never break a
-// Supabase-primary write, so this never throws.
-// `keyCol` is either a single column name (existing behavior) or an array of
-// column names for tables with a composite key (e.g. stock_branch's
-// name+branch) — every column in the array must match for a row to be
-// treated as the same record.
-function mirrorToReportSheet_(tabName, header, keyCol, obj) {
-  if (!REPORT_SHEET_ID) return;
-  try {
-    var rss = SpreadsheetApp.openById(REPORT_SHEET_ID);
-    var ws = rss.getSheetByName(tabName);
-    if (!ws) {
-      ws = rss.insertSheet(tabName);
-      ws.appendRow(header);
-    }
-    var keyCols = Array.isArray(keyCol) ? keyCol : [keyCol];
-    var keyIdxs = keyCols.map(function(k) { return header.indexOf(k); });
-    var rowArr = header.map(function(h) {
-      var v = obj[h];
-      if (v === null || v === undefined) return "";
-      return (typeof v === "object") ? JSON.stringify(v) : v;
-    });
-    var data = ws.getDataRange().getValues();
-    for (var i = 1; i < data.length; i++) {
-      var isMatch = keyIdxs.every(function(idx, ki) { return String(data[i][idx]) === String(obj[keyCols[ki]]); });
-      if (isMatch) {
-        ws.getRange(i + 1, 1, 1, rowArr.length).setValues([rowArr]);
-        return;
-      }
-    }
-    ws.appendRow(rowArr);
-  } catch (e) {
-    Logger.log("mirrorToReportSheet_(" + tabName + ") failed: " + e.message);
-  }
-}
-
-// ── _config: Supabase-primary (Phase 1 of the Sheet→Supabase migration) ──
+// ── _config: Supabase-primary ────────────────────────────────────────────
 function getConfig_() {
   var cache = CacheService.getScriptCache();
   var cached = cache.get("config_map");
@@ -287,48 +212,14 @@ function getConfig_() {
   } catch (e) {
     Logger.log("getConfig_ Supabase read failed: " + e.message);
   }
-  // Safety net: if Supabase gave back nothing (misconfigured
-  // SUPABASE_URL/SUPABASE_SERVICE_KEY, outage, etc.) fall back to the _config
-  // Sheet tab directly rather than serving customers an empty config (bank
-  // account, delivery fee) — this must never go blank.
-  if (Object.keys(map).length === 0) {
-    try {
-      var cfgWsFallback = SpreadsheetApp.openById(SHEET_ID).getSheetByName(TAB_CONFIG);
-      var cfgRowsFallback = cfgWsFallback ? cfgWsFallback.getDataRange().getValues() : [];
-      for (var j = 1; j < cfgRowsFallback.length; j++) {
-        if (cfgRowsFallback[j][0]) map[String(cfgRowsFallback[j][0])] = String(cfgRowsFallback[j][1] || "");
-      }
-      if (Object.keys(map).length > 0) Logger.log("getConfig_ fell back to the _config Sheet tab");
-    } catch (e2) {
-      Logger.log("getConfig_ Sheet fallback failed: " + e2.message);
-    }
-  }
   if (Object.keys(map).length > 0) cache.put("config_map", JSON.stringify(map), 120);
   return map;
 }
 
 function setConfig_(key, value) {
   var pushResult = pushToSupabase_("config", { key: key, value: value });
-  mirrorToReportSheet_("_config", SUPABASE_CONFIG_HEADER, "key", { key: key, value: value });
   CacheService.getScriptCache().remove("config_map");
   return pushResult;
-}
-
-// Builds a plain object {column: value} from a sheet header row + one data
-// row, converting "" -> null and JSON.parse-ing the given jsonFields so
-// they land as real jsonb in Supabase instead of an escaped string.
-function sheetRowToObject_(header, rowArr, jsonFields) {
-  var obj = {};
-  for (var i = 0; i < header.length; i++) {
-    var v = rowArr[i];
-    obj[header[i]] = (v === "" || v === undefined) ? null : v;
-  }
-  (jsonFields || []).forEach(function(f) {
-    if (obj[f]) {
-      try { obj[f] = JSON.parse(obj[f]); } catch (e) { /* leave as-is */ }
-    }
-  });
-  return obj;
 }
 
 var SUPABASE_ORDERS_HEADER = [
@@ -369,18 +260,11 @@ var SUPABASE_PLAYER_STATS_HEADER = [
   "total_tokens", "boxes_earned", "boxes_given", "last_play_date",
 ];
 // No "id" here — it's a DB-generated surrogate (shipment_id isn't reliably
-// unique historically, see supabase/schema.sql), not meaningful for the
-// human-readable report-sheet mirror keyed by the business id instead.
+// unique historically, see supabase/schema.sql), not a meaningful key.
 var SUPABASE_SHIPMENTS_HEADER = ["shipment_id", "timestamp", "to_branch", "status", "items_json", "received_at"];
 var SUPABASE_WITHDRAWALS_HEADER = ["timestamp", "branch", "name", "type", "qty", "reason"];
 var SUPABASE_STOCK_RETURNS_HEADER = ["timestamp", "branch", "name", "qty_box", "qty_pack"];
 var SUPABASE_WALKIN_SALES_HEADER = ["sale_id", "timestamp", "branch", "items_json", "total", "payment_method", "bank", "staff_name"];
-
-const TAB_ORDERS  = "orders";
-const TAB_CONFIG  = "_config";
-const TAB_WAKAGYM_REG = "wakagym_reg";
-const TAB_PLAYER_STATS   = "player_stats";
-const TAB_WAKAGYM_EVENTS = "wakagym_events";
 
 const BRANCHES = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์"];
 
@@ -846,7 +730,7 @@ function _findCatalogRow_(rows, name) {
   }
   return null;
 }
-// เขียน row ที่เปลี่ยนกลับ Supabase + mirror — เรียกหลังแก้ rows ใน memory
+// เขียน row ที่เปลี่ยนกลับ Supabase — เรียกหลังแก้ rows ใน memory
 function _pushCatalogRows_(rows, changedNames) {
   var names = {};
   changedNames.forEach(function(n) { names[String(n).trim()] = true; });
@@ -854,7 +738,6 @@ function _pushCatalogRows_(rows, changedNames) {
     if (!names[String(r.name).trim()]) return;
     var res = pushToSupabase_("catalog", r);
     if (!res.ok) throw new Error("Supabase catalog write failed (" + r.name + "): " + res.text);
-    mirrorToReportSheet_("catalog", SUPABASE_CATALOG_HEADER, "name", r);
   });
 }
 
@@ -971,13 +854,11 @@ function _findStockBranchRow_(rows, name, branch) {
   }
   return null;
 }
-// Optional `lock` — see writeSupabaseOrder_'s comment (release-before-mirror,
-// same lock-contention reasoning).
+// Optional `lock` — see writeSupabaseOrder_'s comment above, same reasoning.
 function _writeStockBranchRow_(row, lock) {
   var res = pushToSupabase_("stock_branch", row);
   if (!res.ok) throw new Error("Supabase stock_branch write failed (" + row.name + "/" + row.branch + "): " + res.text);
   if (lock) { try { lock.releaseLock(); } catch (_) {} }
-  mirrorToReportSheet_("stock_branch", SUPABASE_STOCK_BRANCH_HEADER, ["name", "branch"], row);
   return row;
 }
 
@@ -1027,9 +908,8 @@ function _linePush(to, text) {
   });
 }
 
-// `cfgWs` param kept (but unused) so every existing call site — which still
-// passes `ss.getSheetByName(TAB_CONFIG)` — keeps working unchanged now that
-// _config reads go through Supabase (getConfig_) instead of the Sheet.
+// `cfgWs` param kept (but unused) — every call site still passes `null` as
+// the first arg from before _config reads went Supabase-only (getConfig_).
 function _getConfigValue(cfgWs, key) {
   var v = getConfig_()[key];
   return (v === undefined || v === null || v === "") ? null : String(v);
@@ -1132,15 +1012,7 @@ function handleWakagymRegister(data) {
       players = [{ realName: data.realName || "", playerName: data.playerName || data.realName || "" }];
     }
 
-    // Registers every player's Supabase rows first (fast REST writes, kept
-    // under the lock since they read+update the same in-memory statsRows/
-    // statsRow to avoid two players in one request racing each other), but
-    // defers each row's mirrorToReportSheet_ call (slow full-tab scan) into
-    // pendingMirrors — flushed after the lock is released below, so this
-    // request's mirror-sheet latency no longer blocks every other
-    // concurrent GAS execution through the shared script-wide lock.
     var results = [];
-    var pendingMirrors = [];
     for (var p = 0; p < players.length; p++) {
       var pl = players[p];
       var regId = p === 0 ? groupId : _genWakagymRegId();
@@ -1156,7 +1028,6 @@ function handleWakagymRegister(data) {
       };
       var regRes = pushToSupabase_("wakagym_registrations", newWakagymObj);
       if (!regRes.ok) throw new Error("Supabase wakagym_registrations write failed: " + regRes.text);
-      pendingMirrors.push({ table: "wakagym_registrations", header: SUPABASE_WAKAGYM_REG_HEADER, keyCol: "reg_id", obj: newWakagymObj });
 
       var statsRow = findStatsRow_(pName);
       var totalTokens = 0;
@@ -1176,13 +1047,11 @@ function handleWakagymRegister(data) {
       }
       var statsRes = pushToSupabase_("player_stats", statsRow);
       if (!statsRes.ok) throw new Error("Supabase player_stats write failed: " + statsRes.text);
-      pendingMirrors.push({ table: "player_stats", header: SUPABASE_PLAYER_STATS_HEADER, keyCol: "player_name", obj: statsRow });
 
       results.push({ regId: regId, playerName: pName, totalTokens: totalTokens });
     }
 
     lock.releaseLock();
-    pendingMirrors.forEach(function(m) { mirrorToReportSheet_(m.table, m.header, m.keyCol, m.obj); });
 
     var groupStaff = _getConfigValue(null, "group_staff");
     if (groupStaff) {
@@ -1826,6 +1695,7 @@ function handleApi(params) {
         total: Number(r.total) || 0,
         payment_method: String(r.payment_method || ""),
         bank: String(r.bank || ""),
+        staff_name: String(r.staff_name || ""),
       };
     });
     return _cors(ContentService.createTextOutput(JSON.stringify({ sales: wsList })));
@@ -2708,16 +2578,9 @@ function handleReceiveShipment(data) {
         bsRowsToWrite.push(bsRow);
       }
     }
-    // Same reasoning as handleWakagymRegister: push every changed
-    // stock_branch row to Supabase now (fast, needs the lock — concurrent
-    // shipment receives for the same branch/product must not race), but
-    // defer each row's mirrorToReportSheet_ scan until after the lock
-    // releases below.
-    var pendingStockMirrors = [];
     bsRowsToWrite.forEach(function(r) {
       var res = pushToSupabase_("stock_branch", r);
       if (!res.ok) throw new Error("Supabase stock_branch write failed (" + r.name + "/" + r.branch + "): " + res.text);
-      pendingStockMirrors.push(r);
     });
 
     // แจ้ง LINE ลูกค้าทุกคนที่มีออเดอร์ยืนยัน + สาขานี้ + ยังไม่ส่ง
@@ -2725,14 +2588,12 @@ function handleReceiveShipment(data) {
     // ไม่เคยตั้ง fulfillment) จะหลุด filter ไปด้วย — กรองใน JS แทน
     //
     // This can match an unbounded number of orders (every unshipped
-    // confirmed order for the branch) — the same defer pattern applies,
-    // now doubly important since this loop was previously the single
-    // worst-case source of lock-hold time in the whole file: N order
-    // mirror-scans + N LINE pushes, all serialized under one script-wide
-    // lock that every other concurrent request had to wait behind.
+    // confirmed order for the branch) — LINE pushes are deferred until
+    // after the lock releases below, so this loop's latency (which used
+    // to be the single worst-case source of lock-hold time in the whole
+    // file) no longer blocks every other concurrent request.
     var excludedFf = ["พร้อมรับ", "บางส่วน", "รับบางส่วนแล้ว", "สาขายืนยัน", "รับแล้ว"];
     var oMatches = supabaseSelect_("orders", "select=*&branch=eq." + encodeURIComponent(branch) + "&slip_status=eq.ยืนยัน");
-    var pendingOrderMirrors = [];
     var pendingNotifications = [];
     for (var j = 0; j < oMatches.length; j++) {
       var ord = oMatches[j];
@@ -2742,7 +2603,6 @@ function handleReceiveShipment(data) {
       ord.fulfilled_at = now;
       var ordRes = pushToSupabase_("orders", ord);
       if (!ordRes.ok) throw new Error("Supabase orders write failed: " + ordRes.text);
-      pendingOrderMirrors.push(ord);
       var uid = ord.line_user_id || "";
       var oid = String(ord.order_id || "");
       if (uid) {
@@ -2752,8 +2612,6 @@ function handleReceiveShipment(data) {
     }
 
     lock.releaseLock();
-    pendingStockMirrors.forEach(function(r) { mirrorToReportSheet_("stock_branch", SUPABASE_STOCK_BRANCH_HEADER, ["name", "branch"], r); });
-    pendingOrderMirrors.forEach(function(o) { mirrorToReportSheet_("orders", SUPABASE_ORDERS_HEADER, "order_id", o); });
     pendingNotifications.forEach(function(n) { _linePush(n.uid, n.msg); });
 
     var groupStaffReceive = _getConfigValue(null, "group_staff");
@@ -3378,7 +3236,6 @@ function handleWithdrawStock(data) {
     var wRes = pushToSupabase_("withdrawals", wObj);
     if (!wRes.ok) throw new Error("Supabase withdrawals write failed: " + wRes.text);
     lock.releaseLock();
-    mirrorToReportSheet_("withdrawals", SUPABASE_WITHDRAWALS_HEADER, ["timestamp", "branch", "name"], wObj);
 
     var groupStaffWithdraw = _getConfigValue(null, "group_staff");
     if (groupStaffWithdraw && staffName) {
@@ -3437,7 +3294,6 @@ function handleReturnStock(data) {
     if (!srRes.ok) throw new Error("Supabase stock_returns write failed: " + srRes.text);
     CacheService.getScriptCache().remove("catalog_config");
     lock.releaseLock();
-    mirrorToReportSheet_("stock_returns", SUPABASE_STOCK_RETURNS_HEADER, ["timestamp", "branch", "name"], srObj);
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
@@ -3496,10 +3352,7 @@ function handleWalkinSale(data) {
     }
 
     // ตัดสต็อกสาขา + บันทึกยอดขาย (fast REST writes, ยังอยู่ใต้ lock เพราะแข่งกับ
-    // การขาย/รับของพร้อมกันได้) แต่ deferred mirror ไปหลังปล่อย lock — เหตุผล
-    // เดียวกับ writeSupabaseOrder_/handleReceiveShipment: mirror scan ช้าและ
-    // ไม่ควรบล็อก request อื่นที่รอ script-wide lock เดียวกันอยู่
-    var pendingMirrors = [];
+    // การขาย/รับของพร้อมกันได้)
     var total = 0;
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
@@ -3511,7 +3364,6 @@ function handleWalkinSale(data) {
       bsRow[field] = Math.max(0, (Number(bsRow[field]) || 0) - qty);
       var bsRes = pushToSupabase_("stock_branch", bsRow);
       if (!bsRes.ok) throw new Error("Supabase stock_branch write failed (" + bsRow.name + "): " + bsRes.text);
-      pendingMirrors.push({ table: "stock_branch", header: SUPABASE_STOCK_BRANCH_HEADER, keyCol: ["name", "branch"], obj: bsRow });
     }
 
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
@@ -3525,10 +3377,8 @@ function handleWalkinSale(data) {
     };
     var saleRes = pushToSupabase_("walkin_sales", saleObj);
     if (!saleRes.ok) throw new Error("Supabase walkin_sales write failed: " + saleRes.text);
-    pendingMirrors.push({ table: "walkin_sales", header: SUPABASE_WALKIN_SALES_HEADER, keyCol: "sale_id", obj: saleObj });
 
     lock.releaseLock();
-    pendingMirrors.forEach(function(m) { mirrorToReportSheet_(m.table, m.header, m.keyCol, m.obj); });
 
     var groupStaffWalkin = _getConfigValue(null, "group_staff");
     if (groupStaffWalkin && staffName) {

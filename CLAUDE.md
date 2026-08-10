@@ -141,7 +141,7 @@ in-app tournament flow).
   navy/gold visual theme; every page calls `apply_theme()` after
   `st.set_page_config()`. Some writes (e.g. `settings.py`) go back through
   the GAS `action=api` endpoint (with a shared secret) rather than straight
-  to Supabase, so GAS's config cache and report-sheet mirror stay correct.
+  to Supabase, so GAS's config cache stays correct.
 - **Supabase** (Postgres, schema in `supabase/schema.sql`) — the database
   both GAS and Streamlit read/write via the REST API (`service_role` key
   only; RLS denies the `anon` key everything). All tables are now
@@ -153,24 +153,24 @@ in-app tournament flow).
   original "prep only, Sheets stays authoritative" plan — that plan is long
   out of date; trust the code comments over that doc.
 
-## Sheets' remaining role
+## No Google Sheets dependency anywhere
 
-A separate spreadsheet (`REPORT_SHEET_ID`, the "WAKA export" sheet) is
-written by `mirrorToReportSheet_()` as a best-effort, human-readable mirror
-of every Supabase-primary write — never authoritative, never blocking, and
-safe to ignore for anything code-related. The original `SHEET_ID` spreadsheet
-has no remaining production read/write path — its only use now is
-`getConfig_()`'s fallback if Supabase is unreachable. The one-time/dev-only
-functions that used to live at the bottom of `gas/Code.gs`
-(`backfillPartialReadyNotifiedAt`, `testPartialFlow`, `testWakagymFlow`,
-`_testWgCleanup`) were removed 2026-08-09 — the latter two had gone stale
-(they asserted against the legacy Sheet tabs directly, not Supabase, so
-their "✅ ทุก assertion ผ่าน" logs no longer reflected how the live system
-actually behaves) and the backfill had already done its one-time job.
-Streamlit has no Google Sheets dependency left either — every screen reads
-Supabase directly via `service_role`; the `credentials.json`/`token.json`
-OAuth flow (`tools/refresh_token.py`) is unused by anything in the current
-codebase.
+As of 2026-08-09, `gas/Code.gs` has zero Google Sheets read/write path —
+the `mirrorToReportSheet_()` best-effort export to the "WAKA export" sheet
+(`REPORT_SHEET_ID`) and `getConfig_()`'s Sheet fallback (`SHEET_ID`) were
+both removed at the owner's request once mirroring turned out to silently
+drop rows (best-effort writes that failed were only logged, never surfaced
+or retried) and Supabase proved reliable enough on its own. `REPORT_SHEET_ID`/
+`SHEET_ID` Script Properties can stay set or be deleted — nothing reads them
+anymore. The one-time/dev-only functions that used to live at the bottom of
+`gas/Code.gs` (`backfillPartialReadyNotifiedAt`, `testPartialFlow`,
+`testWakagymFlow`, `_testWgCleanup`) were removed 2026-08-09 for a related
+reason — the latter two had gone stale (they asserted against the legacy
+Sheet tabs directly, not Supabase) and the backfill had already done its
+one-time job. Streamlit has no Google Sheets dependency either — every
+screen reads Supabase directly via `service_role`; the
+`credentials.json`/`token.json` OAuth flow (`tools/refresh_token.py`) is
+unused by anything in the current codebase.
 
 ## No automated test suite
 
