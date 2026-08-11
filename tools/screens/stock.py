@@ -284,6 +284,7 @@ with tab_central:
             return ""
 
         show["แจ้งเตือน"] = show.apply(_low_stock, axis=1)
+        show = show.sort_values("active", ascending=False, kind="stable")
         show = show.rename(columns={
             "id": "รหัสสินค้า", "name": "สินค้า", "slug": "Slug", "category": "หมวดหมู่", "qty_box": "กล่อง", "qty_pack": "ซอง",
             "limit_box": "ขั้นต่ำ (กล่อง)", "limit_pack": "ขั้นต่ำ (ซอง)",
@@ -297,7 +298,7 @@ with tab_central:
             hide_index=True,
             disabled=["รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "แจ้งเตือน"],
             column_config={
-                "สถานะ": st.column_config.SelectboxColumn("สถานะ", options=[STATUS_ON, STATUS_OFF], required=True, width="small"),
+                "สถานะ": st.column_config.SelectboxColumn(" ", options=[STATUS_ON, STATUS_OFF], required=True, width="small"),
                 "กล่อง": st.column_config.NumberColumn("กล่อง", min_value=0, step=1),
                 "ซอง": st.column_config.NumberColumn("ซอง", min_value=0, step=1),
             },
