@@ -491,10 +491,12 @@
             <div class="form-group"><label>สินค้า</label>
               <select id="shipProduct" class="branch-sel" style="margin:0" onchange="shipOnProductChange()"><option value="">-- เลือก --</option></select>
             </div>
+            <div id="shipProductDemand" style="font-size:12px;color:var(--text2);margin-bottom:8px;display:none"></div>
             <div class="form-row">
-              <div class="form-group"><label>กล่อง</label><input type="number" id="shipQtyBox" min="0" value="0" inputmode="numeric"></div>
-              <div class="form-group"><label>ซอง</label><input type="number" id="shipQtyPack" min="0" value="0" inputmode="numeric"></div>
+              <div class="form-group"><label>เผื่อเพิ่ม (กล่อง)</label><input type="number" id="shipQtyBox" min="0" value="0" inputmode="numeric" oninput="shipUpdateTotal()"></div>
+              <div class="form-group"><label>เผื่อเพิ่ม (ซอง)</label><input type="number" id="shipQtyPack" min="0" value="0" inputmode="numeric" oninput="shipUpdateTotal()"></div>
             </div>
+            <div id="shipProductTotal" style="font-size:12px;color:var(--text2);margin-bottom:8px;display:none"></div>
             <button class="btn btn-blue" onclick="shipAddToCart()">➕ เพิ่มลงรายการ</button>
           </div>
 
@@ -1395,6 +1397,9 @@ async function openCreateShipment() {
   gid('shipToBranch').value = '';
   gid('shipDemandCard').style.display = 'none';
   gid('shipReservedCard').style.display = 'none';
+  gid('shipProductDemand').style.display = 'none';
+  gid('shipProductTotal').style.display = 'none';
+  gid('shipQtyBox').value = 0; gid('shipQtyPack').value = 0;
   try {
     const [r1, r2] = await Promise.all([
       fetch(G + '&action=api&do=branch_summary'),
@@ -1425,21 +1430,45 @@ function shipOnBranchChange() {
   else { rCard.style.display = 'block'; gid('shipReservedList').innerHTML = _shipRenderDemandTable(rRows); }
 }
 
-function shipOnProductChange() {
+function _shipCurrentDemand() {
   const branch = gid('shipToBranch').value;
   const name = gid('shipProduct').value;
-  const d = (shipDemand[branch] || []).find(r => r.name === name);
-  gid('shipQtyBox').value = d ? (d.qty_box || 0) : 0;
-  gid('shipQtyPack').value = d ? (d.qty_pack || 0) : 0;
+  return (shipDemand[branch] || []).find(r => r.name === name) || { qty_box: 0, qty_pack: 0 };
+}
+
+function shipOnProductChange() {
+  const d = _shipCurrentDemand();
+  const demandEl = gid('shipProductDemand');
+  if (d.qty_box || d.qty_pack) {
+    demandEl.style.display = 'block';
+    demandEl.textContent = `มีออเดอร์รอรับ ${d.qty_box || 0} กล่อง / ${d.qty_pack || 0} ซอง`;
+  } else {
+    demandEl.style.display = 'none';
+  }
+  gid('shipQtyBox').value = 0;
+  gid('shipQtyPack').value = 0;
+  shipUpdateTotal();
+}
+
+function shipUpdateTotal() {
+  const d = _shipCurrentDemand();
+  const bufBox = +gid('shipQtyBox').value || 0;
+  const bufPack = +gid('shipQtyPack').value || 0;
+  const totalEl = gid('shipProductTotal');
+  if (!gid('shipProduct').value) { totalEl.style.display = 'none'; return; }
+  totalEl.style.display = 'block';
+  totalEl.textContent = `📦 รวมที่จะส่ง: ${(d.qty_box || 0) + bufBox} กล่อง / ${(d.qty_pack || 0) + bufPack} ซอง`;
 }
 
 function shipAddToCart() {
   const name = gid('shipProduct').value; if (!name) { alert('เลือกสินค้า'); return; }
-  const qty_box = +gid('shipQtyBox').value || 0;
-  const qty_pack = +gid('shipQtyPack').value || 0;
+  const d = _shipCurrentDemand();
+  const qty_box = (d.qty_box || 0) + (+gid('shipQtyBox').value || 0);
+  const qty_pack = (d.qty_pack || 0) + (+gid('shipQtyPack').value || 0);
   if (qty_box <= 0 && qty_pack <= 0) { alert('ใส่จำนวนที่จะส่ง'); return; }
   shipCart.push({ name, qty_box, qty_pack, qty_box_extra: 0, qty_pack_extra: 0 });
   gid('shipQtyBox').value = 0; gid('shipQtyPack').value = 0;
+  shipOnProductChange();
   shipRenderCart();
 }
 
