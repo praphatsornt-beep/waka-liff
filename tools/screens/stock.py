@@ -198,12 +198,12 @@ def _create_shipment_dialog():
     demand_edited = pd.DataFrame()
     if demand:
         st.caption(
-            "ออเดอร์รอส่งไปสาขานี้ — แก้ไข \"จะส่ง\" ต่อรายการได้เลย (ค่าเริ่มต้น = ยอดที่รอส่ง, "
-            "ใส่ 0 ถ้าสินค้ายังไม่มาหรือยังไม่ส่งรอบนี้, แก้ให้มากกว่ายอดรอส่งเพื่อเผื่อขายหน้าร้าน)"
+            "ออเดอร์รอส่งไปสาขานี้ — ติ๊ก \"ส่ง\" เฉพาะรายการที่จะส่งรอบนี้ แล้วแก้ \"จะส่ง\" ได้ตามจริง "
+            "(ค่าเริ่มต้น = ยอดที่รอส่ง, แก้ให้มากกว่ายอดรอส่งเพื่อเผื่อขายหน้าร้าน)"
         )
         demand_df = pd.DataFrame([
             {
-                "สินค้า": name,
+                "ส่ง": False, "สินค้า": name,
                 "รอส่ง (กล่อง)": int(d["qty_box"]), "รอส่ง (ซอง)": int(d["qty_pack"]),
                 "จะส่ง (กล่อง)": int(d["qty_box"]), "จะส่ง (ซอง)": int(d["qty_pack"]),
                 "ออเดอร์": d["order_count"],
@@ -216,12 +216,15 @@ def _create_shipment_dialog():
             hide_index=True,
             disabled=["สินค้า", "รอส่ง (กล่อง)", "รอส่ง (ซอง)", "ออเดอร์"],
             column_config={
+                "ส่ง": st.column_config.CheckboxColumn("ส่ง", width="small"),
                 "จะส่ง (กล่อง)": st.column_config.NumberColumn(min_value=0, step=1),
                 "จะส่ง (ซอง)": st.column_config.NumberColumn(min_value=0, step=1),
             },
             key=f"ship_demand_editor_{ship_branch}",
         )
         for _, row in demand_edited.iterrows():
+            if not row["ส่ง"]:
+                continue
             ship_items.append({
                 "name": row["สินค้า"],
                 "qty_box": int(pd.to_numeric(row["จะส่ง (กล่อง)"], errors="coerce") or 0),
