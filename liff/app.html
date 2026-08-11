@@ -1027,6 +1027,14 @@ async function _branchInStockNames() {
   try {
     const r = await fetch(G+'&action=api&do=branch_stock&branch='+encodeURIComponent(branch)+'&code='+encodeURIComponent(_authCode()));
     const d = await r.json();
+    if (d.error) {
+      // A permission/API error here used to look identical to "branch has
+      // zero stock" — the product picker just went empty with no explanation.
+      // null falls back to showing every product unfiltered instead of none,
+      // and the alert makes the real cause visible instead of silent.
+      alert('โหลดสต็อกสาขาไม่ได้ (' + d.error + ') — แสดงสินค้าทั้งหมดแทน ไม่ได้กรองตามสต็อกจริง');
+      return null;
+    }
     return new Set((d.stock||[]).filter(s=>(s.qty_box||0)>0||(s.qty_pack||0)>0).map(s=>s.name));
   } catch(_) { return null; }
 }
@@ -1338,20 +1346,27 @@ async function loadBrStock() {
   const b=gid('branchSelect').value;if(!b){gid('brStock').innerHTML='<div class="empty">เลือกสาขาก่อน</div>';return;}
   try{
     let stock;
+    let errMsg = '';
     if (b === 'ทั้งหมด') {
       const branches = Object.values(BRANCH_CODES);
       const results = await Promise.all(branches.map(async br => {
         const r = await fetch(G+'&action=api&do=branch_stock&branch='+encodeURIComponent(br)+'&code='+encodeURIComponent(_authCode()));
         const d = await r.json();
+        if (d.error && !errMsg) errMsg = d.error;
         return (d.stock || []).map(s => Object.assign({}, s, { branch: br }));
       }));
       stock = results.flat();
     } else {
       const r=await fetch(G+'&action=api&do=branch_stock&branch='+encodeURIComponent(b)+'&code='+encodeURIComponent(_authCode()));
       const d=await r.json();
+      if (d.error) errMsg = d.error;
       stock = d.stock || [];
     }
-    const el=gid('brStock');if(!stock.length){el.innerHTML='<div class="empty">ไม่มีสต็อก</div>';return;}
+    // d.error used to look identical to "genuinely zero stock" — same class
+    // of bug as _branchInStockNames() above, surface it instead of hiding it.
+    const el=gid('brStock');
+    if (errMsg) { el.innerHTML='<div class="empty">โหลดสต็อกไม่ได้ ('+esc(errMsg)+')</div>'; return; }
+    if(!stock.length){el.innerHTML='<div class="empty">ไม่มีสต็อก</div>';return;}
     let h='<div class="card"><table><tr><th>สินค้า</th>'+(b==='ทั้งหมด'?'<th>สาขา</th>':'')+'<th class="num">Box</th><th class="num">Pack</th></tr>';
     for(const s of stock)h+='<tr><td>'+esc(s.name)+'</td>'+(b==='ทั้งหมด'?'<td>'+esc(s.branch)+'</td>':'')+'<td class="num">'+s.qty_box+'</td><td class="num">'+s.qty_pack+'</td></tr>';
     el.innerHTML=h+'</table></div>';

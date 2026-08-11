@@ -39,7 +39,11 @@ function _norm(s) { return String(s || "").trim().normalize("NFC"); }
 function _branchAuthorized(code, branch) {
   if (!branch) return true;
   code = String(code || "").trim();
-  if (code === ADMIN_CODE) return true;
+  // Script Properties values can pick up trailing whitespace when typed/pasted
+  // into the Apps Script editor's Properties UI — a strict === against the raw
+  // property here would silently fail auth forever with no visible cause, same
+  // class of bug _norm()'s docstring above already calls out for branch names.
+  if (code === String(ADMIN_CODE || "").trim()) return true;
   return _norm(BRANCH_CODES[code]) === _norm(branch);
 }
 
