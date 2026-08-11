@@ -307,6 +307,11 @@
             <div style="font-size:48px">🏬</div>
             <div class="br-menu-title" style="font-size:20px">สาขาศรีนครินทร์</div>
           </div>
+          <div class="br-menu-card" onclick="adminPickBranch('ทั้งหมด')" style="padding:32px 16px">
+            <div style="font-size:48px">🏢</div>
+            <div class="br-menu-title" style="font-size:20px">ทุกสาขา</div>
+            <div class="br-menu-desc">ดูออเดอร์/สต็อก/รับของรวมทุกสาขา</div>
+          </div>
         </div>
       </div>
       <!-- หลังล็อกอิน -->
@@ -645,7 +650,7 @@ if (savedAuth) {
   ensureStaffName(); renderStaffBadge();
   const sb=sessionStorage.getItem('waka_branch') || sessionStorage.getItem('waka_staff_branch');
   if(savedAuth==='staff'&&sb){autoLoginBranch(sb);}
-  else if(savedAuth==='admin'&&sb){gid('branchSelect').value=sb;gid('branchTitle').textContent='สาขา'+sb;}
+  else if(savedAuth==='admin'&&sb){gid('branchSelect').value=sb;gid('branchTitle').textContent=sb==='ทั้งหมด'?'ทุกสาขา':'สาขา'+sb;}
   switchTab('branch');
   initApp(); _applyDeepLink();
 }
@@ -1038,7 +1043,7 @@ function adminPickBranch(name) {
   gid('branchSelect').value=name;
   gid('branchAdminPicker').style.display='none';
   gid('branchApp').style.display='block';
-  gid('branchTitle').textContent='สาขา'+name;
+  gid('branchTitle').textContent = name==='ทั้งหมด' ? 'ทุกสาขา' : 'สาขา'+name;
   sessionStorage.setItem('waka_branch', name);
 }
 function adminBackToPicker() {
@@ -1076,6 +1081,7 @@ function logoutBranch() {
 
 function openBrView(s) {
   if(!gid('branchSelect').value){alert('เลือกสาขาก่อน');return;}
+  if(gid('branchSelect').value==='ทั้งหมด' && ['withdraw','walkin'].includes(s)){alert('โหมด "ทุกสาขา" ใช้เบิก/ขายหน้าร้านไม่ได้ กรุณาเปลี่ยนไปเลือกสาขาที่ต้องการก่อน');return;}
   gid('brMenu').style.display='none';
   gid('brSubView').style.display='block';
   ['brIncoming','brOrders','brHandover','brStock','brWithdraw','brWalkin','brGym'].forEach(id=>gid(id).style.display='none');
@@ -1097,14 +1103,14 @@ function closeBrView() {
 async function loadIncoming() {
   const branch=gid('branchSelect').value;if(!branch)return;
   try{const r=await fetch(G+'&action=api&do=shipments');const d=await r.json();
-    const pending=(d.shipments||[]).filter(s=>s.to_branch===branch&&s.status!=='รับแล้ว');
+    const pending=(d.shipments||[]).filter(s=>(branch==='ทั้งหมด'||s.to_branch===branch)&&s.status!=='รับแล้ว');
     const el=gid('incomingList');
     if(!pending.length){el.innerHTML='<div class="empty">ไม่มีล็อตที่รอรับ ✅</div>';return;}
     el.innerHTML=pending.map(s=>{
       const items=JSON.parse(s.items_json||'[]');
       const itemLines=items.map(i=>{const tb=(i.qty_box||0)+(i.qty_box_extra||0),tp=(i.qty_pack||0)+(i.qty_pack_extra||0);const parts=[];if(tb)parts.push('Box:'+tb);if(tp)parts.push('Pack:'+tp);return `<div style="margin-top:2px">• ${esc(i.name)}${parts.length?' — '+esc(parts.join(', ')):''}</div>`;}).join('');
       return `<div class="card" style="border-left:4px solid var(--orange)">
-        <div style="display:flex;justify-content:space-between"><strong>${esc(s.shipment_id)}</strong><span style="font-size:12px;color:var(--text2)">${esc(s.timestamp)}</span></div>
+        <div style="display:flex;justify-content:space-between"><strong>${esc(s.shipment_id)}${branch==='ทั้งหมด'?' · 🏬 '+esc(s.to_branch):''}</strong><span style="font-size:12px;color:var(--text2)">${esc(s.timestamp)}</span></div>
         <div style="font-size:13px;margin-top:6px">${itemLines}</div>
         <button class="btn btn-green" style="margin-top:10px" onclick="confirmReceive('${s.shipment_id}',this)">✅ ยืนยันรับของครบแล้ว</button>
       </div>`;
@@ -1125,9 +1131,9 @@ async function confirmReceive(id,btn) {
 function onBranchChange() {
   if (userRole !== 'admin') return;
   const sb = sessionStorage.getItem('waka_branch');
-  if (sb && ['ต้นสักคอร์เนอร์','เมืองทองธานี','ศรีนครินทร์'].includes(sb)) {
+  if (sb && ['ต้นสักคอร์เนอร์','เมืองทองธานี','ศรีนครินทร์','ทั้งหมด'].includes(sb)) {
     gid('branchSelect').value = sb;
-    gid('branchTitle').textContent = 'สาขา' + sb;
+    gid('branchTitle').textContent = sb==='ทั้งหมด' ? 'ทุกสาขา' : 'สาขา' + sb;
     gid('branchAdminPicker').style.display = 'none';
     gid('branchApp').style.display = 'block';
   }
@@ -1213,7 +1219,8 @@ function renderBrOrdersList() {
 async function searchOrders() {
   const q=gid('searchOrder').value.trim();if(!q)return;
   const branch=gid('branchSelect').value;
-  try{const r=await fetch(G+'&action=api&do=search&q='+encodeURIComponent(q)+'&branch='+encodeURIComponent(branch)+'&code='+encodeURIComponent(_authCode()));const d=await r.json();
+  const branchParam = branch==='ทั้งหมด' ? '' : branch;
+  try{const r=await fetch(G+'&action=api&do=search&q='+encodeURIComponent(q)+'&branch='+encodeURIComponent(branchParam)+'&code='+encodeURIComponent(_authCode()));const d=await r.json();
     const el=gid('searchResults');if(!d.orders||!d.orders.length){el.innerHTML='<div class="empty">ไม่พบ</div>';return;}
     el.innerHTML=d.orders.map(o=>{
       const ff=o.fulfillment||'รอ';
@@ -1267,10 +1274,24 @@ async function handoverOrder(oid,src,btn) {
 
 async function loadBrStock() {
   const b=gid('branchSelect').value;if(!b){gid('brStock').innerHTML='<div class="empty">เลือกสาขาก่อน</div>';return;}
-  try{const r=await fetch(G+'&action=api&do=branch_stock&branch='+encodeURIComponent(b)+'&code='+encodeURIComponent(_authCode()));const d=await r.json();
-    const el=gid('brStock');if(!d.stock||!d.stock.length){el.innerHTML='<div class="empty">ไม่มีสต็อก</div>';return;}
-    let h='<div class="card"><table><tr><th>สินค้า</th><th class="num">Box</th><th class="num">Pack</th></tr>';
-    for(const s of d.stock)h+='<tr><td>'+esc(s.name)+'</td><td class="num">'+s.qty_box+'</td><td class="num">'+s.qty_pack+'</td></tr>';
+  try{
+    let stock;
+    if (b === 'ทั้งหมด') {
+      const branches = Object.values(BRANCH_CODES);
+      const results = await Promise.all(branches.map(async br => {
+        const r = await fetch(G+'&action=api&do=branch_stock&branch='+encodeURIComponent(br)+'&code='+encodeURIComponent(_authCode()));
+        const d = await r.json();
+        return (d.stock || []).map(s => Object.assign({}, s, { branch: br }));
+      }));
+      stock = results.flat();
+    } else {
+      const r=await fetch(G+'&action=api&do=branch_stock&branch='+encodeURIComponent(b)+'&code='+encodeURIComponent(_authCode()));
+      const d=await r.json();
+      stock = d.stock || [];
+    }
+    const el=gid('brStock');if(!stock.length){el.innerHTML='<div class="empty">ไม่มีสต็อก</div>';return;}
+    let h='<div class="card"><table><tr><th>สินค้า</th>'+(b==='ทั้งหมด'?'<th>สาขา</th>':'')+'<th class="num">Box</th><th class="num">Pack</th></tr>';
+    for(const s of stock)h+='<tr><td>'+esc(s.name)+'</td>'+(b==='ทั้งหมด'?'<td>'+esc(s.branch)+'</td>':'')+'<td class="num">'+s.qty_box+'</td><td class="num">'+s.qty_pack+'</td></tr>';
     el.innerHTML=h+'</table></div>';
   }catch(e){gid('brStock').innerHTML='<div class="empty">โหลดไม่ได้</div>';}
 }
@@ -1278,6 +1299,7 @@ async function loadBrStock() {
 // ── เบิกสินค้า ──
 async function submitWithdraw() {
   const branch=gid('branchSelect').value;if(!branch)return alert('เลือกสาขาก่อน');
+  if(branch==='ทั้งหมด')return alert('โหมด "ทุกสาขา" เบิกสินค้าไม่ได้ กรุณาเปลี่ยนไปเลือกสาขาที่ต้องการก่อน');
   const name=gid('wdProduct').value;if(!name)return alert('เลือกสินค้า');
   const type=gid('wdType').value,qty=+gid('wdQty').value||0,reason=gid('wdReason').value;
   if(qty<=0)return alert('ใส่จำนวน');
@@ -1357,6 +1379,7 @@ function wsTogglePayBank() {
 
 async function wsSubmitSale() {
   const branch = gid('branchSelect').value; if (!branch) { alert('เลือกสาขาก่อน'); return; }
+  if (branch === 'ทั้งหมด') { alert('โหมด "ทุกสาขา" ขายหน้าร้านไม่ได้ กรุณาเปลี่ยนไปเลือกสาขาที่ต้องการก่อน'); return; }
   if (!wsCart.length) { alert('ยังไม่มีสินค้าในตะกร้า'); return; }
   const payment_method = gid('wsPayMethod').value;
   const bank = gid('wsBank').value.trim();
@@ -1510,6 +1533,7 @@ function gymUpdateRewardPreview(){
 }
 async function gymCreateEvent(){
   var branch=gid('branchSelect').value,btn=gid('gymCreateEventBtn');
+  if(branch==='ทั้งหมด'){alert('โหมด "ทุกสาขา" สร้าง Event ไม่ได้ กรุณาเปลี่ยนไปเลือกสาขาที่ต้องการก่อน');return;}
   btn.disabled=true;btn.textContent='กำลังสร้าง...';
   try{var res=await fetch(G+'&action=api&do=wakagym_create_event&branch='+encodeURIComponent(branch)+'&tier='+gymSelectedTier+'&created_by='+encodeURIComponent(userRole)+'&_t='+Date.now());
     var data=await res.json();
