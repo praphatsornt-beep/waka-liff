@@ -481,6 +481,12 @@
             <div id="shipDemandList"></div>
           </div>
 
+          <div class="card" id="shipReservedCard" style="display:none">
+            <h3>กันไว้ที่สาขานี้แล้ว</h3>
+            <div style="font-size:12px;color:var(--text2);margin-bottom:8px">พร้อมรับ — ลูกค้ายังไม่มารับ, ขายหน้าร้านไม่ได้</div>
+            <div id="shipReservedList"></div>
+          </div>
+
           <div class="card">
             <div class="form-group"><label>สินค้า</label>
               <select id="shipProduct" class="branch-sel" style="margin:0" onchange="shipOnProductChange()"><option value="">-- เลือก --</option></select>
@@ -1378,6 +1384,7 @@ async function loadWithdrawals() {
 // ── สร้างล็อตส่งสาขา (โหมดทุกสาขา) ──
 let shipCart = [];
 let shipDemand = {}; // { branch: [{name, qty_box, qty_pack, order_count}, ...] } — ยอดออเดอร์รอส่ง จาก action=api&do=branch_summary
+let shipReserved = {}; // เหมือนกันแต่เป็นของที่ถึงสาขาแล้ว รอลูกค้ามารับ (พร้อมรับ) จาก do=branch_reserved
 
 async function openCreateShipment() {
   if (!products.length) await loadProducts();
@@ -1387,22 +1394,35 @@ async function openCreateShipment() {
   shipRenderCart();
   gid('shipToBranch').value = '';
   gid('shipDemandCard').style.display = 'none';
+  gid('shipReservedCard').style.display = 'none';
   try {
-    const r = await fetch(G + '&action=api&do=branch_summary');
-    const d = await r.json();
-    shipDemand = d.branches || {};
-  } catch (_) { shipDemand = {}; }
+    const [r1, r2] = await Promise.all([
+      fetch(G + '&action=api&do=branch_summary'),
+      fetch(G + '&action=api&do=branch_reserved'),
+    ]);
+    shipDemand = (await r1.json()).branches || {};
+    shipReserved = (await r2.json()).branches || {};
+  } catch (_) { shipDemand = {}; shipReserved = {}; }
+}
+
+function _shipRenderDemandTable(rows) {
+  let h = '<table><tr><th>สินค้า</th><th class="num">กล่อง</th><th class="num">ซอง</th><th class="num">ออเดอร์</th></tr>';
+  for (const r of rows) h += `<tr><td>${esc(r.name)}</td><td class="num">${r.qty_box || 0}</td><td class="num">${r.qty_pack || 0}</td><td class="num">${r.order_count || 0}</td></tr>`;
+  return h + '</table>';
 }
 
 function shipOnBranchChange() {
   const branch = gid('shipToBranch').value;
-  const card = gid('shipDemandCard');
-  const rows = (shipDemand[branch] || []).slice().sort((a, b) => a.name.localeCompare(b.name));
-  if (!branch || !rows.length) { card.style.display = 'none'; return; }
-  card.style.display = 'block';
-  let h = '<table><tr><th>สินค้า</th><th class="num">กล่อง</th><th class="num">ซอง</th><th class="num">ออเดอร์</th></tr>';
-  for (const r of rows) h += `<tr><td>${esc(r.name)}</td><td class="num">${r.qty_box || 0}</td><td class="num">${r.qty_pack || 0}</td><td class="num">${r.order_count || 0}</td></tr>`;
-  gid('shipDemandList').innerHTML = h + '</table>';
+
+  const dCard = gid('shipDemandCard');
+  const dRows = (shipDemand[branch] || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+  if (!branch || !dRows.length) { dCard.style.display = 'none'; }
+  else { dCard.style.display = 'block'; gid('shipDemandList').innerHTML = _shipRenderDemandTable(dRows); }
+
+  const rCard = gid('shipReservedCard');
+  const rRows = (shipReserved[branch] || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+  if (!branch || !rRows.length) { rCard.style.display = 'none'; }
+  else { rCard.style.display = 'block'; gid('shipReservedList').innerHTML = _shipRenderDemandTable(rRows); }
 }
 
 function shipOnProductChange() {

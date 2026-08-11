@@ -1373,6 +1373,33 @@ function handleApi(params) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ branches: bsResult })));
   }
 
+  // ── สต็อกที่กันไว้ที่แต่ละสาขาแล้ว (พร้อมรับ — ลูกค้ายังไม่มารับ) ──
+  // ต่างจาก branch_summary ตรงที่นี่คือของที่ "ถึงสาขาแล้ว" และถูกจองไว้ให้
+  // ออเดอร์นี้แล้ว ไม่ใช่ของที่ยังต้องส่ง — ใช้ตอนสร้างล็อตใหม่เพื่อรู้ว่า
+  // สต็อกที่สาขาเท่าไหร่ที่ขายหน้าร้านไม่ได้เพราะกันไว้ให้ออเดอร์อยู่แล้ว
+  if (action === "branch_reserved") {
+    var brSb = supabaseSelect_("orders", "select=branch,items_json&slip_status=eq.ยืนยัน&fulfillment=eq.พร้อมรับ");
+    var brSummary = {};
+    brSb.forEach(function(r) {
+      var branch = r.branch || "";
+      var items = r.items_json || [];
+      if (!brSummary[branch]) brSummary[branch] = {};
+      for (var x = 0; x < items.length; x++) {
+        var key = items[x].name;
+        if (!brSummary[branch][key]) brSummary[branch][key] = { name: key, qty_box: 0, qty_pack: 0, order_count: 0 };
+        if (items[x].type === "box") brSummary[branch][key].qty_box += (items[x].qty || 1);
+        else brSummary[branch][key].qty_pack += (items[x].qty || 1);
+        brSummary[branch][key].order_count++;
+      }
+    });
+    var brResult = {};
+    for (var rb in brSummary) {
+      brResult[rb] = [];
+      for (var rk in brSummary[rb]) brResult[rb].push(brSummary[rb][rk]);
+    }
+    return _cors(ContentService.createTextOutput(JSON.stringify({ branches: brResult })));
+  }
+
   // ── สต็อกกลาง ──
   if (action === "central_stock") {
     var csRows = supabaseSelect_("catalog", "select=name,category,qty_box,qty_pack");
