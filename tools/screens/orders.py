@@ -315,11 +315,24 @@ if df.empty:
     st.info("ยังไม่มีออเดอร์")
     st.stop()
 
+@st.cache_data(ttl=120)
+def load_active_product_names():
+    """None means "couldn't load" — callers should treat that as "show
+    everything" rather than accidentally hiding every product on a transient
+    catalog-fetch error."""
+    try:
+        rows = get_supabase().table("catalog").select("name,active").execute().data
+        return {r["name"] for r in rows if str(r.get("active") or "").strip().upper() != "FALSE"}
+    except Exception:
+        return None
+
+
+_active_names = load_active_product_names()
 all_products = sorted({
     i.get("name", "")
     for items_json in df.get("items_json", [])
     for i in parse_items(items_json)
-    if i.get("name")
+    if i.get("name") and (_active_names is None or i.get("name") in _active_names)
 })
 
 phone_counts = df["phone"].value_counts().to_dict() if "phone" in df.columns else {}
@@ -347,15 +360,17 @@ st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 FILTER_KEYS = ["ord_search", "ord_branch", "ord_status", "ord_products", "ord_date_from", "ord_date_to"]
 
 with st.container(border=True):
-    f1, f2, f3, f4 = st.columns([2, 1.3, 1.3, 1.5])
+    f1, f2, f3 = st.columns([2, 1.3, 1.3])
     with f1:
         search = st.text_input("ค้นหา", placeholder="ค้นหาชื่อ / เบอร์โทร / เลขออเดอร์ / สินค้า", label_visibility="collapsed", key="ord_search")
     with f2:
         branch_sel = st.selectbox("สาขา", ["ทุกสาขา"] + BRANCHES, label_visibility="collapsed", key="ord_branch")
     with f3:
         status_sel = st.selectbox("สถานะสลิป", ["ทุกสถานะสลิป"] + ALL_STATUS, label_visibility="collapsed", key="ord_status")
-    with f4:
-        product_filter = st.multiselect("สินค้า", all_products, default=[], placeholder="ทุกสินค้า", label_visibility="collapsed", key="ord_products")
+
+    # Full-width row, not a narrow column — product names are long enough
+    # that a cramped column truncates them in the dropdown list itself.
+    product_filter = st.multiselect("สินค้า", all_products, default=[], placeholder="ทุกสินค้า", label_visibility="collapsed", key="ord_products")
 
     f5, f6, f7, f8 = st.columns([1.3, 0.3, 1.3, 1.3])
     with f5:
