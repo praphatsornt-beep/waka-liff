@@ -245,28 +245,33 @@ def _create_shipment_dialog():
         "เลือกสินค้าที่จะส่ง", all_names, default=default_sel, key=f"ship_sel_{ship_branch}",
     )
 
-    with st.form(f"create_shipment_form_{ship_branch}"):
-        ship_items = []
-        for name in sel_products:
-            d = demand.get(name, {"qty_box": 0, "qty_pack": 0})
-            sc1, sc2 = st.columns(2)
-            qb = sc1.number_input(f"{name} — กล่อง", min_value=0, value=int(d["qty_box"]), step=1, key=f"shipbox_{ship_branch}_{name}")
-            qp = sc2.number_input(f"{name} — ซอง", min_value=0, value=int(d["qty_pack"]), step=1, key=f"shippack_{ship_branch}_{name}")
-            ship_items.append({"name": name, "qty_box": qb, "qty_pack": qp, "qty_box_extra": 0, "qty_pack_extra": 0})
+    ship_items = []
+    for name in sel_products:
+        d = demand.get(name, {"qty_box": 0, "qty_pack": 0})
+        st.markdown(f"**{name}**")
+        if d["qty_box"] or d["qty_pack"]:
+            st.caption(f"มีออเดอร์รอรับ {int(d['qty_box'])} กล่อง / {int(d['qty_pack'])} ซอง")
+        sc1, sc2 = st.columns(2)
+        buf_box = sc1.number_input("เผื่อเพิ่ม (กล่อง)", min_value=0, value=0, step=1, key=f"shipbufbox_{ship_branch}_{name}")
+        buf_pack = sc2.number_input("เผื่อเพิ่ม (ซอง)", min_value=0, value=0, step=1, key=f"shipbufpack_{ship_branch}_{name}")
+        total_box = int(d["qty_box"]) + buf_box
+        total_pack = int(d["qty_pack"]) + buf_pack
+        st.caption(f"📦 รวมที่จะส่ง: {total_box} กล่อง / {total_pack} ซอง")
+        st.divider()
+        ship_items.append({"name": name, "qty_box": total_box, "qty_pack": total_pack, "qty_box_extra": 0, "qty_pack_extra": 0})
 
-        submitted_ship = st.form_submit_button("📦 สร้างล็อตส่งสาขา")
-        if submitted_ship:
-            items_payload = [it for it in ship_items if it["qty_box"] > 0 or it["qty_pack"] > 0]
-            if not items_payload:
-                st.warning("เลือกสินค้าและใส่จำนวนที่จะส่งก่อน")
-            else:
-                try:
-                    result = gas_post({"_action": "createShipment", "to_branch": ship_branch, "items": items_payload})
-                    _flash(f"สร้างล็อต {result.get('shipment_id', '')} แล้ว")
-                    st.cache_data.clear()
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"สร้างล็อตไม่ได้: {e}")
+    if st.button("📦 สร้างล็อตส่งสาขา", key=f"submit_ship_{ship_branch}", type="primary"):
+        items_payload = [it for it in ship_items if it["qty_box"] > 0 or it["qty_pack"] > 0]
+        if not items_payload:
+            st.warning("เลือกสินค้าและใส่จำนวนที่จะส่งก่อน")
+        else:
+            try:
+                result = gas_post({"_action": "createShipment", "to_branch": ship_branch, "items": items_payload})
+                _flash(f"สร้างล็อต {result.get('shipment_id', '')} แล้ว")
+                st.cache_data.clear()
+                st.rerun()
+            except Exception as e:
+                st.error(f"สร้างล็อตไม่ได้: {e}")
 
 
 with tab_central:
