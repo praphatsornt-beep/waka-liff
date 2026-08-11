@@ -360,6 +360,11 @@
               <div class="br-menu-title">WAKA GYM</div>
               <div class="br-menu-desc">สแกน QR / Event / ผลแข่ง</div>
             </div>
+            <div class="br-menu-card" id="brMenuCreateShipment" onclick="openBrView('createShipment')" style="display:none;grid-column:1/-1">
+              <div style="font-size:40px">🚚</div>
+              <div class="br-menu-title">สร้างล็อตส่งสาขา</div>
+              <div class="br-menu-desc">เลือกสินค้า + จำนวน ส่งจากคลังกลางไปสาขา</div>
+            </div>
           </div>
         </div>
 
@@ -454,6 +459,36 @@
           <div class="card">
             <h3>ประวัติขายล่าสุด</h3>
             <div id="wsHistory"><div class="empty">ยังไม่มีรายการ</div></div>
+          </div>
+        </div>
+
+        <!-- สร้างล็อตส่งสาขา sub-view (โหมดทุกสาขา) -->
+        <div id="brCreateShipment" style="display:none">
+          <div class="card">
+            <h3>🚚 สร้างล็อตส่งสาขา</h3>
+            <div class="form-group"><label>สาขาปลายทาง</label>
+              <select id="shipToBranch" class="branch-sel" style="margin:0">
+                <option value="">-- เลือกสาขา --</option>
+                <option value="ต้นสักคอร์เนอร์">ต้นสักคอร์เนอร์</option>
+                <option value="เมืองทองธานี">เมืองทองธานี</option>
+                <option value="ศรีนครินทร์">ศรีนครินทร์</option>
+              </select>
+            </div>
+            <div class="form-group"><label>สินค้า</label>
+              <select id="shipProduct" class="branch-sel" style="margin:0"><option value="">-- เลือก --</option></select>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>กล่อง</label><input type="number" id="shipQtyBox" min="0" value="0" inputmode="numeric"></div>
+              <div class="form-group"><label>ซอง</label><input type="number" id="shipQtyPack" min="0" value="0" inputmode="numeric"></div>
+            </div>
+            <button class="btn btn-blue" onclick="shipAddToCart()">➕ เพิ่มลงรายการ</button>
+          </div>
+
+          <div class="card" id="shipCartCard" style="display:none">
+            <h3>รายการที่จะส่ง</h3>
+            <div id="shipCartList"></div>
+            <div class="form-group" style="margin-top:12px"><label>ชื่อพนักงาน</label><input type="text" id="shipStaffName" placeholder="ชื่อพนักงานที่สร้างล็อต"></div>
+            <button class="btn btn-green" onclick="shipSubmit()">📦 สร้างล็อตส่งสาขา</button>
           </div>
         </div>
 
@@ -1038,6 +1073,14 @@ async function submitAddStock() {
 // TAB 4: สาขา
 // ══════════════════════════════════════════════════════════
 // ── Branch login ──
+// การ์ด "สร้างล็อตส่งสาขา" โผล่เฉพาะโหมด "ทั้งหมด" — สั่งซื้อ/รับของของ
+// สาขาใดสาขาหนึ่งไม่เกี่ยวกับการส่งของออกจากคลังกลาง จึงให้ทำได้จากมุมมอง
+// รวมทุกสาขาเท่านั้น
+function _updateAdminOnlyCards() {
+  var el = gid('brMenuCreateShipment');
+  if (el) el.style.display = gid('branchSelect').value === 'ทั้งหมด' ? 'block' : 'none';
+}
+
 function adminPickBranch(name) {
   if(!name){gid('branchApp').style.display='none';gid('branchAdminPicker').style.display='block';return;}
   gid('branchSelect').value=name;
@@ -1045,6 +1088,7 @@ function adminPickBranch(name) {
   gid('branchApp').style.display='block';
   gid('branchTitle').textContent = name==='ทั้งหมด' ? 'ทุกสาขา' : 'สาขา'+name;
   sessionStorage.setItem('waka_branch', name);
+  _updateAdminOnlyCards();
 }
 function adminBackToPicker() {
   gid('branchApp').style.display='none';
@@ -1084,7 +1128,7 @@ function openBrView(s) {
   if(gid('branchSelect').value==='ทั้งหมด' && ['withdraw','walkin'].includes(s)){alert('โหมด "ทุกสาขา" ใช้เบิก/ขายหน้าร้านไม่ได้ กรุณาเปลี่ยนไปเลือกสาขาที่ต้องการก่อน');return;}
   gid('brMenu').style.display='none';
   gid('brSubView').style.display='block';
-  ['brIncoming','brOrders','brHandover','brStock','brWithdraw','brWalkin','brGym'].forEach(id=>gid(id).style.display='none');
+  ['brIncoming','brOrders','brHandover','brStock','brWithdraw','brWalkin','brGym','brCreateShipment'].forEach(id=>gid(id).style.display='none');
   if(s==='incoming'){gid('brIncoming').style.display='block';loadIncoming();}
   if(s==='orders'){gid('brOrders').style.display='block';loadBrOrders();}
   if(s==='handover')gid('brHandover').style.display='block';
@@ -1092,6 +1136,7 @@ function openBrView(s) {
   if(s==='withdraw'){gid('brWithdraw').style.display='block';gid('wdStaffName').value=ensureStaffName();loadWithdrawProductOptions();loadWithdrawals();}
   if(s==='walkin'){gid('brWalkin').style.display='block';gid('wsStaffName').value=ensureStaffName();openWalkin();}
   if(s==='gym'){gid('brGym').style.display='block';gymOpen();}
+  if(s==='createShipment'){gid('brCreateShipment').style.display='block';gid('shipStaffName').value=ensureStaffName();openCreateShipment();}
 }
 function closeBrView() {
   gymStopScanner();
@@ -1136,6 +1181,7 @@ function onBranchChange() {
     gid('branchTitle').textContent = sb==='ทั้งหมด' ? 'ทุกสาขา' : 'สาขา' + sb;
     gid('branchAdminPicker').style.display = 'none';
     gid('branchApp').style.display = 'block';
+    _updateAdminOnlyCards();
   }
 }
 
@@ -1319,6 +1365,60 @@ async function loadWithdrawals() {
     for(const w of d.withdrawals)h+='<tr><td style="font-size:11px">'+esc(w.timestamp)+'</td><td>'+esc(w.name)+'</td><td class="num">'+w.qty+' '+(w.type==='box'?'กล่อง':'ซอง')+'</td><td>'+esc(w.reason)+'</td></tr>';
     el.innerHTML=h+'</table>';
   }catch(_){gid('wdHistory').innerHTML='<div class="empty">โหลดไม่ได้</div>';}
+}
+
+// ── สร้างล็อตส่งสาขา (โหมดทุกสาขา) ──
+let shipCart = [];
+
+async function openCreateShipment() {
+  if (!products.length) await loadProducts();
+  const sel = gid('shipProduct');
+  sel.innerHTML = '<option value="">-- เลือก --</option>' + products.map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
+  shipCart = [];
+  shipRenderCart();
+}
+
+function shipAddToCart() {
+  const name = gid('shipProduct').value; if (!name) { alert('เลือกสินค้า'); return; }
+  const qty_box = +gid('shipQtyBox').value || 0;
+  const qty_pack = +gid('shipQtyPack').value || 0;
+  if (qty_box <= 0 && qty_pack <= 0) { alert('ใส่จำนวนที่จะส่ง'); return; }
+  shipCart.push({ name, qty_box, qty_pack, qty_box_extra: 0, qty_pack_extra: 0 });
+  gid('shipQtyBox').value = 0; gid('shipQtyPack').value = 0;
+  shipRenderCart();
+}
+
+function shipRemoveFromCart(idx) {
+  shipCart.splice(idx, 1);
+  shipRenderCart();
+}
+
+function shipRenderCart() {
+  const card = gid('shipCartCard');
+  if (!shipCart.length) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  gid('shipCartList').innerHTML = shipCart.map((it, idx) => {
+    const parts = [];
+    if (it.qty_box) parts.push(it.qty_box + ' กล่อง');
+    if (it.qty_pack) parts.push(it.qty_pack + ' ซอง');
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f0ede8">
+      <div style="font-size:13px">${esc(it.name)} — ${parts.join(', ')}</div>
+      <button onclick="shipRemoveFromCart(${idx})" style="background:none;border:none;color:var(--red);font-size:16px;cursor:pointer">✕</button>
+    </div>`;
+  }).join('');
+}
+
+async function shipSubmit() {
+  const to_branch = gid('shipToBranch').value; if (!to_branch) { alert('เลือกสาขาปลายทาง'); return; }
+  if (!shipCart.length) { alert('ยังไม่มีรายการที่จะส่ง'); return; }
+  const staff_name = gid('shipStaffName').value.trim(); if (!staff_name) { alert('กรอกชื่อพนักงาน'); return; }
+  sessionStorage.setItem('waka_staff_name', staff_name);
+  try {
+    const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'createShipment', to_branch, items: shipCart, staff_name }) });
+    const d = await r.json();
+    if (d.ok) { toast('สร้างล็อต ' + (d.shipment_id || '') + ' แล้ว'); shipCart = []; gid('shipToBranch').value = ''; shipRenderCart(); closeBrView(); }
+    else alert(d.error || 'ผิดพลาด');
+  } catch (e) { alert('สร้างล็อตไม่ได้'); }
 }
 
 // ── ขายหน้าร้าน ──
