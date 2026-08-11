@@ -1146,8 +1146,22 @@ function setBrOrdersTab(tab) {
 
 async function loadBrOrders() {
   const b=gid('branchSelect').value;if(!b){gid('brOrdersList').innerHTML='<div class="empty">เลือกสาขาก่อน</div>';return;}
-  try{const r=await fetch(G+'&action=api&do=branch_orders&branch='+encodeURIComponent(b)+'&code='+encodeURIComponent(_authCode()));const d=await r.json();
-    _brOrdersAll = d.orders || [];
+  gid('brOrdersList').innerHTML='<div class="empty">กำลังโหลด...</div>';
+  try{
+    if (userRole === 'admin') {
+      // แอดมินเห็นออเดอร์ทุกสาขารวมกัน — ไม่ล็อกแค่สาขาที่เลือกอยู่
+      const branches = Object.values(BRANCH_CODES);
+      const results = await Promise.all(branches.map(async br => {
+        const r = await fetch(G+'&action=api&do=branch_orders&branch='+encodeURIComponent(br)+'&code='+encodeURIComponent(_authCode()));
+        const d = await r.json();
+        return (d.orders || []).map(o => Object.assign({}, o, { branch: br }));
+      }));
+      _brOrdersAll = results.flat().sort((a, b2) => (b2.timestamp || '').localeCompare(a.timestamp || ''));
+    } else {
+      const r=await fetch(G+'&action=api&do=branch_orders&branch='+encodeURIComponent(b)+'&code='+encodeURIComponent(_authCode()));
+      const d=await r.json();
+      _brOrdersAll = d.orders || [];
+    }
     renderBrOrdersList();
   }catch(e){gid('brOrdersList').innerHTML='<div class="empty">โหลดไม่ได้</div>';}
 }
@@ -1175,7 +1189,7 @@ function renderBrOrdersList() {
       const itemsJson=esc(JSON.stringify(items)).replace(/'/g,'&#39;');
       return`<div class="order-card" style="cursor:pointer" onclick="const d=this.querySelector('.order-detail');d.style.display=d.style.display==='none'?'block':'none'">
         <div style="display:flex;justify-content:space-between;align-items:center">
-          <div class="oid">#${esc(o.order_id)}</div>
+          <div class="oid">#${esc(o.order_id)}${o.branch?` · 🏬 ${esc(o.branch)}`:''}</div>
           <span class="status ${sc}">${esc(ff||'รอ')}</span>
         </div>
         <div class="meta">${esc(o.real_name||o.display_name)} · ${esc(o.phone)} · ฿${Number(o.total).toLocaleString()}</div>
