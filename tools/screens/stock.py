@@ -105,32 +105,6 @@ def load_pending_branch_demand() -> dict:
     return demand
 
 
-@st.cache_data(ttl=30)
-def load_branch_reserved_stock() -> dict:
-    """Qty already shipped to each branch and sitting there earmarked for a
-    confirmed order (fulfillment='พร้อมรับ' — ready for pickup, customer
-    hasn't come get it yet). This stock is NOT free for walk-in sale even
-    though it physically already arrived — separate from
-    load_pending_branch_demand(), which only covers orders not yet shipped."""
-    rows = (
-        get_supabase().table("orders").select("branch,items_json")
-        .eq("slip_status", "ยืนยัน").eq("fulfillment", "พร้อมรับ").execute().data
-    )
-    reserved: dict = {}
-    for r in rows:
-        branch = r.get("branch") or ""
-        for i in parse_items(r.get("items_json")):
-            key = (branch, i.get("name", ""))
-            d = reserved.setdefault(key, {"qty_box": 0, "qty_pack": 0, "order_count": 0})
-            qty = i.get("qty", 1) or 1
-            if i.get("type") == "box":
-                d["qty_box"] += qty
-            else:
-                d["qty_pack"] += qty
-            d["order_count"] += 1
-    return reserved
-
-
 def parse_items(items_json) -> list:
     if isinstance(items_json, list):
         return items_json
@@ -256,15 +230,6 @@ def _create_shipment_dialog():
             })
     else:
         st.caption(f"ไม่มีออเดอร์รอส่งไปสาขา {ship_branch} ในตอนนี้ — เลือกสินค้าที่จะส่งเองได้ด้านล่าง")
-
-    reserved = {name: d for (branch, name), d in load_branch_reserved_stock().items() if branch == ship_branch}
-    if reserved:
-        st.caption("กันไว้ที่สาขานี้แล้ว (พร้อมรับ — ลูกค้ายังไม่มารับ, ขายหน้าร้านไม่ได้)")
-        reserved_df = pd.DataFrame([
-            {"สินค้า": name, "กันไว้ (กล่อง)": d["qty_box"], "กันไว้ (ซอง)": d["qty_pack"], "ออเดอร์": d["order_count"]}
-            for name, d in reserved.items()
-        ]).sort_values("สินค้า")
-        st.dataframe(reserved_df, use_container_width=True, hide_index=True)
 
     all_names = catalog["name"].tolist() if not catalog.empty else []
     extra_names = [n for n in all_names if n not in demand]
