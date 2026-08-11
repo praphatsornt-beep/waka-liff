@@ -192,7 +192,25 @@ tab_central, tab_branch, tab_history = st.tabs(
 @st.dialog("🚚 สร้างล็อตส่งสาขา", width="large")
 def _create_shipment_dialog():
     ship_branch = st.selectbox("สาขาปลายทาง", BRANCHES, key="ship_branch_sel")
-    demand = {name: d for (branch, name), d in load_pending_branch_demand().items() if branch == ship_branch}
+
+    # Snapshot demand ONCE per branch selection instead of re-deriving it from
+    # load_pending_branch_demand() (ttl=30 cache) on every rerun. The table's
+    # row order below is `sorted(demand)` — if the cache refreshes mid-edit
+    # (very plausible; typing a few "เผื่อ" values easily takes >30s) and the
+    # underlying order set changed even slightly, product names can shift
+    # row position between reruns. Streamlit's data_editor reapplies stored
+    # edits by row POSITION, not by product name, so a shifted row silently
+    # inherits someone else's edit while the row the user actually typed into
+    # reverts to its fresh default (0) — this was reported as "เผื่อ กลายเป็น 0
+    # ตอนจะบันทึก". Freezing the snapshot for the duration of one branch
+    # selection keeps row identity stable regardless of what the cache does
+    # in the background.
+    if st.session_state.get("_ship_demand_branch") != ship_branch:
+        st.session_state["_ship_demand_branch"] = ship_branch
+        st.session_state["_ship_demand_snapshot"] = {
+            name: d for (branch, name), d in load_pending_branch_demand().items() if branch == ship_branch
+        }
+    demand = st.session_state["_ship_demand_snapshot"]
 
     ship_items = []
     demand_edited = pd.DataFrame()
@@ -203,10 +221,11 @@ def _create_shipment_dialog():
             "\"รวม\" คือยอดที่จะส่งจริง คำนวณให้อัตโนมัติ"
         )
         editor_key = f"ship_demand_editor_{ship_branch}"
-        # "รวม" ไม่ใช่ widget ที่ผู้ใช้แก้เอง (แค่ค่าที่เราคำนวณ) — data_editor จะคง
-        # ค่าที่แก้ไว้ของ "ส่ง"/"เผื่อ" ให้เองข้าม rerun โดยอัตโนมัติอยู่แล้ว แต่ "รวม"
-        # ต้องอ่าน edited_rows ย้อนกลับมาคำนวณเองก่อน render ไม่งั้นจะโชว์ค่าล้าหลังไป
-        # หนึ่ง rerun (คือ "เผื่อ" ที่เพิ่งพิมพ์ยังไม่ถูกบวกเข้า "รวม" ที่เห็น)
+        # "รวม" ไม่ใช่ widget ที่ผู้ใช้แก้เอง (แค่ค่าที่เราคำนวณ) ต้องอ่าน edited_rows
+        # ย้อนกลับมาคำนวณเองก่อน render ไม่งั้นจะโชว์ค่าล้าหลังไปหนึ่ง rerun — และ
+        # อ่าน "ส่ง"/"เผื่อ" ย้อนกลับมาด้วยเช่นกัน (ไม่พึ่งกลไก auto-reapply ของ
+        # data_editor เอง) เพราะ demand ถูก snapshot ไว้คงที่แล้วด้านบน แถวจะไม่ขยับ
+        # ตำแหน่งอีกต่อไป แต่การอ่านย้อนกลับตรงๆ ชัดเจนและกันบั๊กได้เผื่อไว้
         raw_edits = st.session_state.get(editor_key, {}).get("edited_rows", {})
         edit_state = {int(k): v for k, v in raw_edits.items()}
 
@@ -215,10 +234,11 @@ def _create_shipment_dialog():
             d = demand[name]
             ord_box, ord_pack = int(d["qty_box"]), int(d["qty_pack"])
             row_edits = edit_state.get(idx, {})
+            sent = bool(row_edits.get("ส่ง", False))
             buf_box = int(pd.to_numeric(row_edits.get("เผื่อ (กล่อง)", 0), errors="coerce") or 0)
             buf_pack = int(pd.to_numeric(row_edits.get("เผื่อ (ซอง)", 0), errors="coerce") or 0)
             rows.append({
-                "ส่ง": False, "สินค้า": name,
+                "ส่ง": sent, "สินค้า": name,
                 "ออเดอร์ (กล่อง)": ord_box, "ออเดอร์ (ซอง)": ord_pack,
                 "เผื่อ (กล่อง)": buf_box, "เผื่อ (ซอง)": buf_pack,
                 "รวม (กล่อง)": ord_box + buf_box, "รวม (ซอง)": ord_pack + buf_pack,
@@ -299,6 +319,12 @@ with tab_central:
 
     with ac3:
         if st.button("🚚 สร้างล็อตส่งสาขา", use_container_width=True):
+            # Force a fresh demand snapshot every time the dialog is opened —
+            # otherwise reopening it for the same branch (e.g. right after
+            # creating one lot) would keep showing the old pre-shipment
+            # snapshot instead of picking up what's actually still pending.
+            st.session_state.pop("_ship_demand_branch", None)
+            st.session_state.pop("_ship_demand_snapshot", None)
             _create_shipment_dialog()
 
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
