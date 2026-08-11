@@ -377,10 +377,25 @@ with tab_branch:
     if stock_branch.empty:
         st.caption("ยังไม่มีข้อมูลสต็อกสาขา")
     else:
-        sb_cats = ["ทุกหมวดหมู่"] + sorted([c for c in stock_branch["category"].dropna().unique().tolist() if c]) \
-            if "category" in stock_branch.columns else ["ทุกหมวดหมู่"]
-        sb_cat_sel = st.selectbox("กรองหมวดหมู่", sb_cats, key="branch_cat_filter")
-        sb_show = stock_branch if sb_cat_sel == "ทุกหมวดหมู่" else stock_branch[stock_branch["category"] == sb_cat_sel]
+        # stock_branch.category is written from the shipment's items_json at
+        # receive-time, and createShipment never actually populates it — it's
+        # blank on effectively every row. catalog.category is the field
+        # that's actually kept up to date (edited via "✏️ แก้ไขสินค้า" /
+        # "หมวดหมู่สินค้า"), so map through the product name instead of
+        # trusting stock_branch's own column.
+        name_to_cat = dict(zip(catalog["name"], catalog["category"])) if not catalog.empty else {}
+
+        sbf1, sbf2 = st.columns(2)
+        with sbf1:
+            sb_branches = ["ทุกสาขา"] + BRANCHES
+            sb_branch_sel = st.selectbox("เลือกสาขา", sb_branches, key="branch_stock_branch_filter")
+        with sbf2:
+            sb_cats = ["ทุกหมวดหมู่"] + sorted(set(c for c in name_to_cat.values() if c))
+            sb_cat_sel = st.selectbox("กรองหมวดหมู่", sb_cats, key="branch_cat_filter")
+
+        sb_show = stock_branch
+        if sb_cat_sel != "ทุกหมวดหมู่":
+            sb_show = sb_show[sb_show["name"].map(name_to_cat) == sb_cat_sel]
 
         def _fmt_cell(box, pack):
             box = int(pd.to_numeric(box, errors="coerce") or 0)
@@ -391,13 +406,18 @@ with tab_branch:
         for _, r in sb_show.iterrows():
             pivot.setdefault(r.get("name", ""), {})[r.get("branch", "")] = _fmt_cell(r.get("qty_box"), r.get("qty_pack"))
 
+        show_branches = BRANCHES if sb_branch_sel == "ทุกสาขา" else [sb_branch_sel]
         pivot_df = pd.DataFrame([
-            {"สินค้า": name, **{b: cells.get(b, "—") for b in BRANCHES}}
+            {"สินค้า": name, **{b: cells.get(b, "—") for b in show_branches}}
             for name, cells in sorted(pivot.items())
+            if sb_branch_sel == "ทุกสาขา" or cells.get(sb_branch_sel, "—") != "—"
         ]).set_index("สินค้า")
 
         st.caption("กล่อง / ซอง ต่อสาขา")
-        st.table(pivot_df)
+        if pivot_df.empty:
+            st.caption("ไม่มีสินค้าตรงตัวกรองนี้")
+        else:
+            st.table(pivot_df)
 
     with st.expander("➖ เบิก / ปรับสต็อกสาขา"):
         names_b = sorted(stock_branch["name"].unique().tolist()) if not stock_branch.empty else []
