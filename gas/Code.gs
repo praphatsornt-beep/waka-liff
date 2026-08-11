@@ -430,6 +430,10 @@ function doPost(e) {
       return handleUpdateProduct(data);
     }
 
+    if (data._action === "deleteCategory") {
+      return handleDeleteCategory(data);
+    }
+
     if (data._action === "withdrawStock") {
       return handleWithdrawStock(data);
     }
@@ -3218,6 +3222,29 @@ function handleUpdateProduct(data) {
       _logStaffAction_(staffName, null, "update_product", row.name, changeLog.join("; "));
     }
 
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+  } catch (err) {
+    try { lock.releaseLock(); } catch(_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+// ── ลบหมวดหมู่สินค้า ──────────────────────────────────────────────────────
+// หมวดหมู่ไม่ใช่ entity แยก แค่ text field บนสินค้าแต่ละชิ้น (catalog.category) —
+// "ลบ" ที่นี่หมายถึงล้าง category ออกจากทุกสินค้าที่ติดแท็กนี้ ไม่ได้ลบสินค้า
+// data: { category, staff_name }
+function handleDeleteCategory(data) {
+  var category = String(data.category || "").trim();
+  if (!category) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing category" })));
+  var staffName = String(data.staff_name || "").trim();
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var res = patchSupabase_("catalog", "category=eq." + encodeURIComponent(category), { category: "" });
+    if (!res.ok) throw new Error("Supabase catalog category clear failed: " + res.text);
+    CacheService.getScriptCache().remove("catalog_config");
+    lock.releaseLock();
+    _logStaffAction_(staffName, null, "delete_category", category, null);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
