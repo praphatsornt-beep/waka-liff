@@ -193,21 +193,22 @@ tab_central, tab_branch, tab_history, tab_new_product, tab_categories = st.tabs(
 with tab_central:
     ac1, ac3 = st.columns(2)
     with ac1:
-        with st.popover("➕ เพิ่มสต็อกคลังกลาง", use_container_width=True):
+        with st.popover("➕ เพิ่ม/ลด สต็อกคลังกลาง", use_container_width=True):
             names = catalog["name"].tolist() if not catalog.empty else []
             with st.form("add_stock_form"):
                 sel_name = st.selectbox("สินค้า", names)
+                st.caption("ใส่ค่าติดลบเพื่อลดสต็อก เช่น กดเพิ่มสต็อกผิดจำนวน")
                 c1, c2 = st.columns(2)
-                add_box = c1.number_input("เพิ่มกล่อง", min_value=0, value=0, step=1)
-                add_pack = c2.number_input("เพิ่มซอง", min_value=0, value=0, step=1)
+                add_box = c1.number_input("กล่อง (+/-)", value=0, step=1)
+                add_pack = c2.number_input("ซอง (+/-)", value=0, step=1)
                 submitted = st.form_submit_button("บันทึก")
                 if submitted:
-                    if add_box <= 0 and add_pack <= 0:
-                        st.warning("ใส่จำนวนที่จะเพิ่มก่อน")
+                    if add_box == 0 and add_pack == 0:
+                        st.warning("ใส่จำนวนที่จะปรับก่อน")
                     else:
                         try:
                             gas_post({"_action": "addStock", "name": sel_name, "add_box": add_box, "add_pack": add_pack})
-                            st.success("เพิ่มสต็อกแล้ว")
+                            st.success("ปรับสต็อกแล้ว")
                             st.cache_data.clear()
                             st.rerun()
                         except Exception as e:
