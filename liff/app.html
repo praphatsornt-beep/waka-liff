@@ -543,9 +543,6 @@
     <div class="nav-item active" onclick="window.location.href='app.html'" id="nav_home">
       <span class="nav-icon">📋</span><span>ออเดอร์</span>
     </div>
-    <div class="nav-item" onclick="window.location.href='warehouse.html'" id="nav_warehouse">
-      <span class="nav-icon">🏭</span><span>คลัง</span>
-    </div>
     <div class="nav-item" onclick="switchTab('branch')" id="nav_branch">
       <span class="nav-icon">🏬</span><span>สาขา</span>
     </div>
@@ -611,7 +608,7 @@ function renderStaffBadge() {
 
 function applyRole(role) {
   userRole = role;
-  const adminOnly = ['nav_home','nav_warehouse'];
+  const adminOnly = ['nav_home'];
   adminOnly.forEach(id => gid(id).style.display = role === 'admin' ? 'flex' : 'none');
   // สาขา/GYM ซ้ำซ้อนสำหรับพนักงานสาขา — login ด้วยรหัสสาขาแล้ว auto-land ที่
   // หน้าสาขาอยู่แล้ว และ GYM ก็เป็นการ์ดหนึ่งในหน้าสาขานั้น เหลือแค่ "เมนู" พอ
