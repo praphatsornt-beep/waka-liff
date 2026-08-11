@@ -43,7 +43,7 @@
 
 ## ตอนจับคู่แข่ง
 
-1. เปิด **Streamlit** → `https://waka-tournament-e6wsqmhuhhexratyiub65f.streamlit.app/tournament`
+1. เปิด **Streamlit** → `https://waka-space.streamlit.app/tournament`
 2. Tab "วันนี้" → กด **"📋 คัดลอกรายชื่อแข่ง"**
 3. ได้รายชื่อ (ชื่อแข่ง) → วางในเว็บ Pokemon จับคู่แข่งได้เลย
 
@@ -87,7 +87,7 @@
 |------|-----|--------|
 | ลงทะเบียนแข่ง | `https://waka-liff.vercel.app/tournament.html` | ลูกค้า (เปิดใน LINE) |
 | สแกนแจกการ์ด | `https://waka-liff.vercel.app/tournament-staff.html` | สตาฟ (เปิดใน Chrome) |
-| Admin Dashboard | `https://waka-tournament-e6wsqmhuhhexratyiub65f.streamlit.app/tournament` | Admin |
+| Admin Dashboard | `https://waka-space.streamlit.app/tournament` | Admin |
 
 ## PIN
 

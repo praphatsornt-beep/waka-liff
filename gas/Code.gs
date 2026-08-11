@@ -669,7 +669,7 @@ function doPost(e) {
     // LINE push หลัง release lock — ไม่ block order ถัดไป
     try {
       var financeId = _getConfigValue(null, "finance_line_id");
-      var streamlitUrl = "https://waka-tournament-e6wsqmhuhhexratyiub65f.streamlit.app/orders";
+      var streamlitUrl = "https://waka-space.streamlit.app/orders";
       if (financeId) {
         var itemsSummary = (data.items || []).map(function(i) {
           var u = i.type === "box" ? "กล่อง" : "ซอง";
