@@ -546,9 +546,6 @@
     <div class="nav-item" onclick="switchTab('branch')" id="nav_branch">
       <span class="nav-icon">🏬</span><span>สาขา</span>
     </div>
-    <div class="nav-item" onclick="switchTab('branch');openBrView('gym')" id="nav_gym">
-      <span class="nav-icon">🏆</span><span>GYM</span>
-    </div>
     <div class="nav-item" onclick="window.location.href='menu.html'" id="nav_menu">
       <span class="nav-icon">☰</span><span>เมนู</span>
     </div>
@@ -610,9 +607,9 @@ function applyRole(role) {
   userRole = role;
   const adminOnly = ['nav_home'];
   adminOnly.forEach(id => gid(id).style.display = role === 'admin' ? 'flex' : 'none');
-  // สาขา/GYM ซ้ำซ้อนสำหรับพนักงานสาขา — login ด้วยรหัสสาขาแล้ว auto-land ที่
-  // หน้าสาขาอยู่แล้ว และ GYM ก็เป็นการ์ดหนึ่งในหน้าสาขานั้น เหลือแค่ "เมนู" พอ
-  const staffHidden = ['nav_branch','nav_gym'];
+  // สาขา ซ้ำซ้อนสำหรับพนักงานสาขา — login ด้วยรหัสสาขาแล้ว auto-land ที่
+  // หน้าสาขาอยู่แล้ว เหลือแค่ "เมนู" พอ
+  const staffHidden = ['nav_branch'];
   staffHidden.forEach(id => gid(id).style.display = role === 'staff' ? 'none' : 'flex');
   if (role === 'admin') {
     gid('branchLogin').style.display='none';
