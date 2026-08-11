@@ -467,15 +467,23 @@
           <div class="card">
             <h3>🚚 สร้างล็อตส่งสาขา</h3>
             <div class="form-group"><label>สาขาปลายทาง</label>
-              <select id="shipToBranch" class="branch-sel" style="margin:0">
+              <select id="shipToBranch" class="branch-sel" style="margin:0" onchange="shipOnBranchChange()">
                 <option value="">-- เลือกสาขา --</option>
                 <option value="ต้นสักคอร์เนอร์">ต้นสักคอร์เนอร์</option>
                 <option value="เมืองทองธานี">เมืองทองธานี</option>
                 <option value="ศรีนครินทร์">ศรีนครินทร์</option>
               </select>
             </div>
+          </div>
+
+          <div class="card" id="shipDemandCard" style="display:none">
+            <h3>ออเดอร์รอส่งไปสาขานี้</h3>
+            <div id="shipDemandList"></div>
+          </div>
+
+          <div class="card">
             <div class="form-group"><label>สินค้า</label>
-              <select id="shipProduct" class="branch-sel" style="margin:0"><option value="">-- เลือก --</option></select>
+              <select id="shipProduct" class="branch-sel" style="margin:0" onchange="shipOnProductChange()"><option value="">-- เลือก --</option></select>
             </div>
             <div class="form-row">
               <div class="form-group"><label>กล่อง</label><input type="number" id="shipQtyBox" min="0" value="0" inputmode="numeric"></div>
@@ -1369,6 +1377,7 @@ async function loadWithdrawals() {
 
 // ── สร้างล็อตส่งสาขา (โหมดทุกสาขา) ──
 let shipCart = [];
+let shipDemand = {}; // { branch: [{name, qty_box, qty_pack, order_count}, ...] } — ยอดออเดอร์รอส่ง จาก action=api&do=branch_summary
 
 async function openCreateShipment() {
   if (!products.length) await loadProducts();
@@ -1376,6 +1385,32 @@ async function openCreateShipment() {
   sel.innerHTML = '<option value="">-- เลือก --</option>' + products.map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
   shipCart = [];
   shipRenderCart();
+  gid('shipToBranch').value = '';
+  gid('shipDemandCard').style.display = 'none';
+  try {
+    const r = await fetch(G + '&action=api&do=branch_summary');
+    const d = await r.json();
+    shipDemand = d.branches || {};
+  } catch (_) { shipDemand = {}; }
+}
+
+function shipOnBranchChange() {
+  const branch = gid('shipToBranch').value;
+  const card = gid('shipDemandCard');
+  const rows = (shipDemand[branch] || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+  if (!branch || !rows.length) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  let h = '<table><tr><th>สินค้า</th><th class="num">กล่อง</th><th class="num">ซอง</th><th class="num">ออเดอร์</th></tr>';
+  for (const r of rows) h += `<tr><td>${esc(r.name)}</td><td class="num">${r.qty_box || 0}</td><td class="num">${r.qty_pack || 0}</td><td class="num">${r.order_count || 0}</td></tr>`;
+  gid('shipDemandList').innerHTML = h + '</table>';
+}
+
+function shipOnProductChange() {
+  const branch = gid('shipToBranch').value;
+  const name = gid('shipProduct').value;
+  const d = (shipDemand[branch] || []).find(r => r.name === name);
+  gid('shipQtyBox').value = d ? (d.qty_box || 0) : 0;
+  gid('shipQtyPack').value = d ? (d.qty_pack || 0) : 0;
 }
 
 function shipAddToCart() {
