@@ -673,3 +673,26 @@ with tab_categories:
                             st.rerun()
                         except Exception as e:
                             st.error(f"บันทึกไม่ได้: {e}")
+
+    with st.expander("🗑 ลบหมวดหมู่"):
+        if not all_cats:
+            st.caption("ยังไม่มีหมวดหมู่ให้ลบ")
+        else:
+            del_cat_sel = st.selectbox("เลือกหมวดหมู่ที่จะลบ", all_cats, key="del_cat_sel")
+            del_count = int(counts.get(del_cat_sel, 0))
+            if del_count:
+                st.caption(f"สินค้า {del_count} รายการในหมวดนี้จะกลายเป็นไม่มีหมวดหมู่ (ไม่ลบสินค้า)")
+            if st.button("ลบหมวดหมู่นี้", key="del_cat_btn"):
+                try:
+                    if del_count:
+                        get_supabase().table("catalog").update(
+                            {"category": ""}
+                        ).eq("category", del_cat_sel).execute()
+                    get_supabase().table("config").delete().eq(
+                        "key", f"{CAT_DESC_PREFIX}{del_cat_sel}"
+                    ).execute()
+                    st.success(f'ลบหมวดหมู่ "{del_cat_sel}" แล้ว')
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"ลบไม่ได้: {e}")
