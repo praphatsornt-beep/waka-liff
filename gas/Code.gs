@@ -434,6 +434,10 @@ function doPost(e) {
       return handleDeleteCategory(data);
     }
 
+    if (data._action === "renameCategory") {
+      return handleRenameCategory(data);
+    }
+
     if (data._action === "withdrawStock") {
       return handleWithdrawStock(data);
     }
@@ -3245,6 +3249,29 @@ function handleDeleteCategory(data) {
     CacheService.getScriptCache().remove("catalog_config");
     lock.releaseLock();
     _logStaffAction_(staffName, null, "delete_category", category, null);
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+  } catch (err) {
+    try { lock.releaseLock(); } catch(_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+// ── เปลี่ยนชื่อหมวดหมู่สินค้า ── ย้ายสินค้าทุกชิ้นจากหมวดเดิมไปหมวดใหม่ในคำสั่งเดียว
+// (เหมือน handleDeleteCategory แต่ตั้งค่าเป็นชื่อใหม่แทนที่จะล้างเป็นค่าว่าง)
+// data: { old_category, new_category, staff_name }
+function handleRenameCategory(data) {
+  var oldCat = String(data.old_category || "").trim();
+  var newCat = String(data.new_category || "").trim();
+  if (!oldCat || !newCat) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing category" })));
+  var staffName = String(data.staff_name || "").trim();
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var res = patchSupabase_("catalog", "category=eq." + encodeURIComponent(oldCat), { category: newCat });
+    if (!res.ok) throw new Error("Supabase catalog category rename failed: " + res.text);
+    CacheService.getScriptCache().remove("catalog_config");
+    lock.releaseLock();
+    _logStaffAction_(staffName, null, "rename_category", oldCat, "→ " + newCat);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
