@@ -484,7 +484,7 @@ orders_pg = st.Page("screens/orders.py", title="ออเดอร์", icon="�
 tournament_pg = st.Page("screens/tournament.py", title="ทัวร์นาเมนต์", icon="🏆", url_path="tournament")
 wakagym_pg = st.Page("screens/wakagym.py", title="WAKA GYM", icon="🏋️", url_path="wakagym")
 stock_pg = st.Page("screens/stock.py", title="คลังสินค้าและสาขา", icon="📦", url_path="stock")
-products_pg = st.Page("screens/products.py", title="จัดการสินค้าและหมวดหมู่", icon="🗂️", url_path="products")
+products_pg = st.Page("screens/products.py", title="สินค้าและหมวดหมู่", icon="🗂️", url_path="products")
 walkin_pg = st.Page("screens/walkin.py", title="หน้าร้าน", icon="🛒", url_path="walkin")
 report_pg = st.Page("screens/report.py", title="รายงาน", icon="📊", url_path="report")
 audit_log_pg = st.Page("screens/audit_log.py", title="ประวัติการทำงาน", icon="🕓", url_path="audit-log")
