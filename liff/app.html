@@ -1164,7 +1164,7 @@ function closeBrView() {
 async function loadIncoming() {
   const branch=gid('branchSelect').value;if(!branch)return;
   try{const r=await fetch(G+'&action=api&do=shipments');const d=await r.json();
-    const pending=(d.shipments||[]).filter(s=>(branch==='ทั้งหมด'||s.to_branch===branch)&&s.status!=='รับแล้ว');
+    const pending=(d.shipments||[]).filter(s=>(branch==='ทั้งหมด'||s.to_branch===branch)&&s.status!=='รับแล้ว'&&s.status!=='ยกเลิก');
     const el=gid('incomingList');
     if(!pending.length){el.innerHTML='<div class="empty">ไม่มีล็อตที่รอรับ ✅</div>';return;}
     el.innerHTML=pending.map(s=>{
