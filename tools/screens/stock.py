@@ -397,12 +397,27 @@ with tab_branch:
     if stock_branch.empty:
         st.caption("ยังไม่มีข้อมูลสต็อกสาขา")
     else:
-        branch_sel = st.selectbox("เลือกสาขา", ["ทุกสาขา"] + BRANCHES, key="stock_branch_sel")
-        show_b = stock_branch if branch_sel == "ทุกสาขา" else stock_branch[stock_branch["branch"] == branch_sel]
-        show_b = show_b[["name", "branch", "qty_box", "qty_pack"]].sort_values(["branch", "name"]).rename(
-            columns={"name": "สินค้า", "branch": "สาขา", "qty_box": "กล่อง", "qty_pack": "ซอง"}
-        )
-        st.dataframe(show_b, use_container_width=True, hide_index=True)
+        sb_cats = ["ทุกหมวดหมู่"] + sorted([c for c in stock_branch["category"].dropna().unique().tolist() if c]) \
+            if "category" in stock_branch.columns else ["ทุกหมวดหมู่"]
+        sb_cat_sel = st.selectbox("กรองหมวดหมู่", sb_cats, key="branch_cat_filter")
+        sb_show = stock_branch if sb_cat_sel == "ทุกหมวดหมู่" else stock_branch[stock_branch["category"] == sb_cat_sel]
+
+        def _fmt_cell(box, pack):
+            box = int(pd.to_numeric(box, errors="coerce") or 0)
+            pack = int(pd.to_numeric(pack, errors="coerce") or 0)
+            return "—" if box == 0 and pack == 0 else f"{box} / {pack}"
+
+        pivot = {}
+        for _, r in sb_show.iterrows():
+            pivot.setdefault(r.get("name", ""), {})[r.get("branch", "")] = _fmt_cell(r.get("qty_box"), r.get("qty_pack"))
+
+        pivot_df = pd.DataFrame([
+            {"สินค้า": name, **{b: cells.get(b, "—") for b in BRANCHES}}
+            for name, cells in sorted(pivot.items())
+        ]).set_index("สินค้า")
+
+        st.caption("กล่อง / ซอง ต่อสาขา")
+        st.table(pivot_df)
 
     with st.expander("➖ เบิก / ปรับสต็อกสาขา"):
         names_b = sorted(stock_branch["name"].unique().tolist()) if not stock_branch.empty else []
