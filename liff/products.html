@@ -75,8 +75,13 @@
     .cat-name-input:focus { outline: none; border-color: var(--accent); background: #fff; }
     .cat-name-input:disabled { opacity: .45; text-decoration: line-through; background: transparent; border-color: transparent; }
     .cat-count-cell { font-size: 13px; color: var(--text-secondary); white-space: nowrap; text-align: center; }
-    .cat-del-btn { background: none; border: none; font-size: 16px; cursor: pointer; padding: 4px; line-height: 1; }
+    .cat-del-btn {
+      background: #fee2e2; color: var(--red); border: none; border-radius: 8px;
+      font-size: 15px; cursor: pointer; padding: 7px 10px; line-height: 1;
+    }
+    .cat-del-btn.marked { background: var(--card-bg); color: var(--text-secondary); border: 1.5px solid var(--card-border); }
     tr.row-deleted { opacity: .55; }
+    .cat-hint { font-size: 12px; color: var(--text-secondary); margin: 0 16px 10px; }
     .cat-empty { text-align: center; color: var(--text-secondary); font-size: 13px; padding: 20px 16px; }
 
     /* ── Search ── */
@@ -444,6 +449,7 @@
     <div class="drawer-handle"></div>
     <div class="drawer-title">จัดการหมวดหมู่สินค้า</div>
   </div>
+  <div class="cat-hint">แตะชื่อในช่องเพื่อแก้ไข • กด 🗑 เพื่อทำเครื่องหมายลบ แล้วกด "บันทึก" ด้านล่าง</div>
   <div class="cat-table-wrap">
     <table class="cat-table">
       <thead><tr><th>ชื่อหมวดหมู่</th><th style="text-align:center">จำนวน</th><th></th></tr></thead>
@@ -569,9 +575,10 @@ function renderCatManager() {
     body.innerHTML = '<tr><td colspan="3" class="cat-empty">ยังไม่มีหมวดหมู่</td></tr>';
     return;
   }
+  const attrEsc = s => esc(s).replace(/"/g, '&quot;');
   body.innerHTML = cats.map(c => `
-    <tr data-original="${esc(c)}">
-      <td><input type="text" class="cat-name-input" value="${esc(c)}"></td>
+    <tr data-original="${attrEsc(c)}">
+      <td><input type="text" class="cat-name-input" value="${attrEsc(c)}"></td>
       <td class="cat-count-cell">${counts[c]}</td>
       <td><button type="button" class="cat-del-btn" onclick="toggleDeleteCatRow(this)" title="ลบหมวดหมู่นี้">🗑</button></td>
     </tr>
@@ -589,11 +596,13 @@ function toggleDeleteCatRow(btn) {
     input.disabled = false;
     input.value = tr.dataset.original;
     btn.textContent = '🗑';
+    btn.classList.remove('marked');
   } else {
     tr.dataset.deleted = '1';
     tr.classList.add('row-deleted');
     input.disabled = true;
-    btn.textContent = '↩';
+    btn.textContent = '↩ ยกเลิก';
+    btn.classList.add('marked');
   }
 }
 
