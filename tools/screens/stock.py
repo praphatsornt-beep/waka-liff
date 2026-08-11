@@ -198,37 +198,52 @@ def _create_shipment_dialog():
     demand_edited = pd.DataFrame()
     if demand:
         st.caption(
-            "ออเดอร์รอส่งไปสาขานี้ — ติ๊ก \"ส่ง\" เฉพาะรายการที่จะส่งรอบนี้ แล้วแก้ \"จะส่ง\" ได้ตามจริง "
-            "(ค่าเริ่มต้น = ยอดที่รอส่ง, แก้ให้มากกว่ายอดรอส่งเพื่อเผื่อขายหน้าร้าน)"
+            "ออเดอร์รอส่งไปสาขานี้ — ติ๊ก \"ส่ง\" เฉพาะรายการที่จะส่งรอบนี้ "
+            "\"ออเดอร์\" คือยอดที่ลูกค้าสั่งไว้แล้ว (แก้ไม่ได้) ใส่ \"เผื่อ\" เพื่อเพิ่มสำหรับขายหน้าร้าน "
+            "\"รวม\" คือยอดที่จะส่งจริง คำนวณให้อัตโนมัติ"
         )
-        demand_df = pd.DataFrame([
-            {
+        editor_key = f"ship_demand_editor_{ship_branch}"
+        # "รวม" ไม่ใช่ widget ที่ผู้ใช้แก้เอง (แค่ค่าที่เราคำนวณ) — data_editor จะคง
+        # ค่าที่แก้ไว้ของ "ส่ง"/"เผื่อ" ให้เองข้าม rerun โดยอัตโนมัติอยู่แล้ว แต่ "รวม"
+        # ต้องอ่าน edited_rows ย้อนกลับมาคำนวณเองก่อน render ไม่งั้นจะโชว์ค่าล้าหลังไป
+        # หนึ่ง rerun (คือ "เผื่อ" ที่เพิ่งพิมพ์ยังไม่ถูกบวกเข้า "รวม" ที่เห็น)
+        raw_edits = st.session_state.get(editor_key, {}).get("edited_rows", {})
+        edit_state = {int(k): v for k, v in raw_edits.items()}
+
+        rows = []
+        for idx, name in enumerate(sorted(demand)):
+            d = demand[name]
+            ord_box, ord_pack = int(d["qty_box"]), int(d["qty_pack"])
+            row_edits = edit_state.get(idx, {})
+            buf_box = int(pd.to_numeric(row_edits.get("เผื่อ (กล่อง)", 0), errors="coerce") or 0)
+            buf_pack = int(pd.to_numeric(row_edits.get("เผื่อ (ซอง)", 0), errors="coerce") or 0)
+            rows.append({
                 "ส่ง": False, "สินค้า": name,
-                "รอส่ง (กล่อง)": int(d["qty_box"]), "รอส่ง (ซอง)": int(d["qty_pack"]),
-                "จะส่ง (กล่อง)": int(d["qty_box"]), "จะส่ง (ซอง)": int(d["qty_pack"]),
-                "ออเดอร์": d["order_count"],
-            }
-            for name, d in demand.items()
-        ]).sort_values("สินค้า").reset_index(drop=True)
+                "ออเดอร์ (กล่อง)": ord_box, "ออเดอร์ (ซอง)": ord_pack,
+                "เผื่อ (กล่อง)": buf_box, "เผื่อ (ซอง)": buf_pack,
+                "รวม (กล่อง)": ord_box + buf_box, "รวม (ซอง)": ord_pack + buf_pack,
+                "จำนวนออเดอร์": d["order_count"],
+            })
+        demand_df = pd.DataFrame(rows)
         demand_edited = st.data_editor(
             demand_df,
             use_container_width=True,
             hide_index=True,
-            disabled=["สินค้า", "รอส่ง (กล่อง)", "รอส่ง (ซอง)", "ออเดอร์"],
+            disabled=["สินค้า", "ออเดอร์ (กล่อง)", "ออเดอร์ (ซอง)", "รวม (กล่อง)", "รวม (ซอง)", "จำนวนออเดอร์"],
             column_config={
                 "ส่ง": st.column_config.CheckboxColumn("ส่ง", width="small"),
-                "จะส่ง (กล่อง)": st.column_config.NumberColumn(min_value=0, step=1),
-                "จะส่ง (ซอง)": st.column_config.NumberColumn(min_value=0, step=1),
+                "เผื่อ (กล่อง)": st.column_config.NumberColumn(min_value=0, step=1),
+                "เผื่อ (ซอง)": st.column_config.NumberColumn(min_value=0, step=1),
             },
-            key=f"ship_demand_editor_{ship_branch}",
+            key=editor_key,
         )
         for _, row in demand_edited.iterrows():
             if not row["ส่ง"]:
                 continue
             ship_items.append({
                 "name": row["สินค้า"],
-                "qty_box": int(pd.to_numeric(row["จะส่ง (กล่อง)"], errors="coerce") or 0),
-                "qty_pack": int(pd.to_numeric(row["จะส่ง (ซอง)"], errors="coerce") or 0),
+                "qty_box": int(pd.to_numeric(row["รวม (กล่อง)"], errors="coerce") or 0),
+                "qty_pack": int(pd.to_numeric(row["รวม (ซอง)"], errors="coerce") or 0),
                 "qty_box_extra": 0, "qty_pack_extra": 0,
             })
     else:
