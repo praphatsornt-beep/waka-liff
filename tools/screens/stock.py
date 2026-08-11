@@ -249,7 +249,9 @@ def _create_shipment_dialog():
         )
         for _, row in demand_edited.iterrows():
             ship_items.append({
-                "name": row["สินค้า"], "qty_box": int(row["จะส่ง (กล่อง)"]), "qty_pack": int(row["จะส่ง (ซอง)"]),
+                "name": row["สินค้า"],
+                "qty_box": int(pd.to_numeric(row["จะส่ง (กล่อง)"], errors="coerce") or 0),
+                "qty_pack": int(pd.to_numeric(row["จะส่ง (ซอง)"], errors="coerce") or 0),
                 "qty_box_extra": 0, "qty_pack_extra": 0,
             })
     else:
