@@ -46,8 +46,7 @@
       display: flex; align-items: center; justify-content: space-between;
     }
     .top-bar h1 { font-size: 16px; font-weight: 700; color: #fff; }
-    .top-bar-actions { display: flex; gap: 8px; }
-    .btn-add, .btn-cat {
+    .btn-add {
       background: rgba(255,255,255,.15);
       color: #fff;
       border: 1.5px solid rgba(255,255,255,.3);
@@ -57,21 +56,7 @@
       cursor: pointer; font-family: inherit;
       transition: background .2s;
     }
-    .btn-add:active, .btn-cat:active { background: rgba(255,255,255,.25); }
-
-    /* ── Category manager ── */
-    .cat-row {
-      display: flex; align-items: center; justify-content: space-between;
-      background: var(--card-bg); border-radius: var(--field-radius);
-      padding: 12px 14px; margin: 0 16px 8px;
-    }
-    .cat-row-name { font-size: 14px; font-weight: 600; }
-    .cat-row-count { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
-    .cat-row-del {
-      background: #fee2e2; color: var(--red); border: none; border-radius: 8px;
-      padding: 8px 12px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
-    }
-    .cat-empty { text-align: center; color: var(--text-secondary); font-size: 13px; padding: 20px 16px; }
+    .btn-add:active { background: rgba(255,255,255,.25); }
 
     /* ── Search ── */
     .search-row { position: relative; margin-bottom: 10px; }
@@ -262,10 +247,7 @@
 <div class="page" id="app" style="display:none">
   <div class="top-bar">
     <h1>🎴 จัดการสินค้า</h1>
-    <div class="top-bar-actions">
-      <button class="btn-cat" onclick="openCatManager()">🏷 หมวดหมู่</button>
-      <button class="btn-add" onclick="openAdd()">+ เพิ่มสินค้า</button>
-    </div>
+    <button class="btn-add" onclick="openAdd()">+ เพิ่มสินค้า</button>
   </div>
 
   <div class="search-row">
@@ -432,15 +414,6 @@
   <div class="drawer-msg" id="drawerMsg"></div>
 </div>
 
-<div class="drawer-overlay" id="catDrawerOverlay" onclick="closeCatManager()"></div>
-<div class="drawer" id="catDrawer">
-  <div class="drawer-handle-wrap">
-    <div class="drawer-handle"></div>
-    <div class="drawer-title">จัดการหมวดหมู่สินค้า</div>
-  </div>
-  <div id="catManagerList"></div>
-</div>
-
 <nav class="bottom-nav">
   <a class="nav-item" href="app.html"><span class="nav-icon">📋</span><span>ออเดอร์</span></a>
   <a class="nav-item" href="app.html#warehouse"><span class="nav-icon">🏭</span><span>คลัง</span></a>
@@ -532,60 +505,6 @@ async function loadProducts() {
 function buildCatSuggestions() {
   const cats = [...new Set(_products.map(p => p.category).filter(Boolean))];
   document.getElementById('catSuggestions').innerHTML = cats.map(c => `<option value="${esc(c)}">`).join('');
-}
-
-// ── จัดการหมวดหมู่ ── category ไม่ใช่ entity แยก แค่ text field บนสินค้า —
-// "ลบ" คือล้าง category ออกจากทุกสินค้าที่ติดแท็กนี้ ไม่ได้ลบสินค้า
-function openCatManager() {
-  renderCatManager();
-  document.getElementById('catDrawerOverlay').classList.add('open');
-  document.getElementById('catDrawer').classList.add('open');
-}
-function closeCatManager() {
-  document.getElementById('catDrawerOverlay').classList.remove('open');
-  document.getElementById('catDrawer').classList.remove('open');
-}
-
-function renderCatManager() {
-  const counts = {};
-  _products.forEach(p => { if (p.category) counts[p.category] = (counts[p.category] || 0) + 1; });
-  const cats = Object.keys(counts).sort((a, b) => a.localeCompare(b, 'th'));
-  const el = document.getElementById('catManagerList');
-  if (cats.length === 0) {
-    el.innerHTML = '<div class="cat-empty">ยังไม่มีหมวดหมู่</div>';
-    return;
-  }
-  el.innerHTML = cats.map(c => `
-    <div class="cat-row">
-      <div>
-        <div class="cat-row-name">${esc(c)}</div>
-        <div class="cat-row-count">${counts[c]} รายการ</div>
-      </div>
-      <button class="cat-row-del" onclick="deleteCategory('${c.replace(/'/g, "\\'")}')">🗑 ลบ</button>
-    </div>
-  `).join('');
-}
-
-async function deleteCategory(category) {
-  const count = _products.filter(p => p.category === category).length;
-  if (!confirm('ลบหมวดหมู่ "' + category + '"?\n\nสินค้า ' + count + ' รายการในหมวดนี้จะกลายเป็นไม่มีหมวดหมู่ (ไม่ลบสินค้า)')) return;
-  const staff_name = ensureStaffName();
-  if (!staff_name) return;
-  try {
-    const r = await fetch(G, {
-      method: 'POST',
-      body: JSON.stringify({ _action: 'deleteCategory', category, staff_name: staff_name.trim() })
-    });
-    const d = await r.json();
-    if (d.ok) {
-      await loadProducts();
-      renderCatManager();
-    } else {
-      alert(d.error || 'ลบไม่สำเร็จ');
-    }
-  } catch (e) {
-    alert('ลบไม่สำเร็จ');
-  }
 }
 
 function setFilter(f, btn) {

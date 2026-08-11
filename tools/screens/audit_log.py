@@ -32,7 +32,6 @@ ACTION_LABELS = {
     "add_stock": "เพิ่มสต็อกสินค้าเดิม",
     "add_product": "เพิ่มสินค้าใหม่",
     "update_product": "แก้ไขสินค้า",
-    "delete_category": "ลบหมวดหมู่สินค้า",
     "walkin_sale": "ขายหน้าร้าน",
 }
 
