@@ -329,7 +329,9 @@ with tab_central:
                 st.error(f"บันทึกไม่ได้: {e}")
 
     with st.expander("✏️ แก้ไขสินค้า"):
-        edit_names = sorted(catalog["name"].tolist()) if not catalog.empty else []
+        edit_cat_sel = st.selectbox("กรองหมวดหมู่", ["ทุกหมวดหมู่"] + ALL_CATEGORIES, key="edit_product_cat_filter")
+        edit_catalog = catalog if edit_cat_sel == "ทุกหมวดหมู่" else catalog[catalog["category"] == edit_cat_sel]
+        edit_names = sorted(edit_catalog["name"].tolist()) if not edit_catalog.empty else []
         edit_sel = st.selectbox("เลือกสินค้าที่จะแก้ไข", edit_names, key="edit_product_sel")
         edit_row = catalog[catalog["name"] == edit_sel].iloc[0] if edit_sel else None
         if edit_row is not None:
