@@ -346,6 +346,11 @@ with tab_central:
         show = catalog_show[["name", "category", "qty_box", "qty_pack", "limit_box", "limit_pack", "active"]].copy()
         show["id"] = catalog_show["id"] if "id" in catalog_show.columns else ""
         show["slug"] = catalog_show["slug"] if "slug" in catalog_show.columns else ""
+        # NULL limit_box/limit_pack render as a literal "None" placeholder once
+        # the column becomes editable — 0 means "no low-stock threshold set",
+        # same meaning as NULL for _low_stock() below, so this is a safe default.
+        show["limit_box"] = pd.to_numeric(show["limit_box"], errors="coerce").fillna(0)
+        show["limit_pack"] = pd.to_numeric(show["limit_pack"], errors="coerce").fillna(0)
         show["active"] = show["active"].apply(lambda v: str(v or "").strip().upper() != "FALSE")
         show["สถานะ"] = show["active"].apply(lambda a: STATUS_ON if a else STATUS_OFF)
 
@@ -365,12 +370,15 @@ with tab_central:
         })
         show = show[["สถานะ", "รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "กล่อง", "ซอง", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "แจ้งเตือน"]]
 
-        st.caption("แก้ไข สถานะ / กล่อง / ซอง ในตารางได้เลย แล้วกดบันทึก — เลขกล่อง/ซองที่แก้เป็นยอดสต็อกใหม่ทั้งหมด ไม่ใช่จำนวนที่เพิ่ม")
+        st.caption(
+            "แก้ไข สถานะ / กล่อง / ซอง / ขั้นต่ำ ในตารางได้เลย แล้วกดบันทึก — เลขกล่อง/ซองที่แก้เป็นยอดสต็อกใหม่ทั้งหมด "
+            "ไม่ใช่จำนวนที่เพิ่ม, ขั้นต่ำ = จุดแจ้งเตือนสต็อกใกล้หมด (0 = ไม่แจ้งเตือน)"
+        )
         edited = st.data_editor(
             show,
             use_container_width=True,
             hide_index=True,
-            disabled=["รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "แจ้งเตือน"],
+            disabled=["รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "แจ้งเตือน"],
             column_config={
                 "สถานะ": st.column_config.SelectboxColumn(" ", options=[STATUS_ON, STATUS_OFF], required=True, width="small"),
                 "รหัสสินค้า": st.column_config.TextColumn("CODE", width="small"),
@@ -393,8 +401,20 @@ with tab_central:
                     new_row = edited.loc[idx]
                     prod_name = orig_row["สินค้า"]
 
-                    if new_row["สถานะ"] != orig_row["สถานะ"]:
-                        gas_post({"_action": "updateProduct", "name": prod_name, "active": new_row["สถานะ"] == STATUS_ON})
+                    new_limit_box = int(pd.to_numeric(new_row["ขั้นต่ำ (กล่อง)"], errors="coerce") or 0)
+                    new_limit_pack = int(pd.to_numeric(new_row["ขั้นต่ำ (ซอง)"], errors="coerce") or 0)
+                    orig_limit_box = int(pd.to_numeric(orig_row["ขั้นต่ำ (กล่อง)"], errors="coerce") or 0)
+                    orig_limit_pack = int(pd.to_numeric(orig_row["ขั้นต่ำ (ซอง)"], errors="coerce") or 0)
+                    limit_changed = new_limit_box != orig_limit_box or new_limit_pack != orig_limit_pack
+
+                    if new_row["สถานะ"] != orig_row["สถานะ"] or limit_changed:
+                        payload = {"_action": "updateProduct", "name": prod_name}
+                        if new_row["สถานะ"] != orig_row["สถานะ"]:
+                            payload["active"] = new_row["สถานะ"] == STATUS_ON
+                        if limit_changed:
+                            payload["limit_box"] = new_limit_box
+                            payload["limit_pack"] = new_limit_pack
+                        gas_post(payload)
 
                     # updateProduct ไม่รองรับตั้งค่า qty_box/qty_pack ตรงๆ — ส่งเป็นผลต่าง
                     # (ใหม่ - เดิม) ผ่าน addStock แทน ซึ่งรองรับค่าติดลบอยู่แล้ว
