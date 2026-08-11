@@ -325,6 +325,11 @@
         <!-- เมนูหลักสาขา -->
         <div id="brMenu">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="br-menu-card" id="brMenuCreateShipment" onclick="openBrView('createShipment')" style="display:none;grid-column:1/-1">
+              <div style="font-size:40px">🚚</div>
+              <div class="br-menu-title">สร้างล็อตส่งสาขา</div>
+              <div class="br-menu-desc">เลือกสินค้า + จำนวน ส่งจากคลังกลางไปสาขา</div>
+            </div>
             <div class="br-menu-card" onclick="openBrView('incoming')">
               <div style="font-size:40px">📥</div>
               <div class="br-menu-title">รับของจากคลัง</div>
@@ -359,11 +364,6 @@
               <div style="font-size:40px">🏆</div>
               <div class="br-menu-title">WAKA GYM</div>
               <div class="br-menu-desc">สแกน QR / Event / ผลแข่ง</div>
-            </div>
-            <div class="br-menu-card" id="brMenuCreateShipment" onclick="openBrView('createShipment')" style="display:none;grid-column:1/-1">
-              <div style="font-size:40px">🚚</div>
-              <div class="br-menu-title">สร้างล็อตส่งสาขา</div>
-              <div class="br-menu-desc">เลือกสินค้า + จำนวน ส่งจากคลังกลางไปสาขา</div>
             </div>
           </div>
         </div>
