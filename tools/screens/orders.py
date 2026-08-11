@@ -295,9 +295,19 @@ def build_notify_message(order_id: str, items: list, total, branch: str, slip_st
     )
 
 
+# st.success() called right before st.rerun() never reaches the screen — the
+# rerun wipes it before the browser paints. Stash the message in session_state
+# instead and show it as a toast on the NEXT run. (Same pattern as stock.py.)
+def _flash(msg: str) -> None:
+    st.session_state["_flash_msg"] = msg
+
+
 # ── Page header ───────────────────────────────────────────────────────────────
 apply_theme()
 page_header("จัดการออเดอร์", "ค้นหา ตรวจสลิป และติดตามสถานะออเดอร์การ์ด")
+
+if "_flash_msg" in st.session_state:
+    st.toast(st.session_state.pop("_flash_msg"), icon="✅")
 
 # ── Load ──────────────────────────────────────────────────────────────────────
 df = load_orders()
@@ -768,6 +778,7 @@ with tab_table:
             "date": "วันที่", "total": "ยอดรวม", "slip_status": "สถานะสลิป",
             "fulfillment": "สถานะจัดส่ง", "notes": "หมายเหตุ",
         })
+        edit_df.insert(0, "ลบ", False)
 
         edited_df = st.data_editor(
             edit_df,
@@ -777,34 +788,78 @@ with tab_table:
             key="orders_sheet_editor",
             disabled=["เลขออเดอร์", "ลูกค้า", "เบอร์โทร", "สาขา", "วันที่", "ยอดรวม", "รายการสินค้า"],
             column_config={
+                "ลบ": st.column_config.CheckboxColumn("ลบ", width="small"),
                 "สถานะสลิป": st.column_config.SelectboxColumn(options=ALL_STATUS, required=True),
                 "สถานะจัดส่ง": st.column_config.SelectboxColumn(options=ALL_FULFILL),
                 "ยอดรวม": st.column_config.NumberColumn(format="฿%d"),
             },
         )
 
-        if st.button("💾 บันทึกการแก้ไขในตาราง", type="primary"):
-            edited_rows = st.session_state.get("orders_sheet_editor", {}).get("edited_rows", {})
-            if not edited_rows:
-                st.info("ไม่มีการแก้ไข")
-            else:
-                errors = []
-                col_map = {"สถานะสลิป": "slip_status", "สถานะจัดส่ง": "fulfillment", "หมายเหตุ": "notes"}
-                for row_idx, changes in edited_rows.items():
-                    order_id = str(edit_df.iloc[int(row_idx)]["เลขออเดอร์"])
-                    fields = {col_map[c]: v for c, v in changes.items() if c in col_map}
-                    if not fields:
-                        continue
-                    try:
-                        patch_order_silent(order_id, fields)
-                    except Exception as e:
-                        errors.append(f"#{order_id}: {e}")
-                if errors:
-                    st.error("บันทึกไม่สำเร็จบางรายการ:\n" + "\n".join(errors))
+        bcol1, bcol2 = st.columns(2)
+        with bcol1:
+            if st.button("💾 บันทึกการแก้ไขในตาราง", type="primary"):
+                edited_rows = st.session_state.get("orders_sheet_editor", {}).get("edited_rows", {})
+                if not edited_rows:
+                    st.info("ไม่มีการแก้ไข")
                 else:
-                    st.success(f"บันทึกแล้ว {len(edited_rows)} ออเดอร์")
-                st.cache_data.clear()
-                st.rerun()
+                    errors = []
+                    col_map = {"สถานะสลิป": "slip_status", "สถานะจัดส่ง": "fulfillment", "หมายเหตุ": "notes"}
+                    for row_idx, changes in edited_rows.items():
+                        order_id = str(edit_df.iloc[int(row_idx)]["เลขออเดอร์"])
+                        fields = {col_map[c]: v for c, v in changes.items() if c in col_map}
+                        if not fields:
+                            continue
+                        try:
+                            patch_order_silent(order_id, fields)
+                        except Exception as e:
+                            errors.append(f"#{order_id}: {e}")
+                    if errors:
+                        st.error("บันทึกไม่สำเร็จบางรายการ:\n" + "\n".join(errors))
+                    else:
+                        _flash(f"บันทึกแล้ว {len(edited_rows)} ออเดอร์")
+                    st.cache_data.clear()
+                    st.rerun()
+
+        to_delete = edited_df.loc[edited_df["ลบ"] == True, "เลขออเดอร์"].astype(str).tolist()  # noqa: E712
+        with bcol2:
+            if st.button(f"🗑 ลบออเดอร์ที่เลือก ({len(to_delete)})", disabled=not to_delete):
+                st.session_state["_confirm_delete_orders"] = to_delete
+
+        pending_delete = st.session_state.get("_confirm_delete_orders")
+        if pending_delete:
+            st.error(
+                f"⚠️ ยืนยันลบถาวร {len(pending_delete)} ออเดอร์: {', '.join(pending_delete)} "
+                "— ลบแล้วกู้คืนไม่ได้ และจะหายไปจากรายงานยอดขายด้วย"
+            )
+            cc1, cc2 = st.columns(2)
+            with cc1:
+                if st.button("⚠️ ยืนยันลบถาวร", type="primary", key="confirm_delete_orders_btn"):
+                    errors = []
+                    for oid in pending_delete:
+                        try:
+                            get_supabase().table("orders").delete().eq("order_id", oid).execute()
+                        except Exception as e:
+                            errors.append(f"#{oid}: {e}")
+                    try:
+                        get_supabase().table("staff_actions").insert({
+                            "staff_name": admin_name() or "ไม่ระบุ",
+                            "action": "delete_order",
+                            "target_id": ", ".join(pending_delete),
+                            "detail": f"ลบออเดอร์ {len(pending_delete)} รายการจากตารางรวม",
+                        }).execute()
+                    except Exception:
+                        pass  # audit log ต้องไม่บล็อกการลบจริง เหมือน _logStaffAction_ ฝั่ง GAS
+                    st.session_state.pop("_confirm_delete_orders", None)
+                    if errors:
+                        st.error("ลบไม่สำเร็จบางรายการ:\n" + "\n".join(errors))
+                    else:
+                        _flash(f"ลบออเดอร์แล้ว {len(pending_delete)} รายการ")
+                    st.cache_data.clear()
+                    st.rerun()
+            with cc2:
+                if st.button("ยกเลิก", key="cancel_delete_orders_btn"):
+                    st.session_state.pop("_confirm_delete_orders", None)
+                    st.rerun()
     except Exception as e:
         # Supplementary tab — a bug here shouldn't take down the card view
         # that staff actually depend on day-to-day.
