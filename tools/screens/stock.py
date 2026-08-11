@@ -105,6 +105,15 @@ def load_pending_branch_demand() -> dict:
     return demand
 
 
+def _safe_int(v, default: int = 0) -> int:
+    """int(pd.to_numeric(v, errors='coerce') or 0) crashes on a genuine NaN —
+    NaN is truthy in Python, so `or 0` never kicks in and int(nan) raises
+    ValueError. Hit this via a data_editor NumberColumn cell cleared to blank
+    (e.g. ขั้นต่ำ (กล่อง)/(ซอง), which are nullable and user-editable)."""
+    n = pd.to_numeric(v, errors="coerce")
+    return int(n) if pd.notna(n) else default
+
+
 def parse_items(items_json) -> list:
     if isinstance(items_json, list):
         return items_json
@@ -240,8 +249,8 @@ def _create_shipment_dialog():
             d = demand[name]
             ord_box, ord_pack = int(d["qty_box"]), int(d["qty_pack"])
             row_edits = edit_state.get(idx, {})
-            buf_box = int(pd.to_numeric(row_edits.get("เผื่อ (กล่อง)", 0), errors="coerce") or 0)
-            buf_pack = int(pd.to_numeric(row_edits.get("เผื่อ (ซอง)", 0), errors="coerce") or 0)
+            buf_box = _safe_int(row_edits.get("เผื่อ (กล่อง)", 0))
+            buf_pack = _safe_int(row_edits.get("เผื่อ (ซอง)", 0))
             rows.append({
                 "ส่ง": False, "สินค้า": name,
                 "ออเดอร์ (กล่อง)": ord_box, "ออเดอร์ (ซอง)": ord_pack,
@@ -267,8 +276,8 @@ def _create_shipment_dialog():
                 continue
             ship_items.append({
                 "name": row["สินค้า"],
-                "qty_box": int(pd.to_numeric(row["รวม (กล่อง)"], errors="coerce") or 0),
-                "qty_pack": int(pd.to_numeric(row["รวม (ซอง)"], errors="coerce") or 0),
+                "qty_box": _safe_int(row["รวม (กล่อง)"]),
+                "qty_pack": _safe_int(row["รวม (ซอง)"]),
                 "qty_box_extra": 0, "qty_pack_extra": 0,
             })
     else:
@@ -357,8 +366,7 @@ with tab_central:
         def _low_stock(r):
             if not r["active"]:
                 return ""
-            if (pd.to_numeric(r["limit_box"], errors="coerce") or 0) > 0 \
-               and (pd.to_numeric(r["qty_box"], errors="coerce") or 0) <= (pd.to_numeric(r["limit_box"], errors="coerce") or 0):
+            if _safe_int(r["limit_box"]) > 0 and _safe_int(r["qty_box"]) <= _safe_int(r["limit_box"]):
                 return "⚠️ ใกล้หมด"
             return ""
 
@@ -401,10 +409,10 @@ with tab_central:
                     new_row = edited.loc[idx]
                     prod_name = orig_row["สินค้า"]
 
-                    new_limit_box = int(pd.to_numeric(new_row["ขั้นต่ำ (กล่อง)"], errors="coerce") or 0)
-                    new_limit_pack = int(pd.to_numeric(new_row["ขั้นต่ำ (ซอง)"], errors="coerce") or 0)
-                    orig_limit_box = int(pd.to_numeric(orig_row["ขั้นต่ำ (กล่อง)"], errors="coerce") or 0)
-                    orig_limit_pack = int(pd.to_numeric(orig_row["ขั้นต่ำ (ซอง)"], errors="coerce") or 0)
+                    new_limit_box = _safe_int(new_row["ขั้นต่ำ (กล่อง)"])
+                    new_limit_pack = _safe_int(new_row["ขั้นต่ำ (ซอง)"])
+                    orig_limit_box = _safe_int(orig_row["ขั้นต่ำ (กล่อง)"])
+                    orig_limit_pack = _safe_int(orig_row["ขั้นต่ำ (ซอง)"])
                     limit_changed = new_limit_box != orig_limit_box or new_limit_pack != orig_limit_pack
 
                     if new_row["สถานะ"] != orig_row["สถานะ"] or limit_changed:
@@ -418,8 +426,8 @@ with tab_central:
 
                     # updateProduct ไม่รองรับตั้งค่า qty_box/qty_pack ตรงๆ — ส่งเป็นผลต่าง
                     # (ใหม่ - เดิม) ผ่าน addStock แทน ซึ่งรองรับค่าติดลบอยู่แล้ว
-                    delta_box = int(pd.to_numeric(new_row["กล่อง"], errors="coerce") or 0) - int(pd.to_numeric(orig_row["กล่อง"], errors="coerce") or 0)
-                    delta_pack = int(pd.to_numeric(new_row["ซอง"], errors="coerce") or 0) - int(pd.to_numeric(orig_row["ซอง"], errors="coerce") or 0)
+                    delta_box = _safe_int(new_row["กล่อง"]) - _safe_int(orig_row["กล่อง"])
+                    delta_pack = _safe_int(new_row["ซอง"]) - _safe_int(orig_row["ซอง"])
                     if delta_box != 0 or delta_pack != 0:
                         gas_post({"_action": "addStock", "name": prod_name, "add_box": delta_box, "add_pack": delta_pack})
 
@@ -454,8 +462,7 @@ with tab_branch:
             sb_show = sb_show[sb_show["name"].map(name_to_cat) == sb_cat_sel]
 
         def _fmt_cell(box, pack):
-            box = int(pd.to_numeric(box, errors="coerce") or 0)
-            pack = int(pd.to_numeric(pack, errors="coerce") or 0)
+            box, pack = _safe_int(box), _safe_int(pack)
             return "—" if box == 0 and pack == 0 else f"{box} / {pack}"
 
         pivot = {}
