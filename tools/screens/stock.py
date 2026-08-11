@@ -220,13 +220,38 @@ def _create_shipment_dialog():
     ship_branch = st.selectbox("สาขาปลายทาง", BRANCHES, key="ship_branch_sel")
     demand = {name: d for (branch, name), d in load_pending_branch_demand().items() if branch == ship_branch}
 
+    ship_items = []
+    demand_edited = pd.DataFrame()
     if demand:
-        st.caption("ออเดอร์รอส่งไปสาขานี้")
+        st.caption(
+            "ออเดอร์รอส่งไปสาขานี้ — แก้ไข \"จะส่ง\" ต่อรายการได้เลย (ค่าเริ่มต้น = ยอดที่รอส่ง, "
+            "ใส่ 0 ถ้าสินค้ายังไม่มาหรือยังไม่ส่งรอบนี้, แก้ให้มากกว่ายอดรอส่งเพื่อเผื่อขายหน้าร้าน)"
+        )
         demand_df = pd.DataFrame([
-            {"สินค้า": name, "รอส่ง (กล่อง)": d["qty_box"], "รอส่ง (ซอง)": d["qty_pack"], "ออเดอร์": d["order_count"]}
+            {
+                "สินค้า": name,
+                "รอส่ง (กล่อง)": int(d["qty_box"]), "รอส่ง (ซอง)": int(d["qty_pack"]),
+                "จะส่ง (กล่อง)": int(d["qty_box"]), "จะส่ง (ซอง)": int(d["qty_pack"]),
+                "ออเดอร์": d["order_count"],
+            }
             for name, d in demand.items()
-        ]).sort_values("สินค้า")
-        st.dataframe(demand_df, use_container_width=True, hide_index=True)
+        ]).sort_values("สินค้า").reset_index(drop=True)
+        demand_edited = st.data_editor(
+            demand_df,
+            use_container_width=True,
+            hide_index=True,
+            disabled=["สินค้า", "รอส่ง (กล่อง)", "รอส่ง (ซอง)", "ออเดอร์"],
+            column_config={
+                "จะส่ง (กล่อง)": st.column_config.NumberColumn(min_value=0, step=1),
+                "จะส่ง (ซอง)": st.column_config.NumberColumn(min_value=0, step=1),
+            },
+            key=f"ship_demand_editor_{ship_branch}",
+        )
+        for _, row in demand_edited.iterrows():
+            ship_items.append({
+                "name": row["สินค้า"], "qty_box": int(row["จะส่ง (กล่อง)"]), "qty_pack": int(row["จะส่ง (ซอง)"]),
+                "qty_box_extra": 0, "qty_pack_extra": 0,
+            })
     else:
         st.caption(f"ไม่มีออเดอร์รอส่งไปสาขา {ship_branch} ในตอนนี้ — เลือกสินค้าที่จะส่งเองได้ด้านล่าง")
 
@@ -240,30 +265,19 @@ def _create_shipment_dialog():
         st.dataframe(reserved_df, use_container_width=True, hide_index=True)
 
     all_names = catalog["name"].tolist() if not catalog.empty else []
-    default_sel = [n for n in demand if n in all_names]
-    sel_products = st.multiselect(
-        "เลือกสินค้าที่จะส่ง", all_names, default=default_sel, key=f"ship_sel_{ship_branch}",
-    )
-
-    ship_items = []
-    for name in sel_products:
-        d = demand.get(name, {"qty_box": 0, "qty_pack": 0})
-        st.markdown(f"**{name}**")
-        if d["qty_box"] or d["qty_pack"]:
-            st.caption(f"มีออเดอร์รอรับ {int(d['qty_box'])} กล่อง / {int(d['qty_pack'])} ซอง")
-        sc1, sc2 = st.columns(2)
-        buf_box = sc1.number_input("เผื่อเพิ่ม (กล่อง)", min_value=0, value=0, step=1, key=f"shipbufbox_{ship_branch}_{name}")
-        buf_pack = sc2.number_input("เผื่อเพิ่ม (ซอง)", min_value=0, value=0, step=1, key=f"shipbufpack_{ship_branch}_{name}")
-        total_box = int(d["qty_box"]) + buf_box
-        total_pack = int(d["qty_pack"]) + buf_pack
-        st.caption(f"📦 รวมที่จะส่ง: {total_box} กล่อง / {total_pack} ซอง")
-        st.divider()
-        ship_items.append({"name": name, "qty_box": total_box, "qty_pack": total_pack, "qty_box_extra": 0, "qty_pack_extra": 0})
+    extra_names = [n for n in all_names if n not in demand]
+    with st.expander("➕ เพิ่มสินค้าอื่นที่ไม่มีออเดอร์ค้าง"):
+        extra_sel = st.multiselect("เลือกสินค้า", extra_names, key=f"ship_extra_sel_{ship_branch}")
+        for name in extra_sel:
+            ec1, ec2 = st.columns(2)
+            eb = ec1.number_input(f"{name} — กล่อง", min_value=0, value=0, step=1, key=f"shipextrabox_{ship_branch}_{name}")
+            ep = ec2.number_input(f"{name} — ซอง", min_value=0, value=0, step=1, key=f"shipextrapack_{ship_branch}_{name}")
+            ship_items.append({"name": name, "qty_box": eb, "qty_pack": ep, "qty_box_extra": 0, "qty_pack_extra": 0})
 
     if st.button("📦 สร้างล็อตส่งสาขา", key=f"submit_ship_{ship_branch}", type="primary"):
         items_payload = [it for it in ship_items if it["qty_box"] > 0 or it["qty_pack"] > 0]
         if not items_payload:
-            st.warning("เลือกสินค้าและใส่จำนวนที่จะส่งก่อน")
+            st.warning("ใส่จำนวนที่จะส่งอย่างน้อย 1 รายการก่อน")
         else:
             try:
                 result = gas_post({"_action": "createShipment", "to_branch": ship_branch, "items": items_payload})
