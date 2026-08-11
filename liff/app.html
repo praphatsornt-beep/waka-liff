@@ -292,6 +292,7 @@
       <div id="branchAdminPicker" style="display:none">
         <div style="text-align:center;margin-bottom:16px">
           <div style="font-size:18px;font-weight:700">🏬 เลือกสาขา</div>
+          <div style="color:var(--red);font-size:12px;cursor:pointer;margin-top:4px" onclick="logout()">ออกจากระบบ</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:12px">
           <div class="br-menu-card" onclick="adminPickBranch('ต้นสักคอร์เนอร์')" style="padding:32px 16px">
@@ -313,6 +314,7 @@
         <div style="text-align:center;margin-bottom:12px">
           <div style="font-size:18px;font-weight:700">🏬 <span id="branchTitle"></span></div>
           <div style="color:var(--text2);font-size:12px;cursor:pointer" onclick="userRole==='admin'?adminBackToPicker():logoutBranch()">เปลี่ยนสาขา</div>
+          <div style="color:var(--red);font-size:12px;cursor:pointer;margin-top:4px" onclick="logout()">ออกจากระบบ</div>
         </div>
         <input type="hidden" id="branchSelect">
         <!-- เมนูหลักสาขา -->
@@ -540,14 +542,8 @@
 
   <!-- Bottom Nav -->
   <nav class="bottom-nav">
-    <div class="nav-item active" onclick="window.location.href='app.html'" id="nav_home">
-      <span class="nav-icon">📋</span><span>ออเดอร์</span>
-    </div>
-    <div class="nav-item" onclick="switchTab('branch')" id="nav_branch">
-      <span class="nav-icon">🏬</span><span>สาขา</span>
-    </div>
-    <div class="nav-item" onclick="window.location.href='menu.html'" id="nav_menu">
-      <span class="nav-icon">☰</span><span>เมนู</span>
+    <div class="nav-item active" onclick="switchTab('branch');closeBrView()" id="nav_home">
+      <span class="nav-icon">🏠</span><span>หน้าแรก</span>
     </div>
   </nav>
 </div>
@@ -605,16 +601,15 @@ function renderStaffBadge() {
 
 function applyRole(role) {
   userRole = role;
-  const adminOnly = ['nav_home'];
-  adminOnly.forEach(id => gid(id).style.display = role === 'admin' ? 'flex' : 'none');
-  // สาขา ซ้ำซ้อนสำหรับพนักงานสาขา — login ด้วยรหัสสาขาแล้ว auto-land ที่
-  // หน้าสาขาอยู่แล้ว เหลือแค่ "เมนู" พอ
-  const staffHidden = ['nav_branch'];
-  staffHidden.forEach(id => gid(id).style.display = role === 'staff' ? 'none' : 'flex');
   if (role === 'admin') {
     gid('branchLogin').style.display='none';
     gid('branchAdminPicker').style.display='block';
   }
+}
+
+function logout() {
+  sessionStorage.clear();
+  location.reload();
 }
 
 // ── PIN ──
@@ -629,7 +624,7 @@ function checkPin() {
     sessionStorage.setItem('waka_tstaff_role','admin');
     sessionStorage.setItem('waka_tstaff_branch','ทั้งหมด');
     gid('pinOverlay').style.display='none'; gid('app').style.display='block';
-    applyRole('admin'); ensureStaffName(); renderStaffBadge(); initApp(); _applyDeepLink();
+    applyRole('admin'); ensureStaffName(); renderStaffBadge(); switchTab('branch'); initApp(); _applyDeepLink();
   } else if (BRANCH_CODES[val]) {
     sessionStorage.setItem('waka_app_auth','staff');
     sessionStorage.setItem('waka_portal_auth','1');
@@ -649,10 +644,9 @@ if (savedAuth) {
   gid('pinOverlay').style.display='none'; gid('app').style.display='block'; applyRole(savedAuth);
   ensureStaffName(); renderStaffBadge();
   const sb=sessionStorage.getItem('waka_branch') || sessionStorage.getItem('waka_staff_branch');
-  const tabHash = window.location.hash.replace('#','');
-  if(savedAuth==='staff'&&sb){autoLoginBranch(sb);switchTab('branch');}
+  if(savedAuth==='staff'&&sb){autoLoginBranch(sb);}
   else if(savedAuth==='admin'&&sb){gid('branchSelect').value=sb;gid('branchTitle').textContent='สาขา'+sb;}
-  if(tabHash && ['receive','branch'].includes(tabHash)){switchTab(tabHash);}
+  switchTab('branch');
   initApp(); _applyDeepLink();
 }
 
