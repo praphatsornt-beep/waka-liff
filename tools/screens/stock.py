@@ -368,8 +368,15 @@ with tab_central:
             disabled=["รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "แจ้งเตือน"],
             column_config={
                 "สถานะ": st.column_config.SelectboxColumn(" ", options=[STATUS_ON, STATUS_OFF], required=True, width="small"),
-                "กล่อง": st.column_config.NumberColumn("กล่อง", min_value=0, step=1),
-                "ซอง": st.column_config.NumberColumn("ซอง", min_value=0, step=1),
+                "รหัสสินค้า": st.column_config.TextColumn("CODE", width="small"),
+                "สินค้า": st.column_config.TextColumn(width="large"),
+                "Slug": st.column_config.TextColumn(width="small"),
+                "หมวดหมู่": st.column_config.TextColumn(width="small"),
+                "กล่อง": st.column_config.NumberColumn("กล่อง", min_value=0, step=1, width="small"),
+                "ซอง": st.column_config.NumberColumn("ซอง", min_value=0, step=1, width="small"),
+                "ขั้นต่ำ (กล่อง)": st.column_config.NumberColumn(width="small"),
+                "ขั้นต่ำ (ซอง)": st.column_config.NumberColumn(width="small"),
+                "แจ้งเตือน": st.column_config.TextColumn(width="small"),
             },
             key=f"catalog_editor_{cat_sel}",
         )
