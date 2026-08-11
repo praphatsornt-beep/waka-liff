@@ -60,23 +60,17 @@
     .btn-add:active, .btn-cat:active { background: rgba(255,255,255,.25); }
 
     /* ── Category manager ── */
-    .cat-table-wrap { margin: 0 16px 12px; overflow-x: auto; }
-    .cat-table { width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: var(--radius); overflow: hidden; }
-    .cat-table th {
-      text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .4px;
-      color: var(--label); padding: 10px 12px; border-bottom: 1px solid var(--card-border);
+    .cat-row {
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--card-bg); border-radius: var(--field-radius);
+      padding: 12px 14px; margin: 0 16px 8px;
     }
-    .cat-table td { padding: 8px 12px; border-bottom: 1px solid var(--card-border); vertical-align: middle; }
-    .cat-table tr:last-child td { border-bottom: none; }
-    .cat-name-input {
-      width: 100%; padding: 8px 10px; border: 1.5px solid var(--card-border); border-radius: 8px;
-      background: var(--input-bg); font-family: inherit; font-size: 13px; color: var(--text-primary);
+    .cat-row-name { font-size: 14px; font-weight: 600; }
+    .cat-row-count { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+    .cat-row-del {
+      background: #fee2e2; color: var(--red); border: none; border-radius: 8px;
+      padding: 8px 12px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
     }
-    .cat-name-input:focus { outline: none; border-color: var(--accent); background: #fff; }
-    .cat-name-input:disabled { opacity: .45; text-decoration: line-through; background: transparent; border-color: transparent; }
-    .cat-count-cell { font-size: 13px; color: var(--text-secondary); white-space: nowrap; text-align: center; }
-    .cat-del-btn { background: none; border: none; font-size: 16px; cursor: pointer; padding: 4px; line-height: 1; }
-    tr.row-deleted { opacity: .55; }
     .cat-empty { text-align: center; color: var(--text-secondary); font-size: 13px; padding: 20px 16px; }
 
     /* ── Search ── */
@@ -444,14 +438,7 @@
     <div class="drawer-handle"></div>
     <div class="drawer-title">จัดการหมวดหมู่สินค้า</div>
   </div>
-  <div class="cat-table-wrap">
-    <table class="cat-table">
-      <thead><tr><th>ชื่อหมวดหมู่</th><th style="text-align:center">จำนวน</th><th></th></tr></thead>
-      <tbody id="catTableBody"></tbody>
-    </table>
-  </div>
-  <button class="btn-save" onclick="saveCatChanges()">บันทึก</button>
-  <div class="drawer-msg" id="catManagerMsg"></div>
+  <div id="catManagerList"></div>
 </div>
 
 <nav class="bottom-nav">
@@ -563,85 +550,41 @@ function renderCatManager() {
   const counts = {};
   _products.forEach(p => { if (p.category) counts[p.category] = (counts[p.category] || 0) + 1; });
   const cats = Object.keys(counts).sort((a, b) => a.localeCompare(b, 'th'));
-  const body = document.getElementById('catTableBody');
-  document.getElementById('catManagerMsg').textContent = '';
+  const el = document.getElementById('catManagerList');
   if (cats.length === 0) {
-    body.innerHTML = '<tr><td colspan="3" class="cat-empty">ยังไม่มีหมวดหมู่</td></tr>';
+    el.innerHTML = '<div class="cat-empty">ยังไม่มีหมวดหมู่</div>';
     return;
   }
-  body.innerHTML = cats.map(c => `
-    <tr data-original="${esc(c)}">
-      <td><input type="text" class="cat-name-input" value="${esc(c)}"></td>
-      <td class="cat-count-cell">${counts[c]}</td>
-      <td><button type="button" class="cat-del-btn" onclick="toggleDeleteCatRow(this)" title="ลบหมวดหมู่นี้">🗑</button></td>
-    </tr>
+  el.innerHTML = cats.map(c => `
+    <div class="cat-row">
+      <div>
+        <div class="cat-row-name">${esc(c)}</div>
+        <div class="cat-row-count">${counts[c]} รายการ</div>
+      </div>
+      <button class="cat-row-del" onclick="deleteCategory('${c.replace(/'/g, "\\'")}')">🗑 ลบ</button>
+    </div>
   `).join('');
 }
 
-// ทำเครื่องหมายลบไว้ก่อน (ไม่ยิงจริงจนกว่าจะกด "บันทึก") — กดซ้ำเพื่อยกเลิก
-function toggleDeleteCatRow(btn) {
-  const tr = btn.closest('tr');
-  const input = tr.querySelector('.cat-name-input');
-  const alreadyMarked = tr.dataset.deleted === '1';
-  if (alreadyMarked) {
-    tr.dataset.deleted = '';
-    tr.classList.remove('row-deleted');
-    input.disabled = false;
-    input.value = tr.dataset.original;
-    btn.textContent = '🗑';
-  } else {
-    tr.dataset.deleted = '1';
-    tr.classList.add('row-deleted');
-    input.disabled = true;
-    btn.textContent = '↩';
-  }
-}
-
-// บันทึกทีเดียวทั้งตาราง: แถวที่ทำเครื่องหมายลบ → deleteCategory,
-// แถวที่แก้ชื่อ (ไม่ตรงกับชื่อเดิม) → renameCategory
-async function saveCatChanges() {
-  const rows = [...document.querySelectorAll('#catTableBody tr[data-original]')];
-  const msg = document.getElementById('catManagerMsg');
-
-  const toDelete = [];
-  const toRename = [];
-  rows.forEach(tr => {
-    const original = tr.dataset.original;
-    if (tr.dataset.deleted === '1') { toDelete.push(original); return; }
-    const newName = tr.querySelector('.cat-name-input').value.trim();
-    if (newName && newName !== original) toRename.push([original, newName]);
-  });
-
-  if (toDelete.length === 0 && toRename.length === 0) {
-    msg.textContent = 'ไม่มีการเปลี่ยนแปลง'; msg.className = 'drawer-msg';
-    return;
-  }
-
-  let confirmMsg = '';
-  if (toDelete.length) confirmMsg += 'ลบหมวดหมู่: ' + toDelete.join(', ') + '\n(สินค้าจะกลายเป็นไม่มีหมวดหมู่ ไม่ลบสินค้า)\n\n';
-  if (toRename.length) confirmMsg += 'เปลี่ยนชื่อ: ' + toRename.map(([o, n]) => o + ' → ' + n).join(', ');
-  if (!confirm('ยืนยันการเปลี่ยนแปลง?\n\n' + confirmMsg.trim())) return;
-
+async function deleteCategory(category) {
+  const count = _products.filter(p => p.category === category).length;
+  if (!confirm('ลบหมวดหมู่ "' + category + '"?\n\nสินค้า ' + count + ' รายการในหมวดนี้จะกลายเป็นไม่มีหมวดหมู่ (ไม่ลบสินค้า)')) return;
   const staff_name = ensureStaffName();
   if (!staff_name) return;
-
-  msg.textContent = 'กำลังบันทึก...'; msg.className = 'drawer-msg';
   try {
-    for (const category of toDelete) {
-      const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'deleteCategory', category, staff_name: staff_name.trim() }) });
-      const d = await r.json();
-      if (!d.ok) throw new Error(d.error || ('ลบ "' + category + '" ไม่สำเร็จ'));
+    const r = await fetch(G, {
+      method: 'POST',
+      body: JSON.stringify({ _action: 'deleteCategory', category, staff_name: staff_name.trim() })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      await loadProducts();
+      renderCatManager();
+    } else {
+      alert(d.error || 'ลบไม่สำเร็จ');
     }
-    for (const [old_category, new_category] of toRename) {
-      const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'renameCategory', old_category, new_category, staff_name: staff_name.trim() }) });
-      const d = await r.json();
-      if (!d.ok) throw new Error(d.error || ('เปลี่ยนชื่อ "' + old_category + '" ไม่สำเร็จ'));
-    }
-    await loadProducts();
-    renderCatManager();
-    msg.textContent = 'บันทึกแล้ว ✅'; msg.className = 'drawer-msg ok';
   } catch (e) {
-    msg.textContent = e.message || 'บันทึกไม่สำเร็จ'; msg.className = 'drawer-msg err';
+    alert('ลบไม่สำเร็จ');
   }
 }
 
