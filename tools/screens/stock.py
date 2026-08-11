@@ -267,7 +267,7 @@ with tab_central:
         cat_sel = st.selectbox("กรองหมวดหมู่", cats, key="central_cat_filter")
         catalog_show = catalog if cat_sel == "ทุกหมวดหมู่" else catalog[catalog["category"] == cat_sel]
 
-        STATUS_ON, STATUS_OFF = "🟢 เปิดขาย", "🔴 ปิดการขาย"
+        STATUS_ON, STATUS_OFF = "🟢", "🔴"
 
         show = catalog_show[["name", "category", "qty_box", "qty_pack", "limit_box", "limit_pack", "active"]].copy()
         show["id"] = catalog_show["id"] if "id" in catalog_show.columns else ""
@@ -290,19 +290,38 @@ with tab_central:
         })
         show = show[["สถานะ", "รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "กล่อง", "ซอง", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "แจ้งเตือน"]]
 
+        st.caption("แก้ไข สถานะ / กล่อง / ซอง ในตารางได้เลย แล้วกดบันทึก — เลขกล่อง/ซองที่แก้เป็นยอดสต็อกใหม่ทั้งหมด ไม่ใช่จำนวนที่เพิ่ม")
         edited = st.data_editor(
             show,
             use_container_width=True,
             hide_index=True,
-            disabled=["รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "กล่อง", "ซอง", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "แจ้งเตือน"],
-            column_config={"สถานะ": st.column_config.SelectboxColumn("สถานะ", options=[STATUS_ON, STATUS_OFF], required=True)},
+            disabled=["รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "แจ้งเตือน"],
+            column_config={
+                "สถานะ": st.column_config.SelectboxColumn("สถานะ", options=[STATUS_ON, STATUS_OFF], required=True, width="small"),
+                "กล่อง": st.column_config.NumberColumn("กล่อง", min_value=0, step=1),
+                "ซอง": st.column_config.NumberColumn("ซอง", min_value=0, step=1),
+            },
             key=f"catalog_editor_{cat_sel}",
         )
-        changed = edited[edited["สถานะ"] != show["สถานะ"]]
-        if not changed.empty:
+
+        if st.button("บันทึก", key=f"save_catalog_btn_{cat_sel}"):
             try:
-                for _, r in changed.iterrows():
-                    gas_post({"_action": "updateProduct", "name": r["สินค้า"], "active": r["สถานะ"] == STATUS_ON})
+                for idx in show.index:
+                    orig_row = show.loc[idx]
+                    new_row = edited.loc[idx]
+                    prod_name = orig_row["สินค้า"]
+
+                    if new_row["สถานะ"] != orig_row["สถานะ"]:
+                        gas_post({"_action": "updateProduct", "name": prod_name, "active": new_row["สถานะ"] == STATUS_ON})
+
+                    # updateProduct ไม่รองรับตั้งค่า qty_box/qty_pack ตรงๆ — ส่งเป็นผลต่าง
+                    # (ใหม่ - เดิม) ผ่าน addStock แทน ซึ่งรองรับค่าติดลบอยู่แล้ว
+                    delta_box = int(pd.to_numeric(new_row["กล่อง"], errors="coerce") or 0) - int(pd.to_numeric(orig_row["กล่อง"], errors="coerce") or 0)
+                    delta_pack = int(pd.to_numeric(new_row["ซอง"], errors="coerce") or 0) - int(pd.to_numeric(orig_row["ซอง"], errors="coerce") or 0)
+                    if delta_box != 0 or delta_pack != 0:
+                        gas_post({"_action": "addStock", "name": prod_name, "add_box": delta_box, "add_pack": delta_pack})
+
+                st.success("บันทึกแล้ว")
                 st.cache_data.clear()
                 st.rerun()
             except Exception as e:
