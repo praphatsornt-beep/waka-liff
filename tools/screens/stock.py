@@ -221,11 +221,17 @@ def _create_shipment_dialog():
             "\"รวม\" คือยอดที่จะส่งจริง คำนวณให้อัตโนมัติ"
         )
         editor_key = f"ship_demand_editor_{ship_branch}"
-        # "รวม" ไม่ใช่ widget ที่ผู้ใช้แก้เอง (แค่ค่าที่เราคำนวณ) ต้องอ่าน edited_rows
-        # ย้อนกลับมาคำนวณเองก่อน render ไม่งั้นจะโชว์ค่าล้าหลังไปหนึ่ง rerun — และ
-        # อ่าน "ส่ง"/"เผื่อ" ย้อนกลับมาด้วยเช่นกัน (ไม่พึ่งกลไก auto-reapply ของ
-        # data_editor เอง) เพราะ demand ถูก snapshot ไว้คงที่แล้วด้านบน แถวจะไม่ขยับ
-        # ตำแหน่งอีกต่อไป แต่การอ่านย้อนกลับตรงๆ ชัดเจนและกันบั๊กได้เผื่อไว้
+        # IMPORTANT: "ส่ง"/"เผื่อ" are real user-editable widget cells — their
+        # base value in the dataframe passed to data_editor must stay FIXED
+        # (False / 0) on every rerun. Earlier this baked the last-known edited
+        # value back into that same base cell every render; once the cell's
+        # base matched its own edited value, data_editor saw "no difference
+        # from base" and dropped it from edited_rows — so the very next
+        # interaction (ticking a different row, editing another cell) wiped
+        # every prior edit back to the fixed default. Only "รวม" (a disabled,
+        # non-interactive column WE compute) is safe to rebuild from
+        # edited_rows each render; "เผื่อ"/"ส่ง" must rely purely on
+        # data_editor's own key-based persistence against a stable base.
         raw_edits = st.session_state.get(editor_key, {}).get("edited_rows", {})
         edit_state = {int(k): v for k, v in raw_edits.items()}
 
@@ -234,13 +240,12 @@ def _create_shipment_dialog():
             d = demand[name]
             ord_box, ord_pack = int(d["qty_box"]), int(d["qty_pack"])
             row_edits = edit_state.get(idx, {})
-            sent = bool(row_edits.get("ส่ง", False))
             buf_box = int(pd.to_numeric(row_edits.get("เผื่อ (กล่อง)", 0), errors="coerce") or 0)
             buf_pack = int(pd.to_numeric(row_edits.get("เผื่อ (ซอง)", 0), errors="coerce") or 0)
             rows.append({
-                "ส่ง": sent, "สินค้า": name,
+                "ส่ง": False, "สินค้า": name,
                 "ออเดอร์ (กล่อง)": ord_box, "ออเดอร์ (ซอง)": ord_pack,
-                "เผื่อ (กล่อง)": buf_box, "เผื่อ (ซอง)": buf_pack,
+                "เผื่อ (กล่อง)": 0, "เผื่อ (ซอง)": 0,
                 "รวม (กล่อง)": ord_box + buf_box, "รวม (ซอง)": ord_pack + buf_pack,
                 "จำนวนออเดอร์": d["order_count"],
             })
