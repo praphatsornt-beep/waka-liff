@@ -2626,22 +2626,40 @@ function handleReceiveShipment(data) {
       if (!res.ok) throw new Error("Supabase stock_branch write failed (" + r.name + "/" + r.branch + "): " + res.text);
     });
 
-    // แจ้ง LINE ลูกค้าทุกคนที่มีออเดอร์ยืนยัน + สาขานี้ + ยังไม่ส่ง
-    // fulfillment=not.in.(...) ทำใน PostgREST ไม่ได้เพราะ NULL (ออเดอร์ใหม่ยัง
-    // ไม่เคยตั้ง fulfillment) จะหลุด filter ไปด้วย — กรองใน JS แทน
+    // แจ้ง LINE เฉพาะออเดอร์ที่ "ของครบจริง" หลังรับล็อตนี้แล้วเท่านั้น — เดิมโค้ด
+    // ตรงนี้ mark ออเดอร์ที่ยังไม่ส่งของสาขานี้ "ทุกใบ" เป็นพร้อมรับ โดยไม่เช็ค
+    // เลยว่าของที่เพิ่งรับมาตรงกับสินค้าที่ออเดอร์นั้นสั่งหรือพอจำนวนมั้ย — ทำให้
+    // ลูกค้าที่มี 2 ออเดอร์ค้างที่สาขาเดียวกันโดนแจ้ง "พร้อมรับ" พร้อมกันทั้งคู่
+    // (เด้งไลน์ 2 ครั้ง) ทั้งที่จริงมีของมาแค่ชิ้นเดียว หรือแม้แต่ออเดอร์สินค้าคนละ
+    // ตัวกับที่เพิ่งรับก็โดน mark ผิดไปด้วย (บั๊กเดียวกับที่เจอกับ BT11 ที่เมืองทอง)
     //
-    // This can match an unbounded number of orders (every unshipped
-    // confirmed order for the branch) — LINE pushes are deferred until
-    // after the lock releases below, so this loop's latency (which used
-    // to be the single worst-case source of lock-hold time in the whole
-    // file) no longer blocks every other concurrent request.
+    // ตอนนี้เช็คทีละออเดอร์ว่าสต็อกสาขา (หลังบวกล็อตนี้แล้ว) พอส่งมอบ "ครบทุกชิ้น"
+    // ในออเดอร์นั้นมั้ย ถ้าพอ ค่อย mark พร้อมรับ+แจ้งเตือน แล้ว "จอง" สต็อกส่วนนั้นไว้
+    // ในหน่วยความจำก่อนเช็คออเดอร์ถัดไป กันไม่ให้ 2 ออเดอร์แย่งของชิ้นเดียวกันแล้ว
+    // ถูกนับว่าพร้อมทั้งคู่ทั้งที่ของมีไม่พอ (เรียงตามเวลาสั่งก่อน-หลังเพื่อความยุติธรรม)
+    // ออเดอร์ที่สินค้าไม่ครบยังคงสถานะเดิมไว้ก่อน ไม่ได้แจ้งอะไรผิดๆ ออกไป
     var excludedFf = ["พร้อมรับ", "บางส่วน", "รับบางส่วนแล้ว", "สาขายืนยัน", "รับแล้ว"];
-    var oMatches = supabaseSelect_("orders", "select=*&branch=eq." + encodeURIComponent(branch) + "&slip_status=eq.ยืนยัน");
+    var stockLookup = {};
+    bsRows.forEach(function(r) {
+      stockLookup[r.name] = { qty_box: Number(r.qty_box) || 0, qty_pack: Number(r.qty_pack) || 0 };
+    });
+    var oMatches = supabaseSelect_("orders", "select=*&branch=eq." + encodeURIComponent(branch) + "&slip_status=eq.ยืนยัน&order=timestamp.asc");
     var pendingNotifications = [];
     for (var j = 0; j < oMatches.length; j++) {
       var ord = oMatches[j];
       var oFf = ord.fulfillment || "";
       if (excludedFf.indexOf(oFf) >= 0) continue;
+      var ordItems = Array.isArray(ord.items_json) ? ord.items_json : [];
+      var covered = ordItems.length > 0 && ordItems.every(function(it) {
+        var s = stockLookup[it.name];
+        var field = it.type === "box" ? "qty_box" : "qty_pack";
+        return s && s[field] >= (it.qty || 1);
+      });
+      if (!covered) continue;
+      ordItems.forEach(function(it) {
+        var field = it.type === "box" ? "qty_box" : "qty_pack";
+        stockLookup[it.name][field] -= (it.qty || 1);
+      });
       ord.fulfillment = "พร้อมรับ";
       ord.fulfilled_at = now;
       var ordRes = pushToSupabase_("orders", ord);

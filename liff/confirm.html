@@ -124,7 +124,7 @@ if (!orderId) {
 
 async function loadOrder() {
   try {
-    const res = await fetch(GAS_URL + '&action=api&do=order_status&order=' + encodeURIComponent(orderId));
+    const res = await fetch(GAS_URL + '?action=api&do=order_status&order=' + encodeURIComponent(orderId));
     const data = await res.json();
     if (data.error) {
       document.getElementById('main').innerHTML = '<div class="error-msg">' + escHtml(data.error) + '</div>';
