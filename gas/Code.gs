@@ -648,6 +648,7 @@ function doPost(e) {
       customer_confirmed_at: null,
       notified_at: null,
     };
+    var instantReady = slipStatus === "ยืนยัน" && _tryInstantReady_(newOrder);
     writeSupabaseOrder_(newOrder);
     _clearDashCache();
 
@@ -729,6 +730,10 @@ function doPost(e) {
         }
       }
       if (data.lineUserId) notifyCustomer(data.lineUserId, { orderId: orderId, items: data.items, displayName: data.displayName, branch: data.branch, address: data.address, total: data.total, slipStatus: slipStatus });
+      if (instantReady && data.lineUserId) {
+        var readyTrackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + orderId;
+        _linePush(data.lineUserId, "สินค้าพร้อมรับที่สาขา" + data.branch + " แล้ว!\n\nออเดอร์: #" + orderId + "\n\nดูสถานะ:\n" + readyTrackUrl);
+      }
     } catch(_) {}
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ success: true, orderId: orderId, slipStatus: slipStatus })));
@@ -886,6 +891,52 @@ function _writeStockBranchRow_(row, lock) {
 
 function _clearDashCache() {
   try { CacheService.getScriptCache().remove("dashboard_v1"); } catch(_) {}
+}
+
+// ── ถ้าสต็อกสาขามีของครบพอส่งมอบอยู่แล้ว ตอนสลิปกลายเป็น "ยืนยัน" ก็ตั้งพร้อมรับ
+// ทันที ไม่ต้องรอให้มีล็อตส่งของมาใหม่ค่อยเช็ค (เดิมเช็คแค่ตอน handleReceiveShipment) ──
+// เรียกจาก 2 จุดที่สลิปกลายเป็น "ยืนยัน": ตอนสั่งซื้อ (auto-verify) และตอน admin
+// กดยืนยันสลิปทีหลัง (handleConfirmSlip). แก้ไข `order` ในหน่วยความจำแล้วคืน true
+// ถ้าตั้งพร้อมรับสำเร็จ — caller เป็นคนเขียนลง Supabase + ส่ง LINE แจ้งเอง
+//
+// หักสต็อกที่ "จองไว้แล้ว" ให้ออเดอร์อื่นที่พร้อมรับ/รับบางส่วนที่สาขานี้ (ยืนยันสลิป
+// แล้วแต่ยังไม่ส่งมอบจริง) ออกจากสต็อกที่มีก่อนเช็ค กันออเดอร์ใหม่แย่งของชิ้นเดียวกัน
+// ไปนับซ้ำว่า "พอ" ทั้งที่จริงมีของให้แค่ใบเดียว
+function _tryInstantReady_(order) {
+  var branch = order.branch || "";
+  if (!branch || branch === "จัดส่ง") return false;
+  var items = Array.isArray(order.items_json) ? order.items_json : [];
+  if (items.length === 0) return false;
+
+  var bsRows = _fetchStockBranchRows_(branch);
+  var stockLookup = {};
+  bsRows.forEach(function(r) {
+    stockLookup[r.name] = { qty_box: Number(r.qty_box) || 0, qty_pack: Number(r.qty_pack) || 0 };
+  });
+
+  var committedFf = ["พร้อมรับ", "บางส่วน", "รับบางส่วนแล้ว", "สาขายืนยัน"];
+  var others = supabaseSelect_("orders", "select=order_id,items_json,fulfillment&branch=eq." + encodeURIComponent(branch) + "&slip_status=eq.ยืนยัน");
+  others.forEach(function(o) {
+    if (committedFf.indexOf(o.fulfillment || "") < 0) return;
+    var oItems = Array.isArray(o.items_json) ? o.items_json : [];
+    oItems.forEach(function(it) {
+      var s = stockLookup[it.name];
+      if (!s) return;
+      var field = it.type === "box" ? "qty_box" : "qty_pack";
+      s[field] -= (it.qty || 1);
+    });
+  });
+
+  var covered = items.every(function(it) {
+    var s = stockLookup[it.name];
+    var field = it.type === "box" ? "qty_box" : "qty_pack";
+    return s && s[field] >= (it.qty || 1);
+  });
+  if (!covered) return false;
+
+  order.fulfillment = "พร้อมรับ";
+  order.fulfilled_at = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
+  return true;
 }
 
 function notifyCustomer(userId, order) {
@@ -3005,6 +3056,7 @@ function handleConfirmSlip(data) {
     var branch = order.branch || "";
     var total = order.total || 0;
     var items = Array.isArray(order.items_json) ? order.items_json : [];
+    var instantReady = _tryInstantReady_(order);
 
     if (uid) {
       var message;
@@ -3016,9 +3068,13 @@ function handleConfirmSlip(data) {
           return "  - " + it.name + " (" + unit + ") x" + it.qty;
         }).join("\n");
         var isDelivery = branch === "จัดส่ง";
-        message = "ยืนยันการชำระเงินแล้ว ✅\n\nออเดอร์: #" + orderId + "\n\n" + itemsText + "\n\nยอดรวม: " + total + " บาท\n" + (isDelivery ? "จัดส่งพัสดุ" : "รับที่สาขา: " + branch) + "\n\nทีมงานจะแจ้งเมื่อสินค้าพร้อมรับครับ";
+        message = "ยืนยันการชำระเงินแล้ว ✅\n\nออเดอร์: #" + orderId + "\n\n" + itemsText + "\n\nยอดรวม: " + total + " บาท\n" + (isDelivery ? "จัดส่งพัสดุ" : "รับที่สาขา: " + branch) + "\n\n" + (instantReady ? "สินค้าพร้อมรับที่สาขาแล้ว ไปรับได้เลยครับ 🎉" : "ทีมงานจะแจ้งเมื่อสินค้าพร้อมรับครับ");
       }
       _linePush(uid, message);
+      if (instantReady && data.custom_message) {
+        var readyTrackUrl2 = "https://waka-liff.vercel.app/confirm.html?order=" + orderId;
+        _linePush(uid, "สินค้าพร้อมรับที่สาขา" + branch + " แล้ว!\n\nออเดอร์: #" + orderId + "\n\nดูสถานะ:\n" + readyTrackUrl2);
+      }
     }
 
     writeSupabaseOrder_(order, lock);
@@ -3147,6 +3203,7 @@ function handleAddStock(data) {
   lock.waitLock(10000);
   try {
     var staffName = String(data.staff_name || "").trim();
+    var reason = String(data.reason || "").trim();
     var row = getSupabaseRow_("catalog", "name", data.name);
     if (!row) {
       lock.releaseLock();
@@ -3158,7 +3215,9 @@ function handleAddStock(data) {
     if (data.limit_pack !== undefined && data.limit_pack !== null) row.limit_pack = Number(data.limit_pack);
     CacheService.getScriptCache().remove("catalog_config");
     writeSupabaseRow_("catalog", row, SUPABASE_CATALOG_HEADER, "name", lock);
-    var addStockDetail = (data.add_box ? "+" + data.add_box + " กล่อง " : "") + (data.add_pack ? "+" + data.add_pack + " ซอง" : "");
+    var addStockDetail = (data.add_box ? (Number(data.add_box) > 0 ? "+" : "") + data.add_box + " กล่อง " : "") +
+      (data.add_pack ? (Number(data.add_pack) > 0 ? "+" : "") + data.add_pack + " ซอง" : "");
+    if (reason) addStockDetail = (addStockDetail || "").trim() + " — " + reason;
     _logStaffAction_(staffName, null, "add_stock", data.name, addStockDetail || null);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
