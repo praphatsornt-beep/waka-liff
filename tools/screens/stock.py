@@ -198,6 +198,36 @@ tab_central, tab_branch, tab_history = st.tabs(
     ["คลังกลาง", "สต็อกสาขา", "ประวัติการโอน"]
 )
 
+@st.dialog("➕ เพิ่ม/ลด สต็อกคลังกลาง")
+def _adjust_central_stock_dialog():
+    names = catalog["name"].tolist() if not catalog.empty else []
+    with st.form("add_stock_form"):
+        sel_name = st.selectbox("สินค้า", names)
+        st.caption("ใส่ค่าติดลบเพื่อลดสต็อก เช่น กดเพิ่มสต็อกผิดจำนวน หรือเบิกไปขายออนไลน์")
+        c1, c2 = st.columns(2)
+        add_box = c1.number_input("กล่อง (+/-)", value=0, step=1)
+        add_pack = c2.number_input("ซอง (+/-)", value=0, step=1)
+        reason = st.selectbox(
+            "เหตุผล (กรณีเบิกออก)",
+            ["", "ขายออนไลน์", "ของชำรุด", "ตัวอย่าง/โชว์", "แก้ไขยอดผิด", "อื่นๆ"],
+        )
+        submitted = st.form_submit_button("บันทึก")
+        if submitted:
+            if add_box == 0 and add_pack == 0:
+                st.warning("ใส่จำนวนที่จะปรับก่อน")
+            else:
+                try:
+                    payload = {"_action": "addStock", "name": sel_name, "add_box": add_box, "add_pack": add_pack}
+                    if reason:
+                        payload["reason"] = reason
+                    gas_post(payload)
+                    _flash("ปรับสต็อกแล้ว")
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"บันทึกไม่ได้: {e}")
+
+
 @st.dialog("🚚 สร้างล็อตส่งสาขา", width="large")
 def _create_shipment_dialog():
     ship_branch = st.selectbox("สาขาปลายทาง", BRANCHES, key="ship_branch_sel")
@@ -310,33 +340,8 @@ def _create_shipment_dialog():
 with tab_central:
     ac1, ac3 = st.columns(2)
     with ac1:
-        with st.popover("➕ เพิ่ม/ลด สต็อกคลังกลาง", use_container_width=True):
-            names = catalog["name"].tolist() if not catalog.empty else []
-            with st.form("add_stock_form"):
-                sel_name = st.selectbox("สินค้า", names)
-                st.caption("ใส่ค่าติดลบเพื่อลดสต็อก เช่น กดเพิ่มสต็อกผิดจำนวน หรือเบิกไปขายออนไลน์")
-                c1, c2 = st.columns(2)
-                add_box = c1.number_input("กล่อง (+/-)", value=0, step=1)
-                add_pack = c2.number_input("ซอง (+/-)", value=0, step=1)
-                reason = st.selectbox(
-                    "เหตุผล (กรณีเบิกออก)",
-                    ["", "ขายออนไลน์", "ของชำรุด", "ตัวอย่าง/โชว์", "แก้ไขยอดผิด", "อื่นๆ"],
-                )
-                submitted = st.form_submit_button("บันทึก")
-                if submitted:
-                    if add_box == 0 and add_pack == 0:
-                        st.warning("ใส่จำนวนที่จะปรับก่อน")
-                    else:
-                        try:
-                            payload = {"_action": "addStock", "name": sel_name, "add_box": add_box, "add_pack": add_pack}
-                            if reason:
-                                payload["reason"] = reason
-                            gas_post(payload)
-                            _flash("ปรับสต็อกแล้ว")
-                            st.cache_data.clear()
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"บันทึกไม่ได้: {e}")
+        if st.button("➕ เพิ่ม/ลด สต็อกคลังกลาง", use_container_width=True):
+            _adjust_central_stock_dialog()
 
     with ac3:
         if st.button("🚚 สร้างล็อตส่งสาขา", use_container_width=True):

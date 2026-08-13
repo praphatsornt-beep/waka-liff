@@ -357,29 +357,19 @@ with k4:
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
 # ── Filter bar (shared by every tab below) ───────────────────────────────────
-FILTER_KEYS = ["ord_search", "ord_branch", "ord_status", "ord_products", "ord_date_from", "ord_date_to"]
+FILTER_KEYS = ["ord_search", "ord_branch", "ord_status", "ord_products"]
 
 with st.container(border=True):
-    f1, f2, f3 = st.columns([2, 1.3, 1.3])
+    f1, f2, f3, f4, f5 = st.columns([2.2, 1, 1.3, 1.8, 1.1])
     with f1:
         search = st.text_input("ค้นหา", placeholder="ค้นหาชื่อ / เบอร์โทร / เลขออเดอร์ / สินค้า", label_visibility="collapsed", key="ord_search")
     with f2:
         branch_sel = st.selectbox("สาขา", ["ทุกสาขา"] + BRANCHES, label_visibility="collapsed", key="ord_branch")
     with f3:
         status_sel = st.selectbox("สถานะสลิป", ["ทุกสถานะสลิป"] + ALL_STATUS, label_visibility="collapsed", key="ord_status")
-
-    # Full-width row, not a narrow column — product names are long enough
-    # that a cramped column truncates them in the dropdown list itself.
-    product_filter = st.multiselect("สินค้า", all_products, default=[], placeholder="ทุกสินค้า", label_visibility="collapsed", key="ord_products")
-
-    f5, f6, f7, f8 = st.columns([1.3, 0.3, 1.3, 1.3])
+    with f4:
+        product_filter = st.multiselect("สินค้า", all_products, default=[], placeholder="ทุกสินค้า", label_visibility="collapsed", key="ord_products")
     with f5:
-        date_from = st.date_input("จากวันที่", value=date.today() - timedelta(days=7), label_visibility="collapsed", key="ord_date_from")
-    with f6:
-        st.markdown(f"<div style='text-align:center;padding-top:8px;color:{TEXT3};font-size:12px;white-space:nowrap'>ถึง</div>", unsafe_allow_html=True)
-    with f7:
-        date_to = st.date_input("ถึงวันที่", value=date.today(), label_visibility="collapsed", key="ord_date_to")
-    with f8:
         if st.button("ล้างตัวกรอง", use_container_width=True):
             for k in FILTER_KEYS:
                 st.session_state.pop(k, None)
@@ -387,7 +377,6 @@ with st.container(border=True):
 
 # ── Filter ────────────────────────────────────────────────────────────────────
 filtered = df.copy()
-filtered = filtered[(filtered["date"] >= date_from) & (filtered["date"] <= date_to)]
 if branch_sel != "ทุกสาขา":
     filtered = filtered[filtered["branch"] == branch_sel]
 if status_sel != "ทุกสถานะสลิป":
