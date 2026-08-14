@@ -107,6 +107,34 @@ with tab_manage:
 
             st.caption(f"รหัสสินค้า: {edit_row.get('id') or '—'}")
 
+            cur_image_url = str(edit_row.get("image_url") or "")
+            if cur_image_url:
+                st.image(cur_image_url, width=200)
+            else:
+                st.caption("(ยังไม่มีรูปสินค้า)")
+
+            edit_img_file = st.file_uploader(
+                "เปลี่ยนรูปสินค้า", type=["jpg", "jpeg", "png", "webp"], key=f"edit_product_img_{edit_sel}",
+            )
+            if edit_img_file is not None:
+                st.image(edit_img_file, width=200)
+                if st.button("📤 อัปโหลดรูปนี้", key=f"upload_edit_product_img_btn_{edit_sel}"):
+                    try:
+                        b64 = base64.b64encode(edit_img_file.getvalue()).decode("ascii")
+                        res = gas_post({
+                            "_action": "uploadProductImage",
+                            "base64": b64,
+                            "mimeType": edit_img_file.type or "image/jpeg",
+                            "filename": edit_img_file.name,
+                        })
+                        st.session_state[f"edit_product_image_url_{edit_sel}"] = res.get("url", "")
+                        st.success("อัปโหลดรูปแล้ว — ลิงก์เติมในช่องด้านล่างให้แล้ว กด \"บันทึกการแก้ไข\" เพื่อใช้จริง")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"อัปโหลดรูปไม่ได้: {e}")
+
+            new_image_url_override = st.session_state.get(f"edit_product_image_url_{edit_sel}", "")
+
             with st.form(f"edit_product_form_{edit_sel}"):
                 e_name = st.text_input("ชื่อสินค้า", value=edit_sel)
                 e1, e2 = st.columns(2)
@@ -133,10 +161,10 @@ with tab_manage:
                 e_price_box = e5.number_input("ราคาขาย/กล่อง", min_value=0.0, value=_num(edit_row.get("price_box")), step=1.0)
                 e_price_pack = e6.number_input("ราคาขาย/ซอง", min_value=0.0, value=_num(edit_row.get("price_pack")), step=1.0)
                 e7, e8 = st.columns(2)
-                e_limit_box = e7.number_input("ขั้นต่ำแจ้งเตือน (กล่อง)", min_value=0.0, value=_num(edit_row.get("limit_box")), step=1.0)
-                e_limit_pack = e8.number_input("ขั้นต่ำแจ้งเตือน (ซอง)", min_value=0.0, value=_num(edit_row.get("limit_pack")), step=1.0)
+                e_limit_box = e7.number_input("จำนวนที่ขายออนไลน์ได้ (กล่อง)", min_value=0.0, value=_num(edit_row.get("limit_box")), step=1.0)
+                e_limit_pack = e8.number_input("จำนวนที่ขายออนไลน์ได้ (ซอง)", min_value=0.0, value=_num(edit_row.get("limit_pack")), step=1.0)
                 e_barcode = st.text_input("บาร์โค้ด", value=str(edit_row.get("barcode") or ""))
-                e_image_url = st.text_input("ลิงก์รูปภาพ", value=str(edit_row.get("image_url") or ""))
+                e_image_url = st.text_input("ลิงก์รูปภาพ", value=new_image_url_override or cur_image_url)
                 e_notice = st.text_area("ข้อความแจ้งเตือนในสินค้า (notice)", value=str(edit_row.get("notice") or ""))
                 submitted_e = st.form_submit_button("บันทึกการแก้ไข")
                 if submitted_e:
@@ -156,11 +184,28 @@ with tab_manage:
                         if e_name.strip() and e_name.strip() != edit_sel:
                             payload["new_name"] = e_name.strip()
                         gas_post(payload)
+                        st.session_state.pop(f"edit_product_image_url_{edit_sel}", None)
                         _flash(f"แก้ไข \"{edit_sel}\" แล้ว")
                         st.cache_data.clear()
                         st.rerun()
                     except Exception as e:
                         st.error(f"บันทึกไม่ได้: {e}")
+
+            with st.expander("🗑️ ลบสินค้า"):
+                st.caption(
+                    "ลบถาวร ลบไม่ได้ถ้ายังมีสต็อกเหลือ (คลังกลางหรือสาขาใดก็ตาม) — "
+                    "เคลียร์สต็อกให้เป็น 0 ก่อน หรือถ้าแค่ต้องการหยุดขาย ให้ไปติ๊กออก \"เปิดขาย\" แทน"
+                )
+                confirm_del = st.checkbox(f'ยืนยันลบ "{edit_sel}" ถาวร', key=f"confirm_del_product_{edit_sel}")
+                if st.button("🗑️ ลบสินค้านี้ถาวร", key=f"del_product_btn_{edit_sel}", disabled=not confirm_del):
+                    try:
+                        gas_post({"_action": "deleteProduct", "name": edit_sel})
+                        st.session_state.pop(f"edit_product_image_url_{edit_sel}", None)
+                        _flash(f"ลบ \"{edit_sel}\" แล้ว")
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"ลบไม่ได้: {e}")
 
     with sub_add:
         st.markdown("**รูปสินค้า**")
@@ -203,8 +248,8 @@ with tab_manage:
             new_initial_box = p7.number_input("สต็อกเริ่มต้น (กล่อง)", min_value=0, value=0, step=1)
             new_initial_pack = p8.number_input("สต็อกเริ่มต้น (ซอง)", min_value=0, value=0, step=1)
             p9, p10 = st.columns(2)
-            new_limit_box = p9.number_input("ขั้นต่ำแจ้งเตือน (กล่อง)", min_value=0, value=0, step=1)
-            new_limit_pack = p10.number_input("ขั้นต่ำแจ้งเตือน (ซอง)", min_value=0, value=0, step=1)
+            new_limit_box = p9.number_input("จำนวนที่ขายออนไลน์ได้ (กล่อง)", min_value=0, value=0, step=1)
+            new_limit_pack = p10.number_input("จำนวนที่ขายออนไลน์ได้ (ซอง)", min_value=0, value=0, step=1)
             new_barcode = st.text_input("บาร์โค้ด (ถ้ามี)")
             new_image_url = st.text_input("ลิงก์รูปภาพ", value=uploaded_url, help="อัปโหลดรูปด้านบนแล้วลิงก์จะเติมให้อัตโนมัติ หรือวางลิงก์เองก็ได้")
             submitted_p = st.form_submit_button("เพิ่มสินค้า")

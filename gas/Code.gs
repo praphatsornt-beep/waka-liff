@@ -480,6 +480,10 @@ function doPost(e) {
       return handleUpdateProduct(data);
     }
 
+    if (data._action === "deleteProduct") {
+      return handleDeleteProduct(data);
+    }
+
     if (data._action === "withdrawStock") {
       return handleWithdrawStock(data);
     }
@@ -3376,6 +3380,46 @@ function handleUpdateProduct(data) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+// ── ลบสินค้าออกจากแคตตาล็อกถาวร ─────────────────────────────────────────────
+// data: { name, staff_name }
+// บล็อกถ้ายังมีสต็อกเหลือ (คลังกลางหรือสาขาใดก็ตาม) กันสต็อกที่ยังมีมูลค่าจริง
+// หายไปเงียบๆ — ต้องเคลียร์ยอดให้เป็น 0 ก่อนถึงจะลบได้
+function handleDeleteProduct(data) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var name = String(data.name || "").trim();
+    var row = getSupabaseRow_("catalog", "name", name);
+    if (!row) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบสินค้า: " + name }))); }
+
+    var centralQty = (Number(row.qty_box) || 0) + (Number(row.qty_pack) || 0);
+    if (centralQty > 0) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ยังมีสต็อกคลังกลางเหลือ (" + centralQty + ") ต้องเคลียร์ให้เป็น 0 ก่อนลบ" })));
+    }
+
+    var branchRows = _fetchStockBranchRows_(null).filter(function (r) { return String(r.name).trim() === name; });
+    var branchQty = branchRows.reduce(function (sum, r) { return sum + (Number(r.qty_box) || 0) + (Number(r.qty_pack) || 0); }, 0);
+    if (branchQty > 0) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ยังมีสต็อกค้างที่สาขา (รวม " + branchQty + ") ต้องเคลียร์ให้เป็น 0 ก่อนลบ" })));
+    }
+
+    var delRes = deleteSupabase_("catalog", "name=eq." + encodeURIComponent(name));
+    if (!delRes.ok) { lock.releaseLock(); throw new Error("ลบสินค้าไม่สำเร็จ: " + delRes.text); }
+
+    // แถว stock_branch ที่เหลือ (ยอด 0 ทุกสาขาอยู่แล้ว) ไม่มีประโยชน์ต่อ — ลบทิ้งด้วยกัน
+    if (branchRows.length) deleteSupabase_("stock_branch", "name=eq." + encodeURIComponent(name));
+
+    CacheService.getScriptCache().remove("catalog_config");
+    _logStaffAction_(String(data.staff_name || "").trim(), null, "delete_product", name, null);
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+  } catch (err) {
+    try { lock.releaseLock(); } catch (_) {}
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
   }
 }

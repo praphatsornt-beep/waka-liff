@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""Shared HTTP client for the Rocket8 Express shipping API.
-
-Only wraps endpoints whose request/response schema has been confirmed
-against the Rocket8 Postman docs. `bulk_create` (creates a shipment/tracking
-number) is intentionally NOT implemented yet — its schema is still missing
-receiver name/phone/address fields and a confirmed parcel-weight unit; see
-TODO.md / the in-progress plan before adding it.
-"""
+"""Shared HTTP client for the Rocket8 Express shipping API."""
 
 import os
 
@@ -20,17 +13,30 @@ class Rocket8Error(Exception):
     pass
 
 
+def _env(key: str) -> str:
+    """.env locally; Streamlit Cloud never deploys .env (gitignored), so fall
+    back to st.secrets there — same pattern get_supabase() uses in the screens."""
+    val = os.environ.get(key, "")
+    if val:
+        return val
+    try:
+        import streamlit as st
+        return st.secrets.get(key, "")
+    except Exception:
+        return ""
+
+
 def _base_url() -> str:
-    base = os.environ.get("ROCKET8_API_BASE", "")
+    base = _env("ROCKET8_API_BASE")
     if not base:
-        raise Rocket8Error("ROCKET8_API_BASE is not set in .env")
+        raise Rocket8Error("ROCKET8_API_BASE is not set in .env or st.secrets")
     return base.rstrip("/")
 
 
 def _headers() -> dict:
-    token = os.environ.get("ROCKET8_API_TOKEN", "")
+    token = _env("ROCKET8_API_TOKEN")
     if not token:
-        raise Rocket8Error("ROCKET8_API_TOKEN is not set in .env")
+        raise Rocket8Error("ROCKET8_API_TOKEN is not set in .env or st.secrets")
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 

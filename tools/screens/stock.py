@@ -109,7 +109,7 @@ def _safe_int(v, default: int = 0) -> int:
     """int(pd.to_numeric(v, errors='coerce') or 0) crashes on a genuine NaN —
     NaN is truthy in Python, so `or 0` never kicks in and int(nan) raises
     ValueError. Hit this via a data_editor NumberColumn cell cleared to blank
-    (e.g. ขั้นต่ำ (กล่อง)/(ซอง), which are nullable and user-editable)."""
+    (e.g. ขายออนไลน์ได้ (กล่อง)/(ซอง), which are nullable and user-editable)."""
     n = pd.to_numeric(v, errors="coerce")
     return int(n) if pd.notna(n) else default
 
@@ -386,9 +386,9 @@ with tab_central:
         show = show.sort_values("active", ascending=False, kind="stable")
         show = show.rename(columns={
             "id": "รหัสสินค้า", "name": "สินค้า", "slug": "Slug", "category": "หมวดหมู่", "qty_box": "กล่อง", "qty_pack": "ซอง",
-            "limit_box": "ขั้นต่ำ (กล่อง)", "limit_pack": "ขั้นต่ำ (ซอง)",
+            "limit_box": "ขายออนไลน์ได้ (กล่อง)", "limit_pack": "ขายออนไลน์ได้ (ซอง)",
         })
-        show = show[["สถานะ", "รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "กล่อง", "ซอง", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "แจ้งเตือน"]]
+        show = show[["สถานะ", "รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "กล่อง", "ซอง", "ขายออนไลน์ได้ (กล่อง)", "ขายออนไลน์ได้ (ซอง)", "แจ้งเตือน"]]
 
         # data_editor เก็บ edit ไว้ตาม "ตำแหน่งแถว" ไม่ใช่ชื่อสินค้า — ถ้า show ที่
         # build ใหม่จาก catalog สดทุก rerun เปลี่ยนลำดับแถวระหว่างที่ยังแก้ไม่เสร็จ
@@ -407,8 +407,8 @@ with tab_central:
         cap_col, refresh_col = st.columns([5, 1])
         with cap_col:
             st.caption(
-                "แก้ไข สถานะ / กล่อง / ซอง / ขั้นต่ำ ในตารางได้เลย แล้วกดบันทึก — เลขกล่อง/ซองที่แก้เป็นยอดสต็อกใหม่ทั้งหมด "
-                "ไม่ใช่จำนวนที่เพิ่ม, ขั้นต่ำ = จุดแจ้งเตือนสต็อกใกล้หมด (0 = ไม่แจ้งเตือน)"
+                "แก้ไข สถานะ / กล่อง / ซอง / ขายออนไลน์ได้ ในตารางได้เลย แล้วกดบันทึก — เลขกล่อง/ซองที่แก้เป็นยอดสต็อกใหม่ทั้งหมด "
+                "ไม่ใช่จำนวนที่เพิ่ม, ขายออนไลน์ได้ = จำนวนที่ลูกค้ายังสั่งออนไลน์ได้ ลดลงทุกครั้งที่มีออเดอร์ (0 = ปิดขายออนไลน์)"
             )
         with refresh_col:
             if st.button("🔄 รีเฟรช", key=f"refresh_catalog_btn_{cat_sel}", use_container_width=True):
@@ -428,8 +428,8 @@ with tab_central:
                 "หมวดหมู่": st.column_config.TextColumn(width="small"),
                 "กล่อง": st.column_config.NumberColumn("กล่อง", min_value=0, step=1, width="small"),
                 "ซอง": st.column_config.NumberColumn("ซอง", min_value=0, step=1, width="small"),
-                "ขั้นต่ำ (กล่อง)": st.column_config.NumberColumn(width="small"),
-                "ขั้นต่ำ (ซอง)": st.column_config.NumberColumn(width="small"),
+                "ขายออนไลน์ได้ (กล่อง)": st.column_config.NumberColumn(width="small"),
+                "ขายออนไลน์ได้ (ซอง)": st.column_config.NumberColumn(width="small"),
                 "แจ้งเตือน": st.column_config.TextColumn(width="small"),
             },
             key=f"catalog_editor_{cat_sel}",
@@ -442,10 +442,10 @@ with tab_central:
                     new_row = edited.loc[idx]
                     prod_name = orig_row["สินค้า"]
 
-                    new_limit_box = _safe_int(new_row["ขั้นต่ำ (กล่อง)"])
-                    new_limit_pack = _safe_int(new_row["ขั้นต่ำ (ซอง)"])
-                    orig_limit_box = _safe_int(orig_row["ขั้นต่ำ (กล่อง)"])
-                    orig_limit_pack = _safe_int(orig_row["ขั้นต่ำ (ซอง)"])
+                    new_limit_box = _safe_int(new_row["ขายออนไลน์ได้ (กล่อง)"])
+                    new_limit_pack = _safe_int(new_row["ขายออนไลน์ได้ (ซอง)"])
+                    orig_limit_box = _safe_int(orig_row["ขายออนไลน์ได้ (กล่อง)"])
+                    orig_limit_pack = _safe_int(orig_row["ขายออนไลน์ได้ (ซอง)"])
                     limit_changed = new_limit_box != orig_limit_box or new_limit_pack != orig_limit_pack
 
                     if new_row["สถานะ"] != orig_row["สถานะ"] or limit_changed:
