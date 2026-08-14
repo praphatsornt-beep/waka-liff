@@ -932,7 +932,13 @@ with tab_cards:
                                         partner_code = (result.get("partner") or {}).get("partner_code") or r8_partner
                                         partner_name = (result.get("partner") or {}).get("partner_name") or r8_partner
                                         new_note = f"{row.get('notes', '')}\nRocket8 AWB: {awb} ({partner_name})".strip()
-                                        get_supabase().table("orders").update({"notes": new_note}).eq("order_id", order_id).execute()
+                                        now_str = datetime.now(TH_TZ).strftime("%Y-%m-%d %H:%M")
+                                        get_supabase().table("orders").update({
+                                            "notes": new_note,
+                                            "fulfillment": "จัดส่งแล้ว",
+                                            "staff_confirmed_at": now_str,
+                                            "customer_confirmed_at": now_str,
+                                        }).eq("order_id", order_id).execute()
 
                                         track_url = rocket8_client.tracking_url(partner_code, awb)
                                         track_block = f"ติดตามพัสดุ:\n{track_url}" if track_url else "ตรวจสอบสถานะพัสดุได้จากขนส่งโดยตรงด้วยเลขพัสดุด้านบนครับ"
