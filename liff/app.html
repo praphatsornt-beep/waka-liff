@@ -1282,6 +1282,13 @@ async function loadBrReport() {
   if(isAll)gid('repBranchList').innerHTML='<div class="loading">กำลังโหลด...</div>';
   gid('repProductList').innerHTML='<div class="loading">กำลังโหลด...</div>';
   gid('repDateList').innerHTML='<div class="loading">กำลังโหลด...</div>';
+  // เคลียร์ KPI การ์ดด้วย ไม่งั้นถ้า fetch รอบใหม่ (สาขา/เดือนที่เพิ่งเปลี่ยน)
+  // error กลางทาง ตัวเลขเก่าจากสาขา/เดือนก่อนหน้าจะค้างอยู่ ดูเหมือนเป็นของ
+  // สาขาปัจจุบันทั้งที่จริงเป็นข้อมูลเก่าค้างเฉยๆ
+  gid('repKpiRevenue').textContent='-';
+  gid('repKpiCost').textContent='-';
+  gid('repKpiProfit').textContent='-';
+  gid('repKpiProfit').style.color='';
   try{
     const branchParam=isAll?'':('&branch='+encodeURIComponent(branch));
     const r=await fetch(G+'&action=api&do=walkin_product_report'+branchParam+'&month='+encodeURIComponent(month)+'&code='+encodeURIComponent(_authCode()));
