@@ -3317,12 +3317,6 @@ function handleUpdateProduct(data) {
     writeSupabaseRow_("catalog", row, SUPABASE_CATALOG_HEADER, "name", lock);
 
     if (changeLog.length > 0) {
-      var groupStaffEdit = _getConfigValue(null, "group_staff");
-      if (groupStaffEdit) {
-        var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
-        _linePush(groupStaffEdit, "✏️ " + (staffName || "ไม่ระบุชื่อ") + " แก้ไขสินค้า " + row.name + "\n" +
-          changeLog.map(function(c) { return "  - " + c; }).join("\n") + "\n" + now);
-      }
       _logStaffAction_(staffName, null, "update_product", row.name, changeLog.join("; "));
     }
 
