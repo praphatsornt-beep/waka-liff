@@ -390,10 +390,31 @@ with tab_central:
         })
         show = show[["สถานะ", "รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "กล่อง", "ซอง", "ขั้นต่ำ (กล่อง)", "ขั้นต่ำ (ซอง)", "แจ้งเตือน"]]
 
-        st.caption(
-            "แก้ไข สถานะ / กล่อง / ซอง / ขั้นต่ำ ในตารางได้เลย แล้วกดบันทึก — เลขกล่อง/ซองที่แก้เป็นยอดสต็อกใหม่ทั้งหมด "
-            "ไม่ใช่จำนวนที่เพิ่ม, ขั้นต่ำ = จุดแจ้งเตือนสต็อกใกล้หมด (0 = ไม่แจ้งเตือน)"
-        )
+        # data_editor เก็บ edit ไว้ตาม "ตำแหน่งแถว" ไม่ใช่ชื่อสินค้า — ถ้า show ที่
+        # build ใหม่จาก catalog สดทุก rerun เปลี่ยนลำดับแถวระหว่างที่ยังแก้ไม่เสร็จ
+        # (cache หมดอายุ, สินค้าอื่นถูกเปลี่ยน active ทำให้ sort ขยับ ฯลฯ) แถวที่ขยับ
+        # จะรับ edit ของแถวอื่นไปแทน ส่วนแถวที่พิมพ์จริงจะเจอ base ใหม่ที่ตรงกับค่าที่
+        # พิมพ์อยู่แล้วโดยบังเอิญหรือไม่ตรงเลย แล้วถูกมองว่า "ไม่มีอะไรเปลี่ยน" — กด
+        # บันทึกแล้วเงียบๆไม่มีอะไรถูกเขียนจริง (บั๊กเดียวกับที่เจอใน
+        # _create_shipment_dialog ด้านบน, เจอจริงกับ BT11 — พิมพ์ 240 กด บันทึก
+        # ขึ้น "บันทึกแล้ว" แต่ยอดใน Supabase ไม่ขยับเลย) ต้อง freeze base ไว้คงที่
+        # ตลอด "เซสชันแก้ไข" หนึ่งรอบต่อ cat_sel เหมือนที่ทำกับ shipment dialog
+        snap_key = f"_catalog_snapshot_{cat_sel}"
+        if snap_key not in st.session_state:
+            st.session_state[snap_key] = show
+        show = st.session_state[snap_key]
+
+        cap_col, refresh_col = st.columns([5, 1])
+        with cap_col:
+            st.caption(
+                "แก้ไข สถานะ / กล่อง / ซอง / ขั้นต่ำ ในตารางได้เลย แล้วกดบันทึก — เลขกล่อง/ซองที่แก้เป็นยอดสต็อกใหม่ทั้งหมด "
+                "ไม่ใช่จำนวนที่เพิ่ม, ขั้นต่ำ = จุดแจ้งเตือนสต็อกใกล้หมด (0 = ไม่แจ้งเตือน)"
+            )
+        with refresh_col:
+            if st.button("🔄 รีเฟรช", key=f"refresh_catalog_btn_{cat_sel}", use_container_width=True):
+                st.session_state.pop(snap_key, None)
+                st.cache_data.clear()
+                st.rerun()
         edited = st.data_editor(
             show,
             use_container_width=True,
@@ -444,6 +465,7 @@ with tab_central:
                         gas_post({"_action": "addStock", "name": prod_name, "add_box": delta_box, "add_pack": delta_pack})
 
                 _flash("บันทึกแล้ว")
+                st.session_state.pop(snap_key, None)
                 st.cache_data.clear()
                 st.rerun()
             except Exception as e:
