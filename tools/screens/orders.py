@@ -415,7 +415,7 @@ with st.container(border=True):
             selected_set = set(st.session_state.get("ord_products_sel", []))
             if not prod_options:
                 st.caption("ไม่พบสินค้าที่ค้นหา")
-            with st.container(height=280 if len(prod_options) > 6 else None):
+            with st.container(height=280 if len(prod_options) > 6 else "content"):
                 for p in prod_options:
                     checked = st.checkbox(p, value=(p in selected_set), key=f"ord_prod_chk_{p}")
                     if checked:
