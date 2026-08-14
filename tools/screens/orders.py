@@ -387,7 +387,15 @@ with st.container(border=True):
                 "ค้นหาสินค้า", key="ord_products_search", placeholder="พิมพ์ค้นหาชื่อสินค้า...",
                 label_visibility="collapsed",
             )
-            prod_options = [p for p in all_products if prod_search.lower() in p.lower()] if prod_search else all_products
+            # session_state["ord_categories"] อ่านได้ตั้งแต่ตรงนี้แม้ตัว multiselect
+            # หมวดหมู่ (f5) จะ render ทีหลังในโค้ด — Streamlit เก็บค่า widget ไว้ใน
+            # session_state ข้าม rerun อยู่แล้ว ไม่ต้องรอให้ widget ตัวนั้นถูกสร้างก่อน
+            _sel_cats = st.session_state.get("ord_categories", [])
+            prod_options = all_products
+            if _sel_cats:
+                prod_options = [p for p in prod_options if name_to_category.get(p, "") in _sel_cats]
+            if prod_search:
+                prod_options = [p for p in prod_options if prod_search.lower() in p.lower()]
 
             psel1, psel2 = st.columns(2)
             with psel1:
