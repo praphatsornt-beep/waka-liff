@@ -123,8 +123,9 @@ with tab_manage:
             st.caption(f"รหัสสินค้า: {edit_row.get('id') or '—'}")
 
             cur_image_url = str(edit_row.get("image_url") or "")
-            if cur_image_url:
-                st.image(drive_thumbnail_url(cur_image_url), width=200)
+            preview_image_url = st.session_state.get(f"edit_product_image_url_{edit_sel}", "") or cur_image_url
+            if preview_image_url:
+                st.image(drive_thumbnail_url(preview_image_url), width=200)
             else:
                 st.caption("(ยังไม่มีรูปสินค้า)")
 
@@ -143,12 +144,10 @@ with tab_manage:
                             "filename": edit_img_file.name,
                         })
                         st.session_state[f"edit_product_image_url_{edit_sel}"] = res.get("url", "")
-                        st.success("อัปโหลดรูปแล้ว — ลิงก์เติมในช่องด้านล่างให้แล้ว กด \"บันทึกการแก้ไข\" เพื่อใช้จริง")
+                        _flash("อัปโหลดรูปแล้ว — ลิงก์เติมในช่องด้านล่างให้แล้ว กด \"บันทึกการแก้ไข\" เพื่อใช้จริง")
                         st.rerun()
                     except Exception as e:
                         st.error(f"อัปโหลดรูปไม่ได้: {e}")
-
-            new_image_url_override = st.session_state.get(f"edit_product_image_url_{edit_sel}", "")
 
             with st.form(f"edit_product_form_{edit_sel}"):
                 e_name = st.text_input("ชื่อสินค้า", value=edit_sel)
@@ -179,7 +178,7 @@ with tab_manage:
                 e_limit_box = e7.number_input("จำนวนที่ขายออนไลน์ได้ (กล่อง)", min_value=0.0, value=_num(edit_row.get("limit_box")), step=1.0)
                 e_limit_pack = e8.number_input("จำนวนที่ขายออนไลน์ได้ (ซอง)", min_value=0.0, value=_num(edit_row.get("limit_pack")), step=1.0)
                 e_barcode = st.text_input("บาร์โค้ด", value=str(edit_row.get("barcode") or ""))
-                e_image_url = st.text_input("ลิงก์รูปภาพ", value=new_image_url_override or cur_image_url)
+                e_image_url = st.text_input("ลิงก์รูปภาพ", value=preview_image_url)
                 e_notice = st.text_area("ข้อความแจ้งเตือนในสินค้า (notice)", value=str(edit_row.get("notice") or ""))
                 submitted_e = st.form_submit_button("บันทึกการแก้ไข")
                 if submitted_e:
