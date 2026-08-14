@@ -1858,6 +1858,41 @@ function handleApi(params) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ sales: wsList })));
   }
 
+  // ── ยอดขายหน้าร้านแยกตามสินค้า (จำนวน + ต้นทุน เท่านั้น ไม่รวมออเดอร์ออนไลน์) ──
+  // ใช้โดยตาราง "ยอดขายแต่ละสินค้า" ในการ์ด "รายงานยอดขาย" ของเมนูสาขา
+  if (action === "walkin_product_report") {
+    var wprBranch = String(params.branch || "").trim();
+    var wprMonth = String(params.month || "").trim(); // "YYYY-MM"
+    if (!wprBranch) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing branch" })));
+    if (!_branchAuthorized(params.code, wprBranch)) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+
+    var wprCostRows = supabaseSelect_("catalog", "select=name,cost_box,cost_p");
+    var wprCostMap = {};
+    wprCostRows.forEach(function(r) {
+      if (!r.name) return;
+      wprCostMap[String(r.name)] = { cost_box: Number(r.cost_box) || 0, cost_pack: Number(r.cost_p) || 0 };
+    });
+
+    var wprSales = supabaseSelect_("walkin_sales", "select=timestamp,items_json&branch=eq." + encodeURIComponent(wprBranch));
+    var wprByProduct = {};
+    wprSales.forEach(function(s) {
+      var localDate = Utilities.formatDate(new Date(s.timestamp), "Asia/Bangkok", "yyyy-MM-dd");
+      if (wprMonth && localDate.indexOf(wprMonth) !== 0) return;
+      var items = Array.isArray(s.items_json) ? s.items_json : [];
+      items.forEach(function(it) {
+        var qty = it.qty || 1;
+        var c = wprCostMap[it.name] || {};
+        var cost = (it.type === "box" ? (c.cost_box || 0) : (c.cost_pack || 0)) * qty;
+        var key = it.name + "|" + it.type;
+        if (!wprByProduct[key]) wprByProduct[key] = { name: it.name, type: it.type, qty: 0, cost: 0 };
+        wprByProduct[key].qty += qty;
+        wprByProduct[key].cost += cost;
+      });
+    });
+
+    return _cors(ContentService.createTextOutput(JSON.stringify({ by_product: Object.values(wprByProduct) })));
+  }
+
   // ── WAKA GYM API ──
   if (action === "wakagym_status") {
     var uid = params.line_user_id || "";

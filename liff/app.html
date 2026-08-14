@@ -498,7 +498,7 @@
             <div id="repBranchList"><div class="loading">กำลังโหลด...</div></div>
           </div>
           <div class="card">
-            <h3>🎴 ยอดขายแต่ละสินค้า</h3>
+            <h3>🎴 ยอดขายแต่ละสินค้า (หน้าร้าน)</h3>
             <div id="repProductList"><div class="loading">กำลังโหลด...</div></div>
           </div>
           <div class="card">
@@ -1408,20 +1408,7 @@ async function loadBrReport() {
       }
     }
 
-    const products=(d.by_product||[]).slice().sort((a,b)=>b.revenue-a.revenue);
-    if(!products.length){
-      gid('repProductList').innerHTML='<div class="empty">ไม่มีข้อมูลเดือนนี้</div>';
-    }else{
-      let ph='<table><tr><th>สินค้า</th><th class="num">จำนวน</th><th class="num">ยอดขาย</th><th class="num">กำไร</th></tr>';
-      for(const p of products){
-        const profit=p.revenue-p.cost;
-        const unit=p.type==='box'?'กล่อง':'ซอง';
-        ph+='<tr><td>'+esc(p.name)+' <small style="color:var(--label)">('+unit+')</small></td>';
-        ph+='<td class="num">'+p.qty+'</td><td class="num">'+fmtMoney(p.revenue)+'</td>';
-        ph+='<td class="num" style="color:'+(profit>=0?'var(--green)':'var(--red)')+';font-weight:600">'+fmtMoney(profit)+'</td></tr>';
-      }
-      gid('repProductList').innerHTML=ph+'</table>';
-    }
+    await loadBrReportWalkinProducts(isAll?Object.values(BRANCH_CODES):[branch],month);
 
     const dates=Object.entries(d.by_date||{}).sort((a,b)=>b[0].localeCompare(a[0]));
     if(!dates.length){
@@ -1438,6 +1425,42 @@ async function loadBrReport() {
   }catch(e){
     gid('repProductList').innerHTML='<div class="empty">โหลดไม่ได้ ('+esc(e.message)+')</div>';
     gid('repDateList').innerHTML='';
+  }
+}
+
+// ยอดขายแต่ละสินค้าในการ์ดรายงาน มาจาก "ขายหน้าร้าน" (walkin_sales) เท่านั้น —
+// ไม่ใช่ออเดอร์ออนไลน์เหมือนส่วนอื่นของรายงานนี้ — โชว์แค่จำนวน+ต้นทุนตามที่ขอ
+async function loadBrReportWalkinProducts(branches,month) {
+  gid('repProductList').innerHTML='<div class="loading">กำลังโหลด...</div>';
+  try{
+    const results=await Promise.all(branches.map(async br=>{
+      const r=await fetch(G+'&action=api&do=walkin_product_report&branch='+encodeURIComponent(br)+'&month='+encodeURIComponent(month)+'&code='+encodeURIComponent(_authCode()));
+      const d=await r.json();
+      return d.by_product||[];
+    }));
+    const merged={};
+    for(const list of results){
+      for(const p of list){
+        const key=p.name+'|'+p.type;
+        if(!merged[key])merged[key]={name:p.name,type:p.type,qty:0,cost:0};
+        merged[key].qty+=p.qty;
+        merged[key].cost+=p.cost;
+      }
+    }
+    const products=Object.values(merged).sort((a,b)=>b.cost-a.cost);
+    if(!products.length){
+      gid('repProductList').innerHTML='<div class="empty">ไม่มีข้อมูลขายหน้าร้านเดือนนี้</div>';
+      return;
+    }
+    let ph='<table><tr><th>สินค้า</th><th class="num">จำนวน</th><th class="num">ต้นทุน</th></tr>';
+    for(const p of products){
+      const unit=p.type==='box'?'กล่อง':'ซอง';
+      ph+='<tr><td>'+esc(p.name)+' <small style="color:var(--label)">('+unit+')</small></td>';
+      ph+='<td class="num">'+p.qty+'</td><td class="num">'+fmtMoney(p.cost)+'</td></tr>';
+    }
+    gid('repProductList').innerHTML=ph+'</table>';
+  }catch(e){
+    gid('repProductList').innerHTML='<div class="empty">โหลดไม่ได้ ('+esc(e.message)+')</div>';
   }
 }
 
