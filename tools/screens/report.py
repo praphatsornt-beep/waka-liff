@@ -74,6 +74,18 @@ def load_tournament_data():
 
 
 @st.cache_data(ttl=60)
+def load_walkin_df() -> pd.DataFrame:
+    rows = get_supabase().table("walkin_sales").select("*").execute().data
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    df["total"] = pd.to_numeric(df.get("total", 0), errors="coerce").fillna(0)
+    df["timestamp_dt"] = pd.to_datetime(df.get("timestamp", ""), errors="coerce", utc=True)
+    df["date"] = df["timestamp_dt"].dt.tz_convert("Asia/Bangkok").dt.date
+    return df
+
+
+@st.cache_data(ttl=60)
 def load_wakagym_data():
     sb = get_supabase()
     events = sb.table("wakagym_events").select("*").execute().data
@@ -170,7 +182,9 @@ st.download_button(
 
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
-tab_sales, tab_branch, tab_products, tab_compare = st.tabs(["ยอดขาย", "แยกสาขา", "สินค้าขายดี", "ทัวร์นาเมนต์ vs WAKA GYM"])
+tab_sales, tab_branch, tab_reimburse, tab_products, tab_compare = st.tabs(
+    ["ยอดขาย", "แยกสาขา", "สรุปคืนต้นทุน", "สินค้าขายดี", "ทัวร์นาเมนต์ vs WAKA GYM"]
+)
 
 with tab_sales:
     t_events_s, t_regs_s = load_tournament_data()
@@ -244,6 +258,79 @@ with tab_branch:
                         for (name, t), v in agg_b.items()
                     ]).sort_values("ยอดขาย", ascending=False)
                     st.dataframe(prod_df_b.head(10), use_container_width=True, hide_index=True)
+
+with tab_reimburse:
+    # "แยกสาขา" ข้างบนนับเฉพาะออเดอร์ออนไลน์ (orders) — ยอดขายหน้าร้าน
+    # (walkin_sales) ถูกกันออกจากทุกรายงานโดยตั้งใจตอนแยกตารางออกมา (ไม่มี LINE
+    # user/สลิปให้ตรวจ) แต่พอจะสรุปยอดเพื่อคืนต้นทุนให้แต่ละสาขา ต้องรวมทั้งสอง
+    # ช่องทางเข้าด้วยกัน ไม่งั้นยอดขายหน้าร้านทั้งหมดจะหายไปจากยอดที่ใช้เคลียร์บัญชี
+    st.caption("รวมยอดขายออนไลน์ (orders) + ขายหน้าร้าน (walkin) ต่อสาขา ตามช่วงวันที่ที่เลือกด้านบน — ใช้คำนวณยอดคืนต้นทุนให้แต่ละสาขา")
+
+    walkin_df = load_walkin_df()
+    if not walkin_df.empty:
+        walkin_range = walkin_df[(walkin_df["date"] >= date_from) & (walkin_df["date"] <= date_to)]
+        walkin_range = walkin_range.assign(cost=walkin_range["items_json"].apply(lambda ij: order_cost(ij, cost_map)))
+    else:
+        walkin_range = walkin_df
+
+    online_by_branch = (
+        in_range.groupby("branch").agg(
+            ออเดอร์ออนไลน์=("order_id", "count"),
+            ยอดขายออนไลน์=("total", "sum"),
+            ต้นทุนออนไลน์=("cost", "sum"),
+        ) if not in_range.empty else pd.DataFrame(columns=["ออเดอร์ออนไลน์", "ยอดขายออนไลน์", "ต้นทุนออนไลน์"])
+    )
+    walkin_by_branch = (
+        walkin_range.groupby("branch").agg(
+            รายการหน้าร้าน=("sale_id", "count"),
+            ยอดขายหน้าร้าน=("total", "sum"),
+            ต้นทุนหน้าร้าน=("cost", "sum"),
+        ) if not walkin_range.empty else pd.DataFrame(columns=["รายการหน้าร้าน", "ยอดขายหน้าร้าน", "ต้นทุนหน้าร้าน"])
+    )
+
+    reimburse = online_by_branch.join(walkin_by_branch, how="outer").fillna(0)
+    if reimburse.empty:
+        st.caption("ไม่มีข้อมูลยอดขายในช่วงที่เลือก")
+    else:
+        for c in ["ออเดอร์ออนไลน์", "ยอดขายออนไลน์", "ต้นทุนออนไลน์", "รายการหน้าร้าน", "ยอดขายหน้าร้าน", "ต้นทุนหน้าร้าน"]:
+            reimburse[c] = pd.to_numeric(reimburse[c], errors="coerce").fillna(0)
+        reimburse["ยอดขายรวม"] = reimburse["ยอดขายออนไลน์"] + reimburse["ยอดขายหน้าร้าน"]
+        reimburse["ต้นทุนรวม"] = reimburse["ต้นทุนออนไลน์"] + reimburse["ต้นทุนหน้าร้าน"]
+        reimburse["กำไรรวม"] = reimburse["ยอดขายรวม"] - reimburse["ต้นทุนรวม"]
+        reimburse = reimburse.reset_index().rename(columns={"branch": "สาขา"}).sort_values("ยอดขายรวม", ascending=False)
+        # จำนวนรายการ (count) แสดงเป็นจำนวนเต็ม ไม่ใช่ 12.0
+        for c in ["ออเดอร์ออนไลน์", "รายการหน้าร้าน"]:
+            reimburse[c] = reimburse[c].astype(int)
+
+        total_row = pd.DataFrame([{
+            "สาขา": "รวมทุกสาขา",
+            "ออเดอร์ออนไลน์": int(reimburse["ออเดอร์ออนไลน์"].sum()),
+            "ยอดขายออนไลน์": reimburse["ยอดขายออนไลน์"].sum(),
+            "ต้นทุนออนไลน์": reimburse["ต้นทุนออนไลน์"].sum(),
+            "รายการหน้าร้าน": int(reimburse["รายการหน้าร้าน"].sum()),
+            "ยอดขายหน้าร้าน": reimburse["ยอดขายหน้าร้าน"].sum(),
+            "ต้นทุนหน้าร้าน": reimburse["ต้นทุนหน้าร้าน"].sum(),
+            "ยอดขายรวม": reimburse["ยอดขายรวม"].sum(),
+            "ต้นทุนรวม": reimburse["ต้นทุนรวม"].sum(),
+            "กำไรรวม": reimburse["กำไรรวม"].sum(),
+        }])
+
+        rk1, rk2, rk3 = st.columns(3)
+        with rk1:
+            st.markdown(kpi_card("ยอดขายรวมทุกช่องทาง", f"฿{reimburse['ยอดขายรวม'].sum():,.0f}", ACCENT_TEXT), unsafe_allow_html=True)
+        with rk2:
+            st.markdown(kpi_card("ต้นทุนรวมที่ต้องคืน", f"฿{reimburse['ต้นทุนรวม'].sum():,.0f}"), unsafe_allow_html=True)
+        with rk3:
+            st.markdown(kpi_card("กำไรรวม", f"฿{reimburse['กำไรรวม'].sum():,.0f}", SUCCESS_TEXT if reimburse["กำไรรวม"].sum() >= 0 else DANGER_TEXT), unsafe_allow_html=True)
+
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+        display_cols = ["สาขา", "ออเดอร์ออนไลน์", "ยอดขายออนไลน์", "ต้นทุนออนไลน์", "รายการหน้าร้าน", "ยอดขายหน้าร้าน", "ต้นทุนหน้าร้าน", "ยอดขายรวม", "ต้นทุนรวม", "กำไรรวม"]
+        st.dataframe(pd.concat([reimburse[display_cols], total_row[display_cols]], ignore_index=True), use_container_width=True, hide_index=True)
+        st.download_button(
+            "⬇️ ดาวน์โหลดสรุปคืนต้นทุนแยกสาขา (CSV)", df_to_csv_bytes(reimburse[display_cols]),
+            file_name=f"waka_reimburse_by_branch_{date_from}_{date_to}.csv", mime="text/csv",
+            key="dl_reimburse",
+        )
 
 with tab_products:
     if confirmed.empty:
