@@ -924,16 +924,20 @@ with tab_cards:
                                             items=r8_items, partner=r8_partner, ref_number=str(order_id),
                                         )
                                         awb = result.get("partner_awb_no", "")
+                                        partner_code = (result.get("partner") or {}).get("partner_code") or r8_partner
                                         partner_name = (result.get("partner") or {}).get("partner_name") or r8_partner
                                         new_note = f"{row.get('notes', '')}\nRocket8 AWB: {awb} ({partner_name})".strip()
                                         get_supabase().table("orders").update({"notes": new_note}).eq("order_id", order_id).execute()
 
+                                        track_url = rocket8_client.tracking_url(partner_code, awb)
+                                        track_block = f"ติดตามพัสดุ:\n{track_url}" if track_url else "ตรวจสอบสถานะพัสดุได้จากขนส่งโดยตรงด้วยเลขพัสดุด้านบนครับ"
                                         line_msg = (
                                             "📦 คำสั่งซื้อของคุณจัดส่งแล้ว!\n\n"
-                                            f"ออเดอร์: #{order_id}\n"
+                                            f"ออเดอร์: #{order_id}\n\n"
                                             f"ขนส่ง: {partner_name}\n"
                                             f"เลขพัสดุ: {awb}\n\n"
-                                            "ตรวจสอบสถานะพัสดุได้จากขนส่งโดยตรงด้วยเลขพัสดุด้านบนครับ"
+                                            f"{track_block}\n"
+                                            "ขอบคุณที่อุดหนุน WAKA SPACE ครับ 🙏"
                                         )
                                         try:
                                             gas_post({"_action": "notifyCustomer", "order_id": order_id, "custom_message": line_msg})

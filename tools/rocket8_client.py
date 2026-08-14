@@ -129,6 +129,22 @@ SENDER = {
 
 PARTNERS = ["FLASH", "SHOPEE_EXPRESS", "DHL", "THAILAND_POST", "FLASH_BULKY", "FLASH_FRUIT"]
 
+# Public tracking-page URL templates, keyed by partner code — only couriers
+# with a confirmed URL format go here; others fall back to no link (customer
+# is told to check with the courier directly using the AWB).
+TRACKING_URL_TEMPLATES = {
+    "FLASH": "https://www.flashexpress.co.th/fle/tracking?se={awb}",
+    "FLASH_BULKY": "https://www.flashexpress.co.th/fle/tracking?se={awb}",
+    "FLASH_FRUIT": "https://www.flashexpress.co.th/fle/tracking?se={awb}",
+    "SHOPEE_EXPRESS": "https://spx.co.th/track?{awb}",
+}
+
+
+def tracking_url(partner_code: str, awb: str) -> str:
+    """Public tracking-page URL for a courier + AWB, or "" if none is known."""
+    tpl = TRACKING_URL_TEMPLATES.get(partner_code, "")
+    return tpl.format(awb=awb) if tpl else ""
+
 
 def bulk_create(orders: list) -> dict:
     """POST /public/v2/shipment-orders/bulk-create.
