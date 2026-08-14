@@ -484,11 +484,18 @@ with tab_cards:
                     st.cache_data.clear()
                     st.rerun()
             with b3:
-                if st.button(f"🤝 ส่งมอบที่เลือก ({len(sel_handover_ids)})", disabled=not sel_handover_ids):
-                    run_bulk_action(
-                        "ส่งมอบที่เลือก", sel_handover_ids,
-                        lambda oid: gas_post({"_action": "handoverOrder", "order_id": oid}),
-                    )
+                if st.button(f"🤝 ส่งมอบ/จัดส่งที่เลือก ({len(sel_handover_ids)})", disabled=not sel_handover_ids):
+                    # ออเดอร์จัดส่ง (branch == "จัดส่ง") ต้องผ่าน action=update&status=
+                    # handover ไม่ใช่ handoverOrder — ดู comment ที่ปุ่มเดี่ยว "📤 จัดส่งแล้ว"
+                    # ด้านล่างสำหรับเหตุผลเต็ม เลือก action ให้ตรงตามสาขาของแต่ละออเดอร์
+                    sel_branch_map = dict(zip(sel_rows["order_id"], sel_rows["branch"]))
+
+                    def _handover_or_deliver(oid):
+                        if sel_branch_map.get(oid) == "จัดส่ง":
+                            return gas_post({"action": "api", "do": "update", "order": oid, "status": "handover"})
+                        return gas_post({"_action": "handoverOrder", "order_id": oid})
+
+                    run_bulk_action("ส่งมอบ/จัดส่งที่เลือก", sel_handover_ids, _handover_or_deliver)
                     st.session_state.selected_orders = set()
                     st.cache_data.clear()
                     st.rerun()
@@ -606,7 +613,23 @@ with tab_cards:
                             st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
                             fc1, fc2, fc3 = st.columns(3)
                             with fc1:
-                                if handover_idx and st.button(
+                                # ออเดอร์จัดส่ง (is_del) ต้องใช้คนละ action กับรับที่สาขา —
+                                # handoverOrder ตัดสต็อกสาขาและตั้งสถานะ "รับแล้ว" ซึ่งผิดทั้ง
+                                # คู่สำหรับจัดส่ง (ไม่มี stock_branch แถวของ branch="จัดส่ง" ให้
+                                # ตัด และสถานะที่ถูกต้องคือ "จัดส่งแล้ว") — action=api&do=update
+                                # &status=handover คือตัวที่ liff/app.html เคยใช้ (markDelivered)
+                                # ก่อนจะย้ายมาทำใน Streamlit อย่างเดียว
+                                if handover_idx and is_del and st.button(
+                                    "📤 จัดส่งแล้ว", key=f"delivered_{order_id}", use_container_width=True,
+                                ):
+                                    try:
+                                        gas_post({"action": "api", "do": "update", "order": order_id, "status": "handover"})
+                                        st.success("บันทึกจัดส่งแล้ว + แจ้ง LINE ลูกค้าแล้ว")
+                                        st.cache_data.clear()
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"ทำรายการไม่ได้: {e}")
+                                elif handover_idx and not is_del and st.button(
                                     "🤝 ส่งมอบสินค้า", key=f"handover_{order_id}", use_container_width=True,
                                 ):
                                     try:
