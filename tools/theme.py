@@ -50,7 +50,10 @@ h1, h2, h3, h4,
    width (leaves a visibly empty gap on wide monitors, live report: filter
    row + tables cramped while screen space sat unused to the right) — let it
    use the full viewport width instead, same padding on both sides. */
-[data-testid="stMain"] .block-container {{ padding-top: 2.2rem !important; max-width: 100% !important; }}
+[data-testid="stMain"] .block-container {{
+  padding-top: 2.2rem !important; max-width: 100% !important;
+  padding-left: 2rem !important; padding-right: 2rem !important;
+}}
 
 [data-testid="stSidebar"] {{ background: {SIDEBAR_BG}; }}
 [data-testid="stSidebar"][aria-expanded="true"] {{ width: 200px !important; min-width: 200px !important; }}
