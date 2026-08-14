@@ -1265,6 +1265,10 @@ function openBrReport() {
   loadBrReport();
 }
 
+// ทั้งใบนี้ (KPI/รายวัน/แยกสินค้า/แยกสาขา) เป็นยอดขายหน้าร้านล้วนๆ ตามคำขอ —
+// ไม่รวมออเดอร์ออนไลน์เลยแม้จะมารับที่สาขา ยิงคำขอเดียว (do=walkin_product_report)
+// ได้ทุกอย่างในนี้ ต่างจาก action=report เดิมที่นับจาก orders (ยังใช้อยู่ที่
+// liff/report.html กับ Streamlit ที่ต้องการยอดรวมออนไลน์+หน้าร้าน)
 async function loadBrReport() {
   const branch=gid('branchSelect').value;
   const month=gid('repMonth').value;
@@ -1280,7 +1284,7 @@ async function loadBrReport() {
   gid('repDateList').innerHTML='<div class="loading">กำลังโหลด...</div>';
   try{
     const branchParam=isAll?'':('&branch='+encodeURIComponent(branch));
-    const r=await fetch(G+'&action=api&do=report'+branchParam+'&month='+encodeURIComponent(month)+'&code='+encodeURIComponent(_authCode()));
+    const r=await fetch(G+'&action=api&do=walkin_product_report'+branchParam+'&month='+encodeURIComponent(month)+'&code='+encodeURIComponent(_authCode()));
     const d=await r.json();
     if(d.error)throw new Error(d.error);
 
@@ -1295,7 +1299,7 @@ async function loadBrReport() {
       if(!branches.length){
         gid('repBranchList').innerHTML='<div class="empty">ไม่มีข้อมูลเดือนนี้</div>';
       }else{
-        let bh='<table><tr><th>สาขา</th><th class="num">ออเดอร์</th><th class="num">ยอดขาย</th><th class="num">กำไร</th></tr>';
+        let bh='<table><tr><th>สาขา</th><th class="num">รายการขาย</th><th class="num">ยอดขาย</th><th class="num">กำไร</th></tr>';
         for(const [br,bd] of branches){
           const profit=bd.revenue-bd.cost;
           bh+='<tr><td>'+esc(br)+'</td><td class="num">'+bd.orders+'</td><td class="num">'+fmtMoney(bd.revenue)+'</td>';
@@ -1309,7 +1313,7 @@ async function loadBrReport() {
     if(!dates.length){
       gid('repDateList').innerHTML='<div class="empty">ไม่มีข้อมูลเดือนนี้</div>';
     }else{
-      let dh='<table><tr><th>วันที่</th><th class="num">ออเดอร์</th><th class="num">ยอดขาย</th><th class="num">กำไร</th></tr>';
+      let dh='<table><tr><th>วันที่</th><th class="num">รายการขาย</th><th class="num">ยอดขาย</th><th class="num">กำไร</th></tr>';
       for(const [date,dd] of dates){
         const profit=dd.revenue-dd.cost;
         dh+='<tr><td>'+esc(date)+'</td><td class="num">'+dd.orders+'</td><td class="num">'+fmtMoney(dd.revenue)+'</td>';
@@ -1318,49 +1322,21 @@ async function loadBrReport() {
       gid('repDateList').innerHTML=dh+'</table>';
     }
 
-    // ไม่ await ตัวนี้ - ยอดขายรายวันด้านบนมาจาก fetch แรกอยู่แล้ว ไม่เกี่ยวกับ
-    // ผลของ walkin product report เลย เดิม await ตรงนี้ทำให้ตารางยอดขายรายวัน
-    // (ซึ่งพร้อมแสดงได้ทันที) ต้องรอ fetch แยกต่างหากที่ช้ากว่าโดยไม่จำเป็น
-    loadBrReportWalkinProducts(isAll?Object.values(BRANCH_CODES):[branch],month);
+    const products=(d.by_product||[]).slice().sort((a,b)=>b.cost-a.cost);
+    if(!products.length){
+      gid('repProductList').innerHTML='<div class="empty">ไม่มีข้อมูลขายหน้าร้านเดือนนี้</div>';
+    }else{
+      let ph='<table><tr><th>สินค้า</th><th class="num">จำนวน</th><th class="num">ต้นทุน</th></tr>';
+      for(const p of products){
+        const unit=p.type==='box'?'กล่อง':'ซอง';
+        ph+='<tr><td>'+esc(p.name)+' <small style="color:var(--label)">('+unit+')</small></td>';
+        ph+='<td class="num">'+p.qty+'</td><td class="num">'+fmtMoney(p.cost)+'</td></tr>';
+      }
+      gid('repProductList').innerHTML=ph+'</table>';
+    }
   }catch(e){
     gid('repProductList').innerHTML='<div class="empty">โหลดไม่ได้ ('+esc(e.message)+')</div>';
     gid('repDateList').innerHTML='';
-  }
-}
-
-// ยอดขายแต่ละสินค้าในการ์ดรายงาน มาจาก "ขายหน้าร้าน" (walkin_sales) เท่านั้น —
-// ไม่ใช่ออเดอร์ออนไลน์เหมือนส่วนอื่นของรายงานนี้ — โชว์แค่จำนวน+ต้นทุนตามที่ขอ
-async function loadBrReportWalkinProducts(branches,month) {
-  gid('repProductList').innerHTML='<div class="loading">กำลังโหลด...</div>';
-  try{
-    const results=await Promise.all(branches.map(async br=>{
-      const r=await fetch(G+'&action=api&do=walkin_product_report&branch='+encodeURIComponent(br)+'&month='+encodeURIComponent(month)+'&code='+encodeURIComponent(_authCode()));
-      const d=await r.json();
-      return d.by_product||[];
-    }));
-    const merged={};
-    for(const list of results){
-      for(const p of list){
-        const key=p.name+'|'+p.type;
-        if(!merged[key])merged[key]={name:p.name,type:p.type,qty:0,cost:0};
-        merged[key].qty+=p.qty;
-        merged[key].cost+=p.cost;
-      }
-    }
-    const products=Object.values(merged).sort((a,b)=>b.cost-a.cost);
-    if(!products.length){
-      gid('repProductList').innerHTML='<div class="empty">ไม่มีข้อมูลขายหน้าร้านเดือนนี้</div>';
-      return;
-    }
-    let ph='<table><tr><th>สินค้า</th><th class="num">จำนวน</th><th class="num">ต้นทุน</th></tr>';
-    for(const p of products){
-      const unit=p.type==='box'?'กล่อง':'ซอง';
-      ph+='<tr><td>'+esc(p.name)+' <small style="color:var(--label)">('+unit+')</small></td>';
-      ph+='<td class="num">'+p.qty+'</td><td class="num">'+fmtMoney(p.cost)+'</td></tr>';
-    }
-    gid('repProductList').innerHTML=ph+'</table>';
-  }catch(e){
-    gid('repProductList').innerHTML='<div class="empty">โหลดไม่ได้ ('+esc(e.message)+')</div>';
   }
 }
 

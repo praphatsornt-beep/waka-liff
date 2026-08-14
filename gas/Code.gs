@@ -1716,17 +1716,22 @@ function handleApi(params) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ sales: wsList })));
   }
 
-  // ── ยอดขายหน้าร้านแยกตามสินค้า (จำนวน + ต้นทุน เท่านั้น ไม่รวมออเดอร์ออนไลน์) ──
-  // ใช้โดยตาราง "ยอดขายแต่ละสินค้า" ในการ์ด "รายงานยอดขาย" ของเมนูสาขา
+  // ── รายงานยอดขายหน้าร้านล้วน (ไม่รวมออเดอร์ออนไลน์เลย แม้จะมารับที่สาขา) ──
+  // ใช้โดยการ์ด "รายงานยอดขาย" ทั้งใบในเมนูสาขา (KPI, รายวัน, แยกสินค้า, แยก
+  // สาขาตอน "ทั้งหมด") — ตามคำขอให้ตัวเลขทั้งใบสะท้อนเฉพาะยอดขายหน้าร้านจริง
+  // ไม่ปนกับยอดออนไลน์ (ดู action=report สำหรับยอดรวมออนไลน์+หน้าร้านแบบเดิม
+  // ที่ยังใช้อยู่ใน liff/report.html และ Streamlit)
   if (action === "walkin_product_report") {
     var wprBranch = String(params.branch || "").trim();
     var wprMonth = String(params.month || "").trim(); // "YYYY-MM"
-    if (!wprBranch) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing branch" })));
-    if (!_branchAuthorized(params.code, wprBranch)) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+    // branch ว่าง = โหมด "ทั้งหมด" (admin) รวมทุกสาขา เหมือน action=report —
+    // ไม่เช็ค auth ตอนไม่ระบุ branch เพราะ front-end จำกัดให้เลือก "ทั้งหมด"
+    // ได้เฉพาะ role admin อยู่แล้ว (ตามรูปแบบเดียวกับ action=report)
+    if (wprBranch && !_branchAuthorized(params.code, wprBranch)) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
 
     var wprBatch = supabaseSelectBatch_([
       { table: "catalog", query: "select=name,cost_box,cost_p" },
-      { table: "walkin_sales", query: "select=timestamp,items_json&branch=eq." + encodeURIComponent(wprBranch) },
+      { table: "walkin_sales", query: "select=branch,timestamp,items_json" + (wprBranch ? "&branch=eq." + encodeURIComponent(wprBranch) : "") },
     ]);
     var wprCostRows = wprBatch[0];
     var wprCostMap = {};
@@ -1737,22 +1742,49 @@ function handleApi(params) {
 
     var wprSales = wprBatch[1];
     var wprByProduct = {};
+    var wprByDate = {};
+    var wprByBranch = {};
+    var wprTotalRevenue = 0, wprTotalCost = 0;
     wprSales.forEach(function(s) {
       var localDate = Utilities.formatDate(new Date(s.timestamp), "Asia/Bangkok", "yyyy-MM-dd");
       if (wprMonth && localDate.indexOf(wprMonth) !== 0) return;
       var items = Array.isArray(s.items_json) ? s.items_json : [];
+      var saleRev = 0, saleCost = 0;
       items.forEach(function(it) {
         var qty = it.qty || 1;
         var c = wprCostMap[it.name] || {};
+        var rev = (it.price || 0) * qty;
         var cost = (it.type === "box" ? (c.cost_box || 0) : (c.cost_pack || 0)) * qty;
+        saleRev += rev;
+        saleCost += cost;
+
         var key = it.name + "|" + it.type;
         if (!wprByProduct[key]) wprByProduct[key] = { name: it.name, type: it.type, qty: 0, cost: 0 };
         wprByProduct[key].qty += qty;
         wprByProduct[key].cost += cost;
       });
+
+      wprTotalRevenue += saleRev;
+      wprTotalCost += saleCost;
+
+      if (!wprByDate[localDate]) wprByDate[localDate] = { revenue: 0, cost: 0, orders: 0 };
+      wprByDate[localDate].revenue += saleRev;
+      wprByDate[localDate].cost += saleCost;
+      wprByDate[localDate].orders++;
+
+      var wprBr = s.branch || "ไม่ระบุ";
+      if (!wprByBranch[wprBr]) wprByBranch[wprBr] = { revenue: 0, cost: 0, orders: 0 };
+      wprByBranch[wprBr].revenue += saleRev;
+      wprByBranch[wprBr].cost += saleCost;
+      wprByBranch[wprBr].orders++;
     });
 
-    return _cors(ContentService.createTextOutput(JSON.stringify({ by_product: Object.values(wprByProduct) })));
+    return _cors(ContentService.createTextOutput(JSON.stringify({
+      total: { revenue: wprTotalRevenue, cost: wprTotalCost, profit: wprTotalRevenue - wprTotalCost },
+      by_product: Object.values(wprByProduct),
+      by_date: wprByDate,
+      by_branch: wprByBranch,
+    })));
   }
 
   // ── TOURNAMENT API ─────────────────────────────────────────────────────────
