@@ -1549,6 +1549,16 @@ function handleApi(params) {
 
   // ── รายงานยอดขาย ──
   if (action === "report") {
+    // ตัวกรอง branch/month เสริม (optional) — ใช้โดยการ์ด "รายงานยอดขาย" ใน
+    // เมนูสาขาของ app.html (liff/report.html เรียกแบบไม่ใส่ตัวกรองเลย ยังได้
+    // พฤติกรรมเดิมทุกสาขา/ทุกช่วงเวลาเหมือนก่อนหน้านี้). branch ที่ระบุต้อง
+    // ผ่าน _branchAuthorized เหมือน action อื่นๆ ที่ผูกกับสาขา
+    var repBranchFilter = String(params.branch || "").trim();
+    var repMonthFilter = String(params.month || "").trim(); // "YYYY-MM"
+    if (repBranchFilter && !_branchAuthorized(params.code, repBranchFilter)) {
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+    }
+
     // อ่าน cost จาก catalog
     var costCatRows = supabaseSelect_("catalog", "select=name,cost_box,cost_p,price_box,price_pack");
     var costMap = {};
@@ -1567,12 +1577,16 @@ function handleApi(params) {
     var byDate = {};
     var totalRevenue = 0, totalCost = 0;
 
-    var repSb = supabaseSelect_("orders", "select=branch,timestamp,items_json&slip_status=eq.ยืนยัน");
+    var repQuery = "select=branch,timestamp,items_json&slip_status=eq.ยืนยัน";
+    if (repBranchFilter) repQuery += "&branch=eq." + encodeURIComponent(repBranchFilter);
+    var repSb = supabaseSelect_("orders", repQuery);
     var reportRows = repSb.map(function(r) {
       // Supabase's timestamp is UTC — convert to Bangkok-local before using
       // as the by-date grouping key, same reasoning as the dashboard fix.
       var localDate = Utilities.formatDate(new Date(r.timestamp), "Asia/Bangkok", "yyyy-MM-dd");
       return { branch: r.branch || "ไม่ระบุ", dateKey: localDate, items: r.items_json || [] };
+    }).filter(function(rr) {
+      return !repMonthFilter || rr.dateKey.indexOf(repMonthFilter) === 0;
     });
 
     reportRows.forEach(function(rr) {

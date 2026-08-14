@@ -364,6 +364,11 @@
               <div class="br-menu-title">ลิงค์สินค้า</div>
               <div class="br-menu-desc">คัดลอกลิงก์สั่งของส่งลูกค้า</div>
             </div>
+            <div class="br-menu-card" onclick="openBrView('report')">
+              <div style="font-size:40px">📊</div>
+              <div class="br-menu-title">รายงานยอดขาย</div>
+              <div class="br-menu-desc">เลือกเดือน ดูยอด/ต้นทุน/กำไร</div>
+            </div>
             <div class="br-menu-card" onclick="openBrView('gym')" style="grid-column:1/-1">
               <div style="font-size:40px">🏆</div>
               <div class="br-menu-title">WAKA GYM</div>
@@ -463,6 +468,38 @@
           <div class="card">
             <h3>ประวัติขายล่าสุด</h3>
             <div id="wsHistory"><div class="empty">ยังไม่มีรายการ</div></div>
+          </div>
+        </div>
+
+        <!-- รายงานยอดขาย sub-view -->
+        <div id="brReport" style="display:none">
+          <div class="card">
+            <h3>📊 รายงานยอดขาย</h3>
+            <div class="form-group"><label>เดือน</label>
+              <input type="month" id="repMonth" onchange="loadBrReport()">
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
+            <div class="card" style="text-align:center;padding:14px;margin-bottom:0">
+              <div style="font-size:18px;font-weight:700" id="repKpiRevenue">-</div>
+              <div style="font-size:11px;color:var(--text2);margin-top:2px">ยอดขาย</div>
+            </div>
+            <div class="card" style="text-align:center;padding:14px;margin-bottom:0">
+              <div style="font-size:18px;font-weight:700" id="repKpiCost">-</div>
+              <div style="font-size:11px;color:var(--text2);margin-top:2px">ต้นทุน</div>
+            </div>
+            <div class="card" style="text-align:center;padding:14px;margin-bottom:0">
+              <div style="font-size:18px;font-weight:700" id="repKpiProfit">-</div>
+              <div style="font-size:11px;color:var(--text2);margin-top:2px">กำไร</div>
+            </div>
+          </div>
+          <div class="card">
+            <h3>🎴 ยอดขายแต่ละสินค้า</h3>
+            <div id="repProductList"><div class="loading">กำลังโหลด...</div></div>
+          </div>
+          <div class="card">
+            <h3>📅 ยอดขายรายวัน</h3>
+            <div id="repDateList"><div class="loading">กำลังโหลด...</div></div>
           </div>
         </div>
 
@@ -1094,7 +1131,7 @@ function openBrView(s) {
   if(gid('branchSelect').value==='ทั้งหมด' && ['withdraw','walkin'].includes(s)){alert('โหมด "ทุกสาขา" ใช้เบิก/ขายหน้าร้านไม่ได้ กรุณาเปลี่ยนไปเลือกสาขาที่ต้องการก่อน');return;}
   gid('brMenu').style.display='none';
   gid('brSubView').style.display='block';
-  ['brIncoming','brOrders','brHandover','brStock','brWithdraw','brWalkin','brGym','brCreateShipment'].forEach(id=>gid(id).style.display='none');
+  ['brIncoming','brOrders','brHandover','brStock','brWithdraw','brWalkin','brGym','brCreateShipment','brReport'].forEach(id=>gid(id).style.display='none');
   if(s==='incoming'){gid('brIncoming').style.display='block';loadIncoming();}
   if(s==='orders'){gid('brOrders').style.display='block';loadBrOrders();}
   if(s==='handover')gid('brHandover').style.display='block';
@@ -1103,6 +1140,7 @@ function openBrView(s) {
   if(s==='walkin'){gid('brWalkin').style.display='block';gid('wsStaffName').value=ensureStaffName();openWalkin();}
   if(s==='gym'){gid('brGym').style.display='block';gymOpen();}
   if(s==='createShipment'){gid('brCreateShipment').style.display='block';gid('shipStaffName').value=ensureStaffName();openCreateShipment();}
+  if(s==='report'){gid('brReport').style.display='block';openBrReport();}
 }
 function closeBrView() {
   gymStopScanner();
@@ -1313,6 +1351,71 @@ async function loadBrStock() {
     for(const s of stock)h+='<tr><td>'+esc(s.name)+'</td>'+(b==='ทั้งหมด'?'<td>'+esc(s.branch)+'</td>':'')+'<td class="num">'+s.qty_box+'</td><td class="num">'+s.qty_pack+'</td></tr>';
     el.innerHTML=h+'</table></div>';
   }catch(e){gid('brStock').innerHTML='<div class="empty">โหลดไม่ได้</div>';}
+}
+
+// ── รายงานยอดขาย ──
+function fmtMoney(n) { return '฿'+Number(n||0).toLocaleString(); }
+
+function openBrReport() {
+  if(!gid('repMonth').value){
+    const now=new Date();
+    gid('repMonth').value=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  }
+  loadBrReport();
+}
+
+async function loadBrReport() {
+  const branch=gid('branchSelect').value;
+  const month=gid('repMonth').value;
+  if(!branch||branch==='ทั้งหมด'){
+    gid('repProductList').innerHTML='<div class="empty">โหมด "ทุกสาขา" ยังไม่รองรับรายงานนี้ กรุณาเปลี่ยนไปเลือกสาขาที่ต้องการก่อน</div>';
+    gid('repDateList').innerHTML='';
+    return;
+  }
+  gid('repProductList').innerHTML='<div class="loading">กำลังโหลด...</div>';
+  gid('repDateList').innerHTML='<div class="loading">กำลังโหลด...</div>';
+  try{
+    const r=await fetch(G+'&action=api&do=report&branch='+encodeURIComponent(branch)+'&month='+encodeURIComponent(month)+'&code='+encodeURIComponent(_authCode()));
+    const d=await r.json();
+    if(d.error)throw new Error(d.error);
+
+    gid('repKpiRevenue').textContent=fmtMoney(d.total.revenue);
+    gid('repKpiCost').textContent=fmtMoney(d.total.cost);
+    const profitEl=gid('repKpiProfit');
+    profitEl.textContent=fmtMoney(d.total.profit);
+    profitEl.style.color=d.total.profit>=0?'var(--green)':'var(--red)';
+
+    const products=(d.by_product||[]).slice().sort((a,b)=>b.revenue-a.revenue);
+    if(!products.length){
+      gid('repProductList').innerHTML='<div class="empty">ไม่มีข้อมูลเดือนนี้</div>';
+    }else{
+      let ph='<table><tr><th>สินค้า</th><th class="num">จำนวน</th><th class="num">ยอดขาย</th><th class="num">กำไร</th></tr>';
+      for(const p of products){
+        const profit=p.revenue-p.cost;
+        const unit=p.type==='box'?'กล่อง':'ซอง';
+        ph+='<tr><td>'+esc(p.name)+' <small style="color:var(--label)">('+unit+')</small></td>';
+        ph+='<td class="num">'+p.qty+'</td><td class="num">'+fmtMoney(p.revenue)+'</td>';
+        ph+='<td class="num" style="color:'+(profit>=0?'var(--green)':'var(--red)')+';font-weight:600">'+fmtMoney(profit)+'</td></tr>';
+      }
+      gid('repProductList').innerHTML=ph+'</table>';
+    }
+
+    const dates=Object.entries(d.by_date||{}).sort((a,b)=>b[0].localeCompare(a[0]));
+    if(!dates.length){
+      gid('repDateList').innerHTML='<div class="empty">ไม่มีข้อมูลเดือนนี้</div>';
+    }else{
+      let dh='<table><tr><th>วันที่</th><th class="num">ออเดอร์</th><th class="num">ยอดขาย</th><th class="num">กำไร</th></tr>';
+      for(const [date,dd] of dates){
+        const profit=dd.revenue-dd.cost;
+        dh+='<tr><td>'+esc(date)+'</td><td class="num">'+dd.orders+'</td><td class="num">'+fmtMoney(dd.revenue)+'</td>';
+        dh+='<td class="num" style="color:'+(profit>=0?'var(--green)':'var(--red)')+';font-weight:600">'+fmtMoney(profit)+'</td></tr>';
+      }
+      gid('repDateList').innerHTML=dh+'</table>';
+    }
+  }catch(e){
+    gid('repProductList').innerHTML='<div class="empty">โหลดไม่ได้ ('+esc(e.message)+')</div>';
+    gid('repDateList').innerHTML='';
+  }
 }
 
 // ── เบิกสินค้า ──
