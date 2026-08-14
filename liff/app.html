@@ -493,6 +493,10 @@
               <div style="font-size:11px;color:var(--text2);margin-top:2px">กำไร</div>
             </div>
           </div>
+          <div class="card" id="repBranchCard" style="display:none">
+            <h3>🏬 ยอดขายแต่ละสาขา</h3>
+            <div id="repBranchList"><div class="loading">กำลังโหลด...</div></div>
+          </div>
           <div class="card">
             <h3>🎴 ยอดขายแต่ละสินค้า</h3>
             <div id="repProductList"><div class="loading">กำลังโหลด...</div></div>
@@ -1367,15 +1371,19 @@ function openBrReport() {
 async function loadBrReport() {
   const branch=gid('branchSelect').value;
   const month=gid('repMonth').value;
-  if(!branch||branch==='ทั้งหมด'){
-    gid('repProductList').innerHTML='<div class="empty">โหมด "ทุกสาขา" ยังไม่รองรับรายงานนี้ กรุณาเปลี่ยนไปเลือกสาขาที่ต้องการก่อน</div>';
+  if(!branch){
+    gid('repProductList').innerHTML='<div class="empty">เลือกสาขาก่อน</div>';
     gid('repDateList').innerHTML='';
     return;
   }
+  const isAll=branch==='ทั้งหมด';
+  gid('repBranchCard').style.display=isAll?'block':'none';
+  if(isAll)gid('repBranchList').innerHTML='<div class="loading">กำลังโหลด...</div>';
   gid('repProductList').innerHTML='<div class="loading">กำลังโหลด...</div>';
   gid('repDateList').innerHTML='<div class="loading">กำลังโหลด...</div>';
   try{
-    const r=await fetch(G+'&action=api&do=report&branch='+encodeURIComponent(branch)+'&month='+encodeURIComponent(month)+'&code='+encodeURIComponent(_authCode()));
+    const branchParam=isAll?'':('&branch='+encodeURIComponent(branch));
+    const r=await fetch(G+'&action=api&do=report'+branchParam+'&month='+encodeURIComponent(month)+'&code='+encodeURIComponent(_authCode()));
     const d=await r.json();
     if(d.error)throw new Error(d.error);
 
@@ -1384,6 +1392,21 @@ async function loadBrReport() {
     const profitEl=gid('repKpiProfit');
     profitEl.textContent=fmtMoney(d.total.profit);
     profitEl.style.color=d.total.profit>=0?'var(--green)':'var(--red)';
+
+    if(isAll){
+      const branches=Object.entries(d.by_branch||{}).sort((a,b)=>b[1].revenue-a[1].revenue);
+      if(!branches.length){
+        gid('repBranchList').innerHTML='<div class="empty">ไม่มีข้อมูลเดือนนี้</div>';
+      }else{
+        let bh='<table><tr><th>สาขา</th><th class="num">ออเดอร์</th><th class="num">ยอดขาย</th><th class="num">กำไร</th></tr>';
+        for(const [br,bd] of branches){
+          const profit=bd.revenue-bd.cost;
+          bh+='<tr><td>'+esc(br)+'</td><td class="num">'+bd.orders+'</td><td class="num">'+fmtMoney(bd.revenue)+'</td>';
+          bh+='<td class="num" style="color:'+(profit>=0?'var(--green)':'var(--red)')+';font-weight:600">'+fmtMoney(profit)+'</td></tr>';
+        }
+        gid('repBranchList').innerHTML=bh+'</table>';
+      }
+    }
 
     const products=(d.by_product||[]).slice().sort((a,b)=>b.revenue-a.revenue);
     if(!products.length){
