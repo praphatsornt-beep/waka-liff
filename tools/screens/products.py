@@ -143,8 +143,12 @@ with tab_manage:
                             "mimeType": edit_img_file.type or "image/jpeg",
                             "filename": edit_img_file.name,
                         })
-                        st.session_state[f"edit_product_image_url_{edit_sel}"] = res.get("url", "")
-                        _flash("อัปโหลดรูปแล้ว — ลิงก์เติมในช่องด้านล่างให้แล้ว กด \"บันทึกการแก้ไข\" เพื่อใช้จริง")
+                        new_url = res.get("url", "")
+                        gas_post({"_action": "updateProduct", "name": edit_sel, "image_url": new_url})
+                        st.session_state[f"edit_product_image_url_{edit_sel}"] = new_url
+                        st.session_state.pop(f"edit_product_img_{edit_sel}", None)
+                        _flash("อัปโหลดและบันทึกรูปสินค้าแล้ว")
+                        st.cache_data.clear()
                         st.rerun()
                     except Exception as e:
                         st.error(f"อัปโหลดรูปไม่ได้: {e}")
