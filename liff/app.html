@@ -1305,8 +1305,6 @@ async function loadBrReport() {
       }
     }
 
-    await loadBrReportWalkinProducts(isAll?Object.values(BRANCH_CODES):[branch],month);
-
     const dates=Object.entries(d.by_date||{}).sort((a,b)=>b[0].localeCompare(a[0]));
     if(!dates.length){
       gid('repDateList').innerHTML='<div class="empty">ไม่มีข้อมูลเดือนนี้</div>';
@@ -1319,6 +1317,11 @@ async function loadBrReport() {
       }
       gid('repDateList').innerHTML=dh+'</table>';
     }
+
+    // ไม่ await ตัวนี้ - ยอดขายรายวันด้านบนมาจาก fetch แรกอยู่แล้ว ไม่เกี่ยวกับ
+    // ผลของ walkin product report เลย เดิม await ตรงนี้ทำให้ตารางยอดขายรายวัน
+    // (ซึ่งพร้อมแสดงได้ทันที) ต้องรอ fetch แยกต่างหากที่ช้ากว่าโดยไม่จำเป็น
+    loadBrReportWalkinProducts(isAll?Object.values(BRANCH_CODES):[branch],month);
   }catch(e){
     gid('repProductList').innerHTML='<div class="empty">โหลดไม่ได้ ('+esc(e.message)+')</div>';
     gid('repDateList').innerHTML='';

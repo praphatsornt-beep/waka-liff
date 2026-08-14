@@ -1724,14 +1724,18 @@ function handleApi(params) {
     if (!wprBranch) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing branch" })));
     if (!_branchAuthorized(params.code, wprBranch)) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
 
-    var wprCostRows = supabaseSelect_("catalog", "select=name,cost_box,cost_p");
+    var wprBatch = supabaseSelectBatch_([
+      { table: "catalog", query: "select=name,cost_box,cost_p" },
+      { table: "walkin_sales", query: "select=timestamp,items_json&branch=eq." + encodeURIComponent(wprBranch) },
+    ]);
+    var wprCostRows = wprBatch[0];
     var wprCostMap = {};
     wprCostRows.forEach(function(r) {
       if (!r.name) return;
       wprCostMap[String(r.name)] = { cost_box: Number(r.cost_box) || 0, cost_pack: Number(r.cost_p) || 0 };
     });
 
-    var wprSales = supabaseSelect_("walkin_sales", "select=timestamp,items_json&branch=eq." + encodeURIComponent(wprBranch));
+    var wprSales = wprBatch[1];
     var wprByProduct = {};
     wprSales.forEach(function(s) {
       var localDate = Utilities.formatDate(new Date(s.timestamp), "Asia/Bangkok", "yyyy-MM-dd");
