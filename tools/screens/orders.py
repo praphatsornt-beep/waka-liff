@@ -355,7 +355,7 @@ with k4:
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
 # ── Filter bar (shared by every tab below) ───────────────────────────────────
-FILTER_KEYS = ["ord_search", "ord_branch", "ord_status", "ord_products"]
+FILTER_KEYS = ["ord_search", "ord_branch", "ord_status"]
 
 with st.container(border=True):
     f1, f2, f3, f4, f5 = st.columns([2.2, 1, 1.3, 1.8, 1.1])
@@ -366,11 +366,55 @@ with st.container(border=True):
     with f3:
         status_sel = st.selectbox("สถานะสลิป", ["ทุกสถานะสลิป"] + ALL_STATUS, label_visibility="collapsed", key="ord_status")
     with f4:
-        product_filter = st.multiselect("สินค้า", all_products, default=[], placeholder="ทุกสินค้า", label_visibility="collapsed", key="ord_products")
+        # st.multiselect เดิมตัดชื่อสินค้ายาวๆ ด้วย "..." ใน dropdown ของมันเอง —
+        # ลองแก้ด้วย CSS (บังคับ overflow/white-space/width) 2 รอบแล้วไม่หาย เพราะ
+        # เป็น dropdown แบบ virtualized ที่ตัดข้อความจริงตั้งแต่ตอน render (ไม่ใช่แค่
+        # ซ่อนด้วย overflow:hidden ที่ CSS แก้ได้) เปลี่ยนมาใช้ popover + checkbox
+        # ธรรมดาแทน ซึ่งไม่มีการตัดข้อความแบบนี้เลย
+        _sel_products = st.session_state.get("ord_products_sel", [])
+        prod_label = f"สินค้า ({len(_sel_products)})" if _sel_products else "ทุกสินค้า"
+        with st.popover(prod_label, use_container_width=True):
+            prod_search = st.text_input(
+                "ค้นหาสินค้า", key="ord_products_search", placeholder="พิมพ์ค้นหาชื่อสินค้า...",
+                label_visibility="collapsed",
+            )
+            prod_options = [p for p in all_products if prod_search.lower() in p.lower()] if prod_search else all_products
+
+            psel1, psel2 = st.columns(2)
+            with psel1:
+                if st.button("เลือกที่เห็นทั้งหมด", key="ord_prod_selall", use_container_width=True):
+                    sel = set(st.session_state.get("ord_products_sel", [])) | set(prod_options)
+                    st.session_state["ord_products_sel"] = sorted(sel)
+                    for p in prod_options:
+                        st.session_state[f"ord_prod_chk_{p}"] = True
+                    st.rerun()
+            with psel2:
+                if st.button("ล้างที่เลือก", key="ord_prod_clearall", use_container_width=True):
+                    for p in all_products:
+                        st.session_state.pop(f"ord_prod_chk_{p}", None)
+                    st.session_state["ord_products_sel"] = []
+                    st.rerun()
+
+            selected_set = set(st.session_state.get("ord_products_sel", []))
+            if not prod_options:
+                st.caption("ไม่พบสินค้าที่ค้นหา")
+            with st.container(height=280 if len(prod_options) > 6 else None):
+                for p in prod_options:
+                    checked = st.checkbox(p, value=(p in selected_set), key=f"ord_prod_chk_{p}")
+                    if checked:
+                        selected_set.add(p)
+                    else:
+                        selected_set.discard(p)
+            st.session_state["ord_products_sel"] = sorted(selected_set)
+        product_filter = st.session_state.get("ord_products_sel", [])
     with f5:
         if st.button("ล้างตัวกรอง", use_container_width=True):
             for k in FILTER_KEYS:
                 st.session_state.pop(k, None)
+            for p in all_products:
+                st.session_state.pop(f"ord_prod_chk_{p}", None)
+            st.session_state.pop("ord_products_sel", None)
+            st.session_state.pop("ord_products_search", None)
             st.rerun()
 
 # ── Filter ────────────────────────────────────────────────────────────────────
