@@ -125,8 +125,8 @@ function writeSupabaseOrder_(obj, lock) {
 }
 
 // Generic versions of the two helpers above, for every other
-// Supabase-primary table (wakagym_events, tournament_events,
-// tournament_categories, catalog, stock_branch, etc.).
+// Supabase-primary table (tournament_events, tournament_categories,
+// catalog, stock_branch, etc.).
 function getSupabaseRow_(table, keyCol, keyValue) {
   var rows = supabaseSelect_(table, "select=*&" + keyCol + "=eq." + encodeURIComponent(keyValue) + "&limit=1");
   return rows[0] || null;
@@ -323,11 +323,6 @@ var SUPABASE_TOURNAMENT_REG_HEADER = [
   "payment_method", "bank", "amount_paid", "status", "checked_in_at", "note",
   "selected_categories",
 ];
-var SUPABASE_WAKAGYM_REG_HEADER = [
-  "reg_id", "timestamp", "event_date", "group_id", "event_id", "line_user_id", "display_name",
-  "real_name", "player_name", "phone", "slip_url", "slip_status", "payment_method",
-  "bank", "placement", "wins_3match", "tokens_earned", "promo_packs", "rewards_given", "note",
-];
 var SUPABASE_CATALOG_HEADER = [
   "name", "category", "slug", "cost_box", "cost_p", "price_box", "price_pack",
   "qty_box", "qty_pack", "limit_box", "limit_pack", "active", "image_url", "barcode", "notice",
@@ -342,11 +337,6 @@ var SUPABASE_TOURNAMENT_EVENTS_HEADER = [
 var SUPABASE_TOURNAMENT_CATEGORIES_HEADER = [
   "category_id", "event_id", "name", "entry_fee", "max_players", "sort_order", "status",
 ];
-var SUPABASE_WAKAGYM_EVENTS_HEADER = ["event_id", "date", "branch", "tier", "entry_fee", "status", "created_by"];
-var SUPABASE_PLAYER_STATS_HEADER = [
-  "player_name", "display_name", "real_name", "line_user_id", "total_plays",
-  "total_tokens", "boxes_earned", "boxes_given", "last_play_date",
-];
 // No "id" here — it's a DB-generated surrogate (shipment_id isn't reliably
 // unique historically, see supabase/schema.sql), not a meaningful key.
 var SUPABASE_SHIPMENTS_HEADER = ["shipment_id", "timestamp", "to_branch", "status", "items_json", "received_at"];
@@ -356,35 +346,15 @@ var SUPABASE_WALKIN_SALES_HEADER = ["sale_id", "timestamp", "branch", "items_jso
 
 const BRANCHES = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์"];
 
-const TIER_CONFIG = {
-  S:  { min: 2, max: 4,  fee: 100 },
-  M:  { min: 5, max: 8,  fee: 150 },
-  L:  { min: 9, max: 15, fee: 200 },
-  XL: { min: 16, max: 999, fee: 200 },
-};
-
-const TOKEN_TABLE = {
-  S:  { "1st": 4,  "2nd": 2,  "3rd-4th": 2, "5th+": 0 },
-  M:  { "1st": 8,  "2nd": 4,  "3rd-4th": 2, "5th+": 2 },
-  L:  { "1st": 15, "2nd": 7,  "3rd-4th": 4, "5th+": 2 },
-  XL: { "1st": 30, "2nd": 10, "3rd-4th": 5, "5th+": 2 },
-};
-
-const TOKEN_BOX_THRESHOLD = 30;
-
-// จำนวน promo pack ตามจำนวน wins ใน 3-match (0-3)
-// 0 wins = 1 ซอง (ทุกคนได้อย่างน้อย 1), 3 wins = 3 ซอง — แก้ได้ตรงนี้
-const PROMO_TABLE = { 0: 1, 1: 1, 2: 2, 3: 3 };
-
 function _cors(output) {
   return output.setMimeType(ContentService.MimeType.JSON);
 }
 
 // GET: โหลด catalog หรือลูกค้าดูสถานะออเดอร์ (ไม่มีปุ่มกดยืนยันรับของแล้ว —
 // พนักงานกดส่งมอบก็ปิด order ทันที ดู confirm.html)
-// Public (ไม่ต้อง _s): catalog, confirm, order_status, wakagym_status
+// Public (ไม่ต้อง _s): catalog, confirm, order_status
 // Staff only (ต้อง _s): ทุกอย่างอื่น
-var PUBLIC_API_DOS = ["order_status", "wakagym_status",
+var PUBLIC_API_DOS = ["order_status",
                      "tournament_status", "tournament_reg_status"];
 
 function doGet(e) {
@@ -450,8 +420,8 @@ function handleCustomerConfirm(orderId, e) {
 }
 
 // POST: รับ order จาก LIFF หรือ internal actions
-// Public POST (ไม่ต้อง _s): LINE webhook, สั่งซื้อ (data.items), wakagymRegister
-var PUBLIC_ACTIONS_POST = ["wakagymRegister", "tournamentRegister"];
+// Public POST (ไม่ต้อง _s): LINE webhook, สั่งซื้อ (data.items), tournamentRegister
+var PUBLIC_ACTIONS_POST = ["tournamentRegister"];
 
 function doPost(e) {
   try {
@@ -535,10 +505,6 @@ function doPost(e) {
 
     if (data._action === "notifyCustomer") {
       return handleNotifyCustomer(data);
-    }
-
-    if (data._action === "wakagymRegister") {
-      return handleWakagymRegister(data);
     }
 
     if (data._action === "tournamentRegister") {
@@ -1087,168 +1053,6 @@ function saveSlipToDrive(base64, orderId) {
     return "https://drive.google.com/thumbnail?id=" + file.getId() + "&sz=w800";
   } catch (err) {
     return "";
-  }
-}
-
-// ── WAKA GYM ────────────────────────────────────────────────────────────────
-
-function _genWakagymRegId() {
-  var now = new Date();
-  var pad = function(n) { return String(n).padStart(2, "0"); };
-  var yy = String(now.getFullYear()).slice(-2);
-  var prefix = "TR" + yy + pad(now.getMonth() + 1) + pad(now.getDate());
-  var propKey = "treg_seq_" + prefix;
-  var seq = parseInt(PROPS.getProperty(propKey) || "0", 10) + 1;
-  PROPS.setProperty(propKey, String(seq));
-  return prefix + String(seq).padStart(3, "0");
-}
-
-function _getActiveEvent(branch) {
-  var today = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
-  var query = "select=event_id,date,branch,tier,entry_fee,status&date=eq." + today + "&status=eq.open";
-  if (branch) query += "&branch=eq." + encodeURIComponent(branch);
-  var rows = supabaseSelect_("wakagym_events", query);
-  if (!rows.length) return null;
-  // "most recently created" — event_id is EV{date}-{n}, a lexical sort would
-  // put "-10" before "-2", so sort by the numeric suffix instead.
-  rows.sort(function(a, b) {
-    var na = Number(String(a.event_id).split("-").pop()) || 0;
-    var nb = Number(String(b.event_id).split("-").pop()) || 0;
-    return na - nb;
-  });
-  var r = rows[rows.length - 1];
-  return {
-    event_id: String(r.event_id),
-    date: today,
-    branch: String(r.branch || ""),
-    tier: String(r.tier || "L"),
-    entry_fee: Number(r.entry_fee) || 200,
-    status: "open",
-  };
-}
-
-function handleWakagymRegister(data) {
-  var lock = LockService.getScriptLock();
-  lock.waitLock(15000);
-  try {
-    var groupId = _genWakagymRegId();
-    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
-    var today = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
-    var payMethod = data.paymentMethod || "transfer";
-
-    var event = _getActiveEvent(null);
-    var entryFee = event ? event.entry_fee : 200;
-    var eventId = event ? event.event_id : "";
-    var tier = event ? event.tier : "L";
-
-    var slipUrl = "";
-    if (data.slipBase64) {
-      slipUrl = saveSlipToDrive(data.slipBase64, groupId);
-    }
-    var slipStatus = payMethod === "cash" ? "cash" : "pending";
-
-    var statsRows = supabaseSelect_("player_stats", "select=*");
-    var findStatsRow_ = function(name) {
-      for (var i = 0; i < statsRows.length; i++) {
-        if (String(statsRows[i].player_name || "").trim() === name) return statsRows[i];
-      }
-      return null;
-    };
-
-    var players = data.players || [];
-    if (players.length === 0) {
-      players = [{ realName: data.realName || "", playerName: data.playerName || data.realName || "" }];
-    }
-
-    var results = [];
-    for (var p = 0; p < players.length; p++) {
-      var pl = players[p];
-      var regId = p === 0 ? groupId : _genWakagymRegId();
-      var pName = String(pl.playerName || pl.realName || "").trim();
-      var rName = String(pl.realName || "").trim();
-
-      var newWakagymObj = {
-        reg_id: regId, timestamp: now, event_date: today, group_id: groupId, event_id: eventId || null,
-        line_user_id: data.lineUserId || null, display_name: data.displayName || null,
-        real_name: rName || null, player_name: pName || null, phone: data.phone || null,
-        slip_url: slipUrl || null, slip_status: slipStatus, payment_method: payMethod, bank: data.bank || null,
-        placement: null, wins_3match: null, tokens_earned: null, promo_packs: null, rewards_given: null, note: null,
-      };
-      var regRes = pushToSupabase_("wakagym_registrations", newWakagymObj);
-      if (!regRes.ok) throw new Error("Supabase wakagym_registrations write failed: " + regRes.text);
-
-      var statsRow = findStatsRow_(pName);
-      var totalTokens = 0;
-      if (statsRow) {
-        totalTokens = Number(statsRow.total_tokens) || 0;
-        statsRow.real_name = rName;
-        statsRow.line_user_id = data.lineUserId || "";
-        statsRow.total_plays = (Number(statsRow.total_plays) || 0) + 1;
-        statsRow.last_play_date = today;
-      } else {
-        statsRow = {
-          player_name: pName, display_name: data.displayName || "", real_name: rName,
-          line_user_id: data.lineUserId || "", total_plays: 1, total_tokens: 0,
-          boxes_earned: 0, boxes_given: 0, last_play_date: today,
-        };
-        statsRows.push(statsRow);
-      }
-      var statsRes = pushToSupabase_("player_stats", statsRow);
-      if (!statsRes.ok) throw new Error("Supabase player_stats write failed: " + statsRes.text);
-
-      results.push({ regId: regId, playerName: pName, totalTokens: totalTokens });
-    }
-
-    lock.releaseLock();
-
-    var groupStaff = _getConfigValue(null, "group_staff");
-    if (groupStaff) {
-      var bankName = data.bank || "";
-      var payText = payMethod === "cash" ? "💵 เงินสด" : "📱 " + (bankName || "โอนเงิน");
-      var totalAmount = players.length * entryFee;
-      var msg = "🏆 ลงทะเบียนแข่ง (" + players.length + " คน)\n" + payText + " " + totalAmount + "฿\n";
-      for (var r = 0; r < results.length; r++) {
-        msg += "\n" + (r + 1) + ". " + results[r].playerName + " (W:" + results[r].totalTokens + ")";
-      }
-      msg += "\n\nรหัส: #" + groupId;
-      if (tier) msg += " | Tier " + tier;
-      _linePush(groupStaff, msg);
-    }
-
-    if (payMethod !== "cash") {
-      var finId = _getConfigValue(null, "finance_line_id");
-      if (finId) {
-        var finBankName = data.bank || "โอนเงิน";
-        var finMsg = "🏆 แข่ง WAKA GYM\n📱 โอนเข้า " + finBankName + " " + totalAmount + "฿";
-        for (var fi = 0; fi < results.length; fi++) {
-          finMsg += "\n  - " + results[fi].playerName;
-        }
-        finMsg += "\nรหัส: #" + groupId;
-        _linePush(finId, finMsg);
-      }
-    }
-
-    if (data.lineUserId && data.lineUserId !== "dev_user") {
-      var custTotalAmount = players.length * entryFee;
-      var payLabel = payMethod === "cash" ? "💵 เงินสด" : "📱 โอนเงิน";
-      var custMsg = "🏆 ลงทะเบียนแข่งสำเร็จ!"
-        + "\nรหัส: #" + groupId
-        + "\nจำนวน: " + players.length + " คน"
-        + "\nยอดเงิน: " + custTotalAmount + " บาท (" + payLabel + ")\n";
-      for (var c = 0; c < results.length; c++) {
-        var cr = results[c];
-        custMsg += "\n🎮 " + cr.playerName + " (Token สะสม: " + cr.totalTokens + "/" + TOKEN_BOX_THRESHOLD + ")";
-      }
-      if (payMethod === "transfer") custMsg += "\n\n📋 สถานะสลิป: รอตรวจ";
-      _linePush(data.lineUserId, custMsg);
-    }
-
-    return _cors(ContentService.createTextOutput(JSON.stringify({
-      success: true, groupId: groupId, entryFee: entryFee, tier: tier, results: results
-    })));
-  } catch (err) {
-    try { lock.releaseLock(); } catch (_) {}
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
   }
 }
 
@@ -1912,300 +1716,6 @@ function handleApi(params) {
     });
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ by_product: Object.values(wprByProduct) })));
-  }
-
-  // ── WAKA GYM API ──
-  if (action === "wakagym_status") {
-    var uid = params.line_user_id || "";
-    var today = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
-
-    var event = _getActiveEvent(null);
-    var eventInfo = event ? {
-      event_id: event.event_id, tier: event.tier,
-      entry_fee: event.entry_fee, branch: event.branch,
-      token_table: TOKEN_TABLE[event.tier] || {},
-    } : null;
-
-    var todayRegs = [];
-    if (uid) {
-      var rRows = supabaseSelect_("wakagym_registrations", "select=reg_id,player_name,slip_status,event_date&line_user_id=eq." + encodeURIComponent(uid));
-      rRows.forEach(function(r) {
-        var evDate = String(r.event_date || "");
-        if (evDate.length > 10) evDate = evDate.substring(0, 10);
-        if (evDate === today) {
-          todayRegs.push({
-            reg_id: String(r.reg_id || ""),
-            player_name: String(r.player_name || ""),
-            slip_status: String(r.slip_status || ""),
-          });
-        }
-      });
-    }
-
-    var linkedStats = [];
-    if (uid) {
-      var sRows2 = supabaseSelect_("player_stats", "select=player_name,total_plays,total_tokens,boxes_earned,boxes_given&line_user_id=eq." + encodeURIComponent(uid));
-      sRows2.forEach(function(r) {
-        linkedStats.push({
-          player_name: String(r.player_name || ""),
-          total_plays: Number(r.total_plays) || 0,
-          total_tokens: Number(r.total_tokens) || 0,
-          boxes_earned: Number(r.boxes_earned) || 0,
-          boxes_given: Number(r.boxes_given) || 0,
-        });
-      });
-    }
-
-    return _cors(ContentService.createTextOutput(JSON.stringify({
-      event_date: today,
-      event: eventInfo,
-      already_registered: todayRegs.length > 0,
-      today_regs: todayRegs,
-      linked_stats: linkedStats,
-      token_threshold: TOKEN_BOX_THRESHOLD,
-    })));
-  }
-
-  if (action === "wakagym_players") {
-    var date = params.date || Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
-    var tRowsSb = supabaseSelect_("wakagym_registrations", "select=*&event_date=eq." + encodeURIComponent(date));
-    var players = tRowsSb.map(function(r) {
-      return {
-        reg_id: String(r.reg_id || ""),
-        group_id: String(r.group_id || ""),
-        display_name: String(r.display_name || ""),
-        real_name: String(r.real_name || ""),
-        player_name: String(r.player_name || ""),
-        slip_url: String(r.slip_url || ""),
-        slip_status: String(r.slip_status || ""),
-        payment_method: String(r.payment_method || ""),
-        tokens_earned: String(r.tokens_earned || ""),
-        promo_packs: String(r.promo_packs || ""),
-        rewards_given: String(r.rewards_given || ""),
-        phone: String(r.phone || ""),
-        timestamp: String(r.timestamp || ""),
-      };
-    });
-    return _cors(ContentService.createTextOutput(JSON.stringify({ players: players })));
-  }
-
-  if (action === "wakagym_give_box") {
-    var boxPlayer = String(params.player_name || "").trim();
-    if (!boxPlayer) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing player_name" })));
-    var bRow = getSupabaseRow_("player_stats", "player_name", boxPlayer);
-    if (!bRow) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "player not found" })));
-    var given = (Number(bRow.boxes_given) || 0) + 1;
-    bRow.boxes_given = given;
-    var boxAt = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
-    bRow.last_play_date = "box " + boxAt;
-    writeSupabaseRow_("player_stats", bRow, SUPABASE_PLAYER_STATS_HEADER, "player_name");
-    var boxUid = String(bRow.line_user_id || "");
-    if (boxUid && boxUid !== "dev_user") {
-      _linePush(boxUid, "🎁 รับ Box เรียบร้อย!\nชื่อแข่ง: " + boxPlayer + "\nBox ที่ได้: " + given);
-    }
-    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, boxes_given: given })));
-  }
-
-  if (action === "wakagym_summary") {
-    var sumDate = params.date || Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
-    var sumRowsSb = supabaseSelect_("wakagym_registrations", "select=*&event_date=eq." + encodeURIComponent(sumDate));
-
-    var totalPlayers = 0, totalTokens = 0, totalPromo = 0, rewardsGiven = 0;
-    var cashAmount = 0, transferAmount = 0;
-    var bankBreakdown = {};
-
-    sumRowsSb.forEach(function(r) {
-      totalPlayers++;
-      var pm = String(r.payment_method || "transfer");
-      var bk = String(r.bank || "ไม่ระบุ");
-      var entryFee = Number(r.note || 0) || 200;
-
-      totalTokens += Number(r.tokens_earned || 0);
-      totalPromo += Number(r.promo_packs || 0);
-      if (String(r.rewards_given).toLowerCase() === "true") rewardsGiven++;
-
-      if (pm === "cash") {
-        cashAmount += entryFee;
-      } else {
-        transferAmount += entryFee;
-        if (!bankBreakdown[bk]) bankBreakdown[bk] = 0;
-        bankBreakdown[bk] += entryFee;
-      }
-    });
-
-    return _cors(ContentService.createTextOutput(JSON.stringify({
-      date: sumDate,
-      total_players: totalPlayers,
-      total_tokens: totalTokens,
-      total_promo: totalPromo,
-      rewards_given: rewardsGiven,
-      cash_amount: cashAmount,
-      transfer_amount: transferAmount,
-      bank_breakdown: bankBreakdown,
-      total_amount: cashAmount + transferAmount,
-    })));
-  }
-
-  if (action === "wakagym_create_event") {
-    var evBranch = params.branch || "";
-    var evTier = params.tier || "L";
-    if (!evBranch) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing branch" })));
-    if (!TIER_CONFIG[evTier]) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "invalid tier" })));
-    var evNow = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
-    var evExisting = supabaseSelect_("wakagym_events", "select=event_id&date=eq." + evNow);
-    var evId = "EV" + evNow.replace(/-/g, "") + "-" + (evExisting.length + 1);
-    var evObj = {
-      event_id: evId, date: evNow, branch: evBranch, tier: evTier,
-      entry_fee: TIER_CONFIG[evTier].fee, status: "open", created_by: params.created_by || "staff",
-    };
-    writeSupabaseRow_("wakagym_events", evObj, SUPABASE_WAKAGYM_EVENTS_HEADER, "event_id");
-    return _cors(ContentService.createTextOutput(JSON.stringify({
-      ok: true, event_id: evId, tier: evTier, entry_fee: TIER_CONFIG[evTier].fee,
-      token_table: TOKEN_TABLE[evTier],
-    })));
-  }
-
-  if (action === "wakagym_submit_results") {
-    var srEventId = params.event_id || "";
-    var srResults = [];
-    try {
-      srResults = Array.isArray(params.results) ? params.results : JSON.parse(params.results || "[]");
-    } catch(_) {}
-    if (srResults.length === 0) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "no results" })));
-
-    var srEvent = null;
-    if (srEventId) {
-      var evRow2 = getSupabaseRow_("wakagym_events", "event_id", srEventId);
-      if (evRow2) srEvent = { tier: String(evRow2.tier || "L") };
-    }
-    var tier = srEvent ? srEvent.tier : "L";
-
-    var stRows = supabaseSelect_("player_stats", "select=*");
-    var findStatsRow2_ = function(name) {
-      for (var i = 0; i < stRows.length; i++) {
-        if (String(stRows[i].player_name || "").trim() === name) return stRows[i];
-      }
-      return null;
-    };
-
-    var processed = [];
-    for (var ri = 0; ri < srResults.length; ri++) {
-      var sr = srResults[ri];
-      var regId = sr.reg_id || "";
-      var placement = sr.placement || "";
-      var wins = Math.min(Math.max(parseInt(sr.wins_3match) || 0, 0), 3);
-      var tokens = (TOKEN_TABLE[tier] && TOKEN_TABLE[tier][placement]) || 0;
-      var promos = PROMO_TABLE[wins] || 1;
-
-      var srRegRow = getSupabaseRow_("wakagym_registrations", "reg_id", regId);
-      if (!srRegRow) continue;
-      srRegRow.placement = placement;
-      srRegRow.wins_3match = wins;
-      srRegRow.tokens_earned = tokens;
-      srRegRow.promo_packs = promos;
-
-      var pName = String(srRegRow.player_name || "").trim();
-      var lineUid = String(srRegRow.line_user_id || "");
-      var srStatsRow = findStatsRow2_(pName);
-      if (srStatsRow) {
-        var curTokens = (Number(srStatsRow.total_tokens) || 0) + tokens;
-        var curBoxes = Number(srStatsRow.boxes_earned) || 0;
-        while (curTokens >= TOKEN_BOX_THRESHOLD) {
-          curTokens -= TOKEN_BOX_THRESHOLD;
-          curBoxes++;
-        }
-        srStatsRow.total_tokens = curTokens;
-        srStatsRow.boxes_earned = curBoxes;
-        writeSupabaseRow_("player_stats", srStatsRow, SUPABASE_PLAYER_STATS_HEADER, "player_name");
-      }
-
-      processed.push({ reg_id: regId, player_name: pName, placement: placement, tokens: tokens, promo_packs: promos, line_user_id: lineUid });
-      writeSupabaseRow_("wakagym_registrations", srRegRow, SUPABASE_WAKAGYM_REG_HEADER, "reg_id");
-    }
-
-    for (var pi = 0; pi < processed.length; pi++) {
-      var pp = processed[pi];
-      if (pp.line_user_id && pp.line_user_id !== "dev_user") {
-        var pMsg = "🏆 ผลแข่งขัน!\n"
-          + "ชื่อแข่ง: " + pp.player_name + "\n"
-          + "อันดับ: " + pp.placement + "\n"
-          + "🪙 Token +" + pp.tokens + "\n"
-          + "📦 Promo Pack: " + pp.promo_packs + " ซอง";
-        _linePush(pp.line_user_id, pMsg);
-      }
-    }
-
-    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, processed: processed })));
-  }
-
-  if (action === "wakagym_give_rewards") {
-    var grRegId = String(params.reg_id || "").trim();
-    if (!grRegId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing reg_id" })));
-    var grRow = getSupabaseRow_("wakagym_registrations", "reg_id", grRegId);
-    if (!grRow) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "not found" })));
-    if (String(grRow.rewards_given).toLowerCase() === "true") {
-      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, already: true })));
-    }
-    var givenAt = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm:ss");
-    grRow.rewards_given = "TRUE";
-    grRow.note = "แจก " + givenAt;
-    var grUid = String(grRow.line_user_id || "");
-    var grName = String(grRow.player_name || "");
-    var grTokens = Number(grRow.tokens_earned) || 0;
-    var grPromos = Number(grRow.promo_packs) || 0;
-    if (grUid && grUid !== "dev_user") {
-      var grMsg = "✅ รับรางวัลแล้ว!\nชื่อแข่ง: " + grName;
-      if (grTokens > 0) grMsg += "\n🪙 Token: " + grTokens;
-      if (grPromos > 0) grMsg += "\n📦 Promo Pack: " + grPromos + " ซอง";
-      _linePush(grUid, grMsg);
-    }
-    writeSupabaseRow_("wakagym_registrations", grRow, SUPABASE_WAKAGYM_REG_HEADER, "reg_id");
-    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, already: false })));
-  }
-
-  if (action === "wakagym_lookup") {
-    var lookupId = String(params.group_id || params.reg_id || "").trim();
-    if (!lookupId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing id" })));
-    var luSb = supabaseSelect_("wakagym_registrations", "select=*");
-    var found = luSb
-      .filter(function(r) { return String(r.group_id || "") === lookupId || String(r.reg_id || "") === lookupId; })
-      .map(function(r) {
-        return {
-          reg_id: String(r.reg_id || ""),
-          group_id: String(r.group_id || ""),
-          player_name: String(r.player_name || ""),
-          real_name: String(r.real_name || ""),
-          placement: String(r.placement || ""),
-          wins_3match: String(r.wins_3match || ""),
-          tokens_earned: Number(r.tokens_earned) || 0,
-          promo_packs: Number(r.promo_packs) || 0,
-          rewards_given: String(r.rewards_given || ""),
-          slip_status: String(r.slip_status || ""),
-          slip_url: String(r.slip_url || ""),
-          payment_method: String(r.payment_method || ""),
-          bank: String(r.bank || ""),
-          note: String(r.note || ""),
-          event_date: String(r.event_date || ""),
-        };
-      });
-    if (found.length === 0) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "not found" })));
-
-    var statsMap = {};
-    supabaseSelect_("player_stats", "select=player_name,total_tokens,boxes_earned,boxes_given").forEach(function(r) {
-      statsMap[String(r.player_name || "").trim()] = {
-        total_tokens: Number(r.total_tokens) || 0,
-        boxes_earned: Number(r.boxes_earned) || 0,
-        boxes_given: Number(r.boxes_given) || 0,
-      };
-    });
-    for (var fi = 0; fi < found.length; fi++) {
-      var pStat = statsMap[found[fi].player_name] || {};
-      found[fi].total_tokens = pStat.total_tokens || 0;
-      found[fi].boxes_earned = pStat.boxes_earned || 0;
-      found[fi].boxes_given_count = pStat.boxes_given || 0;
-    }
-
-    return _cors(ContentService.createTextOutput(JSON.stringify({ players: found })));
   }
 
   // ── TOURNAMENT API ─────────────────────────────────────────────────────────

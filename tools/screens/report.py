@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reports — sales by date/branch, best-selling products, tournament vs WAKA GYM"""
+"""Reports — sales by date/branch, best-selling products, tournament summary"""
 
 import json
 import os
@@ -85,14 +85,6 @@ def load_walkin_df() -> pd.DataFrame:
     return df
 
 
-@st.cache_data(ttl=60)
-def load_wakagym_data():
-    sb = get_supabase()
-    events = sb.table("wakagym_events").select("*").execute().data
-    regs = sb.table("wakagym_registrations").select("*").execute().data
-    return events, regs
-
-
 def revenue_share_card(shares: list) -> str:
     total = sum(v for _, v, _ in shares) or 1
     segments_html = "".join(
@@ -130,7 +122,7 @@ def df_to_csv_bytes(df: pd.DataFrame) -> bytes:
 
 # ── Page ──────────────────────────────────────────────────────────────────────
 apply_theme()
-page_header("รายงาน", "ยอดขาย สินค้าขายดี และเปรียบเทียบทัวร์นาเมนต์ / WAKA GYM")
+page_header("รายงาน", "ยอดขาย สินค้าขายดี และสรุปทัวร์นาเมนต์")
 
 f1, f2, f3 = st.columns([1, 1, 1.2])
 with f1:
@@ -183,12 +175,11 @@ st.download_button(
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
 tab_sales, tab_branch, tab_reimburse, tab_products, tab_compare = st.tabs(
-    ["ยอดขาย", "แยกสาขา", "สรุปคืนต้นทุน", "สินค้าขายดี", "ทัวร์นาเมนต์ vs WAKA GYM"]
+    ["ยอดขาย", "แยกสาขา", "สรุปคืนต้นทุน", "สินค้าขายดี", "ทัวร์นาเมนต์"]
 )
 
 with tab_sales:
     t_events_s, t_regs_s = load_tournament_data()
-    g_events_s, g_regs_s = load_wakagym_data()
 
     def _in_range(ts: str) -> bool:
         try:
@@ -201,14 +192,9 @@ with tab_sales:
         int(r.get("amount_paid") or 0) for r in t_regs_s
         if r.get("slip_status") in CONFIRMED_REG_STATUS and _in_range(r.get("timestamp", ""))
     )
-    gym_revenue = sum(
-        int(r.get("note") or 0) or 200 for r in g_regs_s
-        if r.get("slip_status") in CONFIRMED_REG_STATUS and _in_range(r.get("timestamp", ""))
-    )
     st.markdown(revenue_share_card([
         ("ออเดอร์การ์ด", total_revenue, ACCENT_TEXT),
         ("ค่าสมัครทัวร์นาเมนต์", tourney_revenue, PRIMARY_BTN),
-        ("WAKA GYM", gym_revenue, SUCCESS_TEXT),
     ]), unsafe_allow_html=True)
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
@@ -357,28 +343,22 @@ with tab_products:
 
 with tab_compare:
     t_events, t_regs = load_tournament_data()
-    g_events, g_regs = load_wakagym_data()
     t_confirmed = [r for r in t_regs if r.get("slip_status") in CONFIRMED_REG_STATUS]
-    g_confirmed = [r for r in g_regs if r.get("slip_status") in CONFIRMED_REG_STATUS]
 
     c1, c2 = st.columns(2)
     with c1:
         st.markdown(kpi_card("ทัวร์นาเมนต์ — งานทั้งหมด", len(t_events)), unsafe_allow_html=True)
-        st.markdown(kpi_card("ทัวร์นาเมนต์ — ผู้สมัคร (ยืนยันแล้ว/ทั้งหมด)", f"{len(t_confirmed)} / {len(t_regs)}"), unsafe_allow_html=True)
     with c2:
-        st.markdown(kpi_card("WAKA GYM — งานทั้งหมด", len(g_events)), unsafe_allow_html=True)
-        st.markdown(kpi_card("WAKA GYM — ผู้เล่น (ยืนยันแล้ว/ทั้งหมด)", f"{len(g_confirmed)} / {len(g_regs)}"), unsafe_allow_html=True)
+        st.markdown(kpi_card("ทัวร์นาเมนต์ — ผู้สมัคร (ยืนยันแล้ว/ทั้งหมด)", f"{len(t_confirmed)} / {len(t_regs)}"), unsafe_allow_html=True)
 
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
-    compare_df = pd.DataFrame([
+    tourney_df = pd.DataFrame([
         {"ประเภท": "ทัวร์นาเมนต์", "จำนวนงาน": len(t_events), "ผู้สมัครทั้งหมด": len(t_regs), "ยืนยันแล้ว": len(t_confirmed)},
-        {"ประเภท": "WAKA GYM", "จำนวนงาน": len(g_events), "ผู้สมัครทั้งหมด": len(g_regs), "ยืนยันแล้ว": len(g_confirmed)},
     ])
-    st.dataframe(compare_df, use_container_width=True, hide_index=True)
+    st.dataframe(tourney_df, use_container_width=True, hide_index=True)
     st.download_button(
-        "⬇️ ดาวน์โหลดตารางเปรียบเทียบ (CSV)", df_to_csv_bytes(compare_df),
-        file_name=f"waka_tournament_vs_gym_{date_from}_{date_to}.csv", mime="text/csv",
+        "⬇️ ดาวน์โหลดตาราง (CSV)", df_to_csv_bytes(tourney_df),
+        file_name=f"waka_tournament_{date_from}_{date_to}.csv", mime="text/csv",
         key="dl_compare",
     )
-    st.bar_chart(compare_df.set_index("ประเภท")[["ผู้สมัครทั้งหมด", "ยืนยันแล้ว"]])

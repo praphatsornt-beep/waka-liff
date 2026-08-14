@@ -161,45 +161,13 @@ def _load_stock_warnings():
         return []
 
 
-def _load_gym():
-    try:
-        sb = get_supabase()
-        today = datetime.now(TH_TZ).strftime("%Y-%m-%d")
-        rows = sb.table("wakagym_registrations").select("*").eq("event_date", today).execute().data
-
-        total_tokens = sum(int(r.get("tokens_earned") or 0) for r in rows)
-        total_promo = sum(int(r.get("promo_packs") or 0) for r in rows)
-        rewards_given = sum(1 for r in rows if str(r.get("rewards_given")).lower() == "true")
-        cash_amount = 0
-        transfer_amount = 0
-        for r in rows:
-            entry_fee = int(r.get("note") or 0) or 200
-            if (r.get("payment_method") or "transfer") == "cash":
-                cash_amount += entry_fee
-            else:
-                transfer_amount += entry_fee
-
-        pending_slips = len(
-            sb.table("wakagym_registrations").select("reg_id").eq("slip_status", "pending").execute().data
-        )
-        return {
-            "date": today, "total_players": len(rows), "total_tokens": total_tokens,
-            "total_promo": total_promo, "rewards_given": rewards_given,
-            "cash_amount": cash_amount, "transfer_amount": transfer_amount,
-            "total_amount": cash_amount + transfer_amount, "pending_slips": pending_slips,
-        }
-    except Exception as e:
-        return {"_error": str(e)}
-
-
 @st.cache_data(ttl=30)
 def load_summary():
     with ThreadPoolExecutor(max_workers=4) as ex:
         f_orders = ex.submit(_load_orders)
         f_tourney = ex.submit(_load_tourney)
-        f_gym = ex.submit(_load_gym)
         f_stock = ex.submit(_load_stock_warnings)
-        return f_orders.result(), f_tourney.result(), f_gym.result(), f_stock.result()
+        return f_orders.result(), f_tourney.result(), f_stock.result()
 
 
 def top_products(recent_orders: list, limit: int = 5) -> list:
@@ -363,9 +331,9 @@ def home():
 
     page_header("ภาพรวมวันนี้ · ทุกสาขา", subtitle)
 
-    orders, tourney, gym, low_stock = load_summary()
-    if "_error" in orders or "_error" in tourney or "_error" in gym:
-        for section, data in (("ออเดอร์", orders), ("ทัวร์นาเมนต์", tourney), ("WAKA GYM", gym)):
+    orders, tourney, low_stock = load_summary()
+    if "_error" in orders or "_error" in tourney:
+        for section, data in (("ออเดอร์", orders), ("ทัวร์นาเมนต์", tourney)):
             if "_error" in data:
                 st.caption(f"{section} โหลดไม่ได้: {data['_error']}")
 
@@ -373,13 +341,11 @@ def home():
         f'<div style="font-size:13px;font-weight:700;color:{TEXT2};margin:8px 0 10px">ต้องดำเนินการวันนี้</div>',
         unsafe_allow_html=True,
     )
-    a1, a2, a3 = st.columns(3)
+    a1, a2 = st.columns(2)
     with a1:
         st.markdown(action_card("ออเดอร์รอตรวจสลิป", orders.get("pending_count"), "/orders"), unsafe_allow_html=True)
     with a2:
         st.markdown(action_card("ผู้สมัครรอยืนยันสลิป", tourney.get("pending_applicants"), "/tournament"), unsafe_allow_html=True)
-    with a3:
-        st.markdown(action_card("สลิป WAKA GYM รอตรวจ", gym.get("pending_slips"), "/wakagym"), unsafe_allow_html=True)
 
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
 
@@ -388,7 +354,7 @@ def home():
     today_orders = [o for o in recent_orders if o.get("timestamp", "").startswith(today_str) and o.get("slip_status") == "ยืนยัน"]
     revenue_today = sum(int(o.get("total", 0)) for o in today_orders)
 
-    c1, c2, c3 = st.columns(3)
+    c1, c2 = st.columns(2)
     with c1:
         st.markdown(summary_card(
             "📦", "ออเดอร์วันนี้", orders.get("orders_today", 0), "ออเดอร์", f"฿{revenue_today:,.0f}",
@@ -401,12 +367,6 @@ def home():
             f"จากทั้งหมด {tourney.get('total_count', 0)} งาน",
             "รอยืนยันสลิป", tourney.get("pending_applicants") if tourney.get("pending_applicants") is not None else "—", PENDING_TEXT,
             "เปิดรับสมัคร", tourney.get("open_count", 0), SUCCESS_TEXT,
-        ), unsafe_allow_html=True)
-    with c3:
-        st.markdown(summary_card(
-            "🏋️", "WAKA GYM วันนี้", gym.get("total_players", 0), "ผู้เล่น", f"฿{gym.get('total_amount', 0):,.0f}",
-            "รอตรวจสลิป", gym.get("pending_slips") if gym.get("pending_slips") is not None else "—", PENDING_TEXT,
-            "ผู้เล่น", gym.get("total_players", 0), SUCCESS_TEXT,
         ), unsafe_allow_html=True)
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
@@ -482,7 +442,6 @@ st.logo(str(ASSETS_DIR / "waka_logo.png"), icon_image=str(ASSETS_DIR / "waka_ico
 home_pg = st.Page(home, title="หน้าแรก", icon="🏠", url_path="", default=True)
 orders_pg = st.Page("screens/orders.py", title="ออเดอร์", icon="🛒", url_path="orders")
 tournament_pg = st.Page("screens/tournament.py", title="ทัวร์นาเมนต์", icon="🏆", url_path="tournament")
-wakagym_pg = st.Page("screens/wakagym.py", title="WAKA GYM", icon="🏋️", url_path="wakagym")
 stock_pg = st.Page("screens/stock.py", title="คลังสินค้าและสาขา", icon="📦", url_path="stock")
 products_pg = st.Page("screens/products.py", title="สินค้าและหมวดหมู่", icon="🗂️", url_path="products")
 walkin_pg = st.Page("screens/walkin.py", title="หน้าร้าน", icon="🛒", url_path="walkin")
@@ -492,7 +451,7 @@ settings_pg = st.Page("screens/settings.py", title="ตั้งค่า", icon
 
 pg = st.navigation({"เมนูหลัก": [
     home_pg, orders_pg, walkin_pg, stock_pg, products_pg,
-    report_pg, audit_log_pg, tournament_pg, wakagym_pg, settings_pg,
+    report_pg, audit_log_pg, tournament_pg, settings_pg,
 ]})
 
 with st.sidebar:

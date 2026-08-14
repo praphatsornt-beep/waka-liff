@@ -92,11 +92,16 @@ Outputs the user needs to act on go to cloud services (Google Sheets, Slides, et
 
 This repo runs **WAKA SPACE**, a LINE-based card-game shop order system:
 customers order via LIFF, staff fulfill via LIFF, admins/finance manage via
-Streamlit. It also has its own in-app tournament/GYM registration flows
-(below) — separate from an older Google Forms + Sheets + Claude pipeline for
+Streamlit. It also has its own in-app tournament registration flow (below)
+— separate from an older Google Forms + Sheets + Claude pipeline for
 matching payment slips to tournament sign-ups that was retired 2026-08-06 as
 unused (its own config/admin UI had already gone stale; superseded by the
-in-app tournament flow).
+in-app tournament flow). A separate in-app "WAKA GYM" player-registration/
+token-reward flow (Streamlit `screens/wakagym.py`, GAS `wakagym*` actions,
+LIFF `wakagym.html`) was removed 2026-08-14 at the owner's request pending a
+rules rework — the Supabase tables (`wakagym_registrations`, `wakagym_events`,
+`player_stats`) were left in place for a future rebuild, but no code in this
+repo reads or writes them anymore.
 
 ## The four runtime pieces
 
@@ -134,7 +139,7 @@ in-app tournament flow).
   ...`. It was 328 commits behind `vercel/master` before being discovered
   and abandoned on 2026-08-06.
 - **`tools/verify_app.py` + `tools/screens/*.py`** — the Streamlit admin
-  dashboard (orders, stock, tournament, wakagym, report, settings tabs).
+  dashboard (orders, stock, tournament, report, settings tabs).
   `verify_app.py` is the Streamlit Cloud entry point/router — its path is
   fixed because Streamlit Cloud can't change a deployed app's main file
   without losing Secrets + URL. `tools/theme.py` holds the shared dark
@@ -146,10 +151,11 @@ in-app tournament flow).
   both GAS and Streamlit read/write via the REST API (`service_role` key
   only; RLS denies the `anon` key everything). All tables are now
   Supabase-primary (migrated off Google Sheets 2026-08): `orders`, `config`,
-  `catalog`, `stock_branch`, `tournament_registrations`,
-  `wakagym_registrations`, `wakagym_events`, `tournament_events`,
-  `tournament_categories`, `shipments`, `stock_returns`, `player_stats`,
-  `withdrawals`, `walkin_sales`. `workflows/setup_supabase.md` describes the
+  `catalog`, `stock_branch`, `tournament_registrations`, `tournament_events`,
+  `tournament_categories`, `shipments`, `stock_returns`,
+  `withdrawals`, `walkin_sales`. (`wakagym_registrations`, `wakagym_events`,
+  `player_stats` still exist too, but are unused since the 2026-08-14 WAKA
+  GYM removal noted above.) `workflows/setup_supabase.md` describes the
   original "prep only, Sheets stays authoritative" plan — that plan is long
   out of date; trust the code comments over that doc.
 
@@ -184,7 +190,9 @@ page manually — see the `run` skill.
   codes, per-role steps (customer/warehouse/branch staff/finance), the slip
   verification statuses, and deploy steps for GAS/LIFF/Streamlit.
 - `workflows/tournament_operations.md` — day-of-event flow for the in-app
-  tournament/GYM card distribution.
+  tournament card distribution. Also covers WAKA GYM procedures, which are
+  currently stale/inapplicable since the 2026-08-14 removal noted above —
+  not updated here per the "don't edit workflows unasked" rule.
 - `workflows/setup_google_auth.md` — one-time Google OAuth setup for
   `credentials.json`/`token.json`. Currently unused by any code in this
   repo (all Streamlit screens read Supabase directly now) — kept in case
