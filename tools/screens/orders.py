@@ -408,7 +408,7 @@ with st.container(border=True):
             st.session_state["ord_products_sel"] = sorted(selected_set)
         product_filter = st.session_state.get("ord_products_sel", [])
     with f5:
-        if st.button("ล้างตัวกรอง", use_container_width=True):
+        if st.button("Clear"):
             for k in FILTER_KEYS:
                 st.session_state.pop(k, None)
             for p in all_products:
