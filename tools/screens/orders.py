@@ -834,7 +834,12 @@ with tab_cards:
                                                     st.error(f"ทำรายการไม่ได้: {e}")
 
                     if is_del and cur_status == "ยืนยัน":
-                        with st.popover("🚚 จัดส่ง Rocket8", use_container_width=True):
+                        # popover ปกติค้างเปิดอยู่ต่อแม้ st.rerun() หลังทำรายการสำเร็จ
+                        # (Streamlit เก็บสถานะเปิด/ปิดของ popover ไว้ตาม key เดิม) —
+                        # เปลี่ยน key ให้ต่างไปทุกครั้งที่สร้างเลขพัสดุสำเร็จ บังคับให้
+                        # Streamlit มองเป็น widget ใหม่ ซึ่ง default ปิดอยู่เสมอ
+                        r8_nonce = st.session_state.get(f"r8_nonce_{order_id}", 0)
+                        with st.popover("🚚 จัดส่ง Rocket8", use_container_width=True, key=f"r8_popover_{order_id}_{r8_nonce}"):
                             st.caption("ยืนยันที่อยู่ปลายทางก่อนสร้างเลขพัสดุ — Rocket8 ต้องการ ตำบล/อำเภอ/จังหวัด/รหัสไปรษณีย์ แยกฟิลด์ ไม่ใช่ที่อยู่แบบข้อความเดียว")
                             st.text_input(
                                 "ที่อยู่เดิม (อ้างอิง)", value=str(row.get("address", "")),
@@ -945,6 +950,7 @@ with tab_cards:
                                         except Exception as line_err:
                                             _flash(f"สร้างเลขพัสดุสำเร็จ ({awb}) แต่แจ้งลูกค้าทาง LINE ไม่ได้: {line_err}")
 
+                                        st.session_state[f"r8_nonce_{order_id}"] = r8_nonce + 1
                                         st.cache_data.clear()
                                         st.rerun()
                                     except rocket8_client.Rocket8Error as e:

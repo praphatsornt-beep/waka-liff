@@ -201,6 +201,21 @@ h1, h2, h3, h4,
   background: {SURFACE};
 }}
 
+/* Dropdown (selectbox/multiselect) fields get a gold outline + faint tint,
+   number inputs get a teal outline — staff feedback: forms with a lot of
+   fields (e.g. Rocket8 shipment form) made it hard to tell at a glance
+   which boxes are dropdowns vs plain fields to type into. */
+[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {{
+  border: 1.5px solid {ACCENT_TEXT} !important;
+  background: rgba(240,199,103,0.07) !important;
+  border-radius: 8px !important;
+}}
+[data-testid="stNumberInput"] input {{
+  border: 1.5px solid {PRIMARY_BTN} !important;
+  border-radius: 8px !important;
+}}
+
 [data-testid="stPopoverBody"] {{
   background: {SURFACE};
   border: 1px solid {BORDER};
