@@ -106,16 +106,25 @@ def bulk_cancel(tracking_nos: list, remark: str = "") -> dict:
 
 # WAKA SPACE's registered pickup point in Rocket8 PRODUCTION (id confirmed
 # live on 2026-08-14: GET /public/v1/pickup-points, default_flag=1, account
-# name "ZL" — matches 108,110 ถนนสาธุประดิษฐ์ ทุ่งวัดดอน สาทร กรุงเทพฯ 10120).
+# name "ZL" — the only pickup point on this account, still tied to the old
+# Bangkok address). Rocket8 dispatches the physical courier pickup from
+# whatever address is registered under this id in Rocket8's own dashboard —
+# changing SENDER below does NOT move that. If courier pickup should now
+# happen at the Nonthaburi address, a new pickup point needs to be
+# registered/set-default in the Rocket8 dashboard and PICKUP_POINT_ID
+# updated to match; that can't be done via this read-only API.
 PICKUP_POINT_ID = 1294
+
+# "from" address printed on the shipping label / shown to the receiving
+# courier hub — updated 2026-08-14 per the real sender address in use now.
 SENDER = {
     "name": "WAKA SPACE",
-    "address": "108,110 ถนนสาธุประดิษฐ์",
-    "district": "ทุ่งวัดดอน",
-    "city": "สาทร",
-    "province": "กรุงเทพมหานคร",
-    "postal_code": "10120",
-    "phone_number": "0824451956",
+    "address": "อาคารต้นสักคอร์เนอร์",
+    "district": "บางกระสอ",
+    "city": "เมืองนนทบุรี",
+    "province": "นนทบุรี",
+    "postal_code": "11000",
+    "phone_number": "0623380199",
 }
 
 PARTNERS = ["FLASH", "SHOPEE_EXPRESS", "DHL", "THAILAND_POST", "FLASH_BULKY", "FLASH_FRUIT"]

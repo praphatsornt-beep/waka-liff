@@ -937,9 +937,9 @@ with tab_cards:
                                         )
                                         try:
                                             gas_post({"_action": "notifyCustomer", "order_id": order_id, "custom_message": line_msg})
-                                            st.success(f"ดำเนินการแล้ว — สร้างเลขพัสดุ {awb} และแจ้งลูกค้าทาง LINE แล้ว")
+                                            _flash(f"ดำเนินการแล้ว — สร้างเลขพัสดุ {awb} และแจ้งลูกค้าทาง LINE แล้ว")
                                         except Exception as line_err:
-                                            st.warning(f"สร้างเลขพัสดุสำเร็จ ({awb}) แต่แจ้งลูกค้าทาง LINE ไม่ได้: {line_err}")
+                                            _flash(f"สร้างเลขพัสดุสำเร็จ ({awb}) แต่แจ้งลูกค้าทาง LINE ไม่ได้: {line_err}")
 
                                         st.cache_data.clear()
                                         st.rerun()
