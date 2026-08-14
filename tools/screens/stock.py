@@ -361,6 +361,9 @@ with tab_central:
         cats = ["ทุกหมวดหมู่"] + sorted([c for c in catalog["category"].dropna().unique().tolist() if c])
         cat_sel = st.selectbox("กรองหมวดหมู่", cats, key="central_cat_filter")
         catalog_show = catalog if cat_sel == "ทุกหมวดหมู่" else catalog[catalog["category"] == cat_sel]
+        # แสดงแค่สินค้าที่เปิดใช้งาน — ปิดขายไปแล้วไปเปิด/แก้ที่แท็บ "สินค้า" ใน
+        # หน้าจัดการสินค้าแทน (มี toggle เปิด/ปิดขายอยู่แล้ว)
+        catalog_show = catalog_show[catalog_show["active"].apply(lambda v: str(v or "").strip().upper() != "FALSE")]
 
         STATUS_ON, STATUS_OFF = "🟢", "🔴"
 
