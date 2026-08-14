@@ -1015,10 +1015,8 @@ async function loadProducts() {
     const r=await fetch(G+'&action=api&do=product_list'); const d=await r.json();
     products=d.products||[];
     const sel=gid('productSelect'); sel.innerHTML='<option value="">-- เลือกจากรายการ --</option>';
-    const wd=gid('wdProduct'); wd.innerHTML='<option value="">-- เลือก --</option>';
     for (const p of products) {
       const o=document.createElement('option'); o.value=p.name; o.textContent=p.name+(p.barcode?' ['+p.barcode+']':''); sel.appendChild(o);
-      const o2=o.cloneNode(true); wd.appendChild(o2);
     }
   } catch(_){}
 }
@@ -1045,8 +1043,14 @@ async function _branchInStockNames() {
 }
 
 async function loadWithdrawProductOptions() {
-  if (!products.length) await loadProducts();
-  const inStock = await _branchInStockNames();
+  // ยิงสองคำขอพร้อมกันแล้วเรนเดอร์ dropdown ครั้งเดียวตอนทั้งคู่เสร็จ — เดิม
+  // await ทีละอันแล้วเซ็ต innerHTML ของ wdProduct 2 รอบ (loadProducts() เคยเซ็ต
+  // list เต็มก่อน แล้วค่อยแทนที่ด้วย list ที่กรองแล้ว) ทำให้เห็นสินค้าทั้งหมด
+  // วาบขึ้นมาก่อนราว 1-2 วิ ก่อนจะเหลือแค่ของสาขา
+  const [, inStock] = await Promise.all([
+    products.length ? Promise.resolve() : loadProducts(),
+    _branchInStockNames(),
+  ]);
   const list = inStock ? products.filter(p=>inStock.has(p.name)) : products;
   gid('wdProduct').innerHTML = '<option value="">-- เลือก --</option>' + list.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
 }
@@ -1529,8 +1533,11 @@ async function shipSubmit() {
 let wsCart = [];
 
 async function openWalkin() {
-  if (!products.length) await loadProducts();
-  const inStock = await _branchInStockNames();
+  // ยิงพร้อมกัน ไม่รอทีละอัน — ดู comment ใน loadWithdrawProductOptions()
+  const [, inStock] = await Promise.all([
+    products.length ? Promise.resolve() : loadProducts(),
+    _branchInStockNames(),
+  ]);
   const list = inStock ? products.filter(p=>inStock.has(p.name)) : products;
   const wsSel = gid('wsProduct');
   wsSel.innerHTML = '<option value="">-- เลือก --</option>' + list.map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
