@@ -458,7 +458,7 @@
               <input type="text" id="wsBank" placeholder="เช่น กสิกร, พร้อมเพย์">
             </div>
             <div class="form-group"><label>ชื่อพนักงาน</label><input type="text" id="wsStaffName" placeholder="ชื่อพนักงานที่ขาย"></div>
-            <button class="btn btn-green" onclick="wsSubmitSale()">✅ บันทึกการขาย</button>
+            <button class="btn btn-green" onclick="wsSubmitSale(this)">✅ บันทึกการขาย</button>
           </div>
 
           <div class="card">
@@ -1588,7 +1588,7 @@ function wsTogglePayBank() {
   gid('wsBankGroup').style.display = gid('wsPayMethod').value === 'transfer' ? 'block' : 'none';
 }
 
-async function wsSubmitSale() {
+async function wsSubmitSale(btn) {
   const branch = gid('branchSelect').value; if (!branch) { alert('เลือกสาขาก่อน'); return; }
   if (branch === 'ทั้งหมด') { alert('โหมด "ทุกสาขา" ขายหน้าร้านไม่ได้ กรุณาเปลี่ยนไปเลือกสาขาที่ต้องการก่อน'); return; }
   if (!wsCart.length) { alert('ยังไม่มีสินค้าในตะกร้า'); return; }
@@ -1596,11 +1596,15 @@ async function wsSubmitSale() {
   const bank = gid('wsBank').value.trim();
   const staff_name = gid('wsStaffName').value.trim(); if (!staff_name) { alert('กรอกชื่อพนักงาน'); return; }
   localStorage.setItem('waka_staff_name', staff_name);
+  // ปิดปุ่มทันทีตอนกด กันมือลั่น/เน็ตช้าแล้วกดซ้ำ (เคยเกิดจริง — ขายซ้ำ 2 รายการ
+  // ในเวลาห่างกันแค่ 5 วิ) แล้วเด้ง alert() บล็อกหน้าจอไว้ตอนสำเร็จ แทน toast
+  // เดิมที่หายไปเองใน 3 วิ พนักงานมองไม่ทันเลยกดซ้ำเพราะคิดว่ายังไม่บันทึก
+  btn.disabled = true;
   try {
     const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'walkinSale', branch, items: wsCart, payment_method, bank, staff_name, code: _authCode() }) });
     const d = await r.json();
     if (d.ok) {
-      toast('บันทึกการขาย ฿' + d.total.toLocaleString() + ' แล้ว');
+      alert('บันทึกการขาย ฿' + d.total.toLocaleString() + ' แล้ว ✅');
       wsCart = [];
       wsRenderCart();
       loadWalkinHistory();
@@ -1609,6 +1613,8 @@ async function wsSubmitSale() {
     }
   } catch (e) {
     alert('บันทึกไม่ได้');
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -1626,13 +1632,31 @@ async function loadWalkinHistory() {
       const payLabel = s.payment_method === 'cash' ? '💵 เงินสด' : ('📱 โอน' + (s.bank ? ' ' + s.bank : ''));
       const staffLine = s.staff_name ? ` · 👤 ${esc(s.staff_name)}` : '';
       return `<div style="padding:8px 0;border-bottom:1px solid #f0ede8">
-        <div style="display:flex;justify-content:space-between"><strong>฿${Number(s.total).toLocaleString()}</strong><span style="font-size:11px;color:var(--label)">${esc(s.timestamp)}</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong>฿${Number(s.total).toLocaleString()}</strong>
+          <span style="font-size:11px;color:var(--label)">${esc(s.timestamp)}</span>
+        </div>
         <div style="font-size:12px;color:var(--text2)">${esc(itemsText)} · ${payLabel}${staffLine}</div>
+        <div style="text-align:right;margin-top:4px">
+          <button class="btn-sm" style="background:none;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer" onclick="wsCancelSale('${esc(s.sale_id)}',this)">ยกเลิกรายการนี้</button>
+        </div>
       </div>`;
     }).join('');
   } catch (e) {
     gid('wsHistory').innerHTML = '<div class="empty">โหลดไม่ได้</div>';
   }
+}
+
+async function wsCancelSale(saleId, btn) {
+  if (!confirm('ยกเลิกรายการขาย ' + saleId + '? ระบบจะคืนสต็อกให้อัตโนมัติ')) return;
+  const staff_name = gid('wsStaffName').value.trim() || localStorage.getItem('waka_staff_name') || '';
+  btn.disabled = true;
+  try {
+    const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'cancelWalkinSale', sale_id: saleId, staff_name, code: _authCode() }) });
+    const d = await r.json();
+    if (d.ok) { alert('ยกเลิกแล้ว คืนสต็อกเรียบร้อย ✅'); loadWalkinHistory(); }
+    else { alert(d.error || 'ผิดพลาด'); btn.disabled = false; }
+  } catch (e) { alert('ยกเลิกไม่ได้'); btn.disabled = false; }
 }
 
 // ══════════════════════════════════════════════════════════

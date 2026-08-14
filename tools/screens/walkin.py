@@ -8,14 +8,28 @@ from pathlib import Path
 
 import streamlit as st
 import pandas as pd
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from theme import apply_theme, page_header, kpi_card, TEXT2
+from theme import apply_theme, page_header, kpi_card, admin_name, TEXT2
+
+GAS_URL  = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
+WAKA_S   = "wk26xK9mPqRt"  # shared secret doPost/doGet require via ?_s= (same value as stock.py's WAKA_S)
+ADMIN_CODE = "waka99"
 
 BRANCHES = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์"]
+
+
+def gas_post(payload: dict) -> dict:
+    payload = {**payload, "code": ADMIN_CODE, "staff_name": admin_name()}
+    resp = requests.post(f"{GAS_URL}?_s={WAKA_S}", json=payload, timeout=30)
+    result = resp.json()
+    if result.get("error"):
+        raise Exception(result["error"])
+    return result
 
 
 @st.cache_resource
@@ -79,3 +93,11 @@ else:
                 st.caption(f"{summary or '—'} · {pay_label}{staff_line}")
             with c2:
                 st.caption(r.get("sale_id", ""))
+                if st.button("ยกเลิก", key=f"cancel_ws_{r.get('sale_id', '')}", use_container_width=True):
+                    try:
+                        gas_post({"_action": "cancelWalkinSale", "sale_id": r.get("sale_id", "")})
+                        st.cache_data.clear()
+                        st.success("ยกเลิกแล้ว คืนสต็อกเรียบร้อย")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"ยกเลิกไม่ได้: {e}")

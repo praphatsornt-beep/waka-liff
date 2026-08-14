@@ -171,6 +171,32 @@ function patchSupabase_(table, filterQuery, patch) {
   }
 }
 
+// DELETE-by-filter, same filter shape as patchSupabase_ (e.g. "id=eq.123").
+function deleteSupabase_(table, filterQuery) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return { ok: false, code: 0, text: "SUPABASE_URL/SUPABASE_SERVICE_KEY not set" };
+  try {
+    var res = UrlFetchApp.fetch(SUPABASE_URL + "/rest/v1/" + table + "?" + filterQuery, {
+      method: "delete",
+      headers: {
+        apikey: SUPABASE_SERVICE_KEY,
+        Authorization: "Bearer " + SUPABASE_SERVICE_KEY,
+        Prefer: "return=minimal",
+      },
+      muteHttpExceptions: true,
+    });
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      var text = res.getContentText();
+      Logger.log("deleteSupabase_(" + table + ") HTTP " + code + ": " + text);
+      return { ok: false, code: code, text: text };
+    }
+    return { ok: true, code: code, text: "" };
+  } catch (e) {
+    Logger.log("deleteSupabase_(" + table + ") failed: " + e.message);
+    return { ok: false, code: -1, text: e.message };
+  }
+}
+
 // Renames a product atomically — updates catalog.name and every matching
 // stock_branch.name in one Postgres transaction via the rename_product() SQL
 // function (see supabase/schema.sql), so a rename can never leave branch
@@ -464,6 +490,10 @@ function doPost(e) {
 
     if (data._action === "walkinSale") {
       return handleWalkinSale(data);
+    }
+
+    if (data._action === "cancelWalkinSale") {
+      return handleCancelWalkinSale(data);
     }
 
     if (data._action === "uploadProductImage") {
@@ -3548,6 +3578,53 @@ function handleWalkinSale(data) {
     _logStaffAction_(staffName, branch, "walkin_sale", saleId, "฿" + total);
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, sale_id: saleId, total: total })));
+  } catch (err) {
+    try { lock.releaseLock(); } catch (_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+// ── ยกเลิกการขายหน้าร้าน: คืนสต็อกสาขา + ลบรายการขาย ──
+// data: { sale_id, staff_name, code }
+function handleCancelWalkinSale(data) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    var saleId = String(data.sale_id || "").trim();
+    var staffName = String(data.staff_name || "").trim();
+    if (!saleId) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing sale_id" }))); }
+
+    var rows = supabaseSelect_("walkin_sales", "select=*&sale_id=eq." + encodeURIComponent(saleId) + "&limit=1");
+    var sale = rows[0];
+    if (!sale) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบรายการขาย" }))); }
+
+    var branch = String(sale.branch || "");
+    if (!_branchAuthorized(data.code, branch)) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" }))); }
+    var items = Array.isArray(sale.items_json) ? sale.items_json : [];
+
+    // คืนสต็อกสาขาที่ถูกหักไปตอนขาย
+    var bsRows = _fetchStockBranchRows_(branch);
+    items.forEach(function(it) {
+      var bsRow = _findStockBranchRow_(bsRows, it.name, branch);
+      if (!bsRow) return;
+      var field = it.type === "box" ? "qty_box" : "qty_pack";
+      bsRow[field] = (Number(bsRow[field]) || 0) + (it.qty || 1);
+      _writeStockBranchRow_(bsRow);
+    });
+
+    var delRes = deleteSupabase_("walkin_sales", "sale_id=eq." + encodeURIComponent(saleId));
+    if (!delRes.ok) throw new Error("Supabase walkin_sales delete failed: " + delRes.text);
+
+    lock.releaseLock();
+
+    var itemsText = items.map(function(it) { return it.name + " x" + it.qty; }).join(", ");
+    var groupStaffCancelWs = _getConfigValue(null, "group_staff");
+    if (groupStaffCancelWs && staffName) {
+      _linePush(groupStaffCancelWs, "🗑️ " + staffName + " ยกเลิกรายการขายหน้าร้าน " + saleId + " ที่สาขา " + branch + " ฿" + (sale.total || 0) + " (คืนสต็อกแล้ว)\n" + itemsText);
+    }
+    _logStaffAction_(staffName, branch, "cancel_walkin_sale", saleId, "฿" + (sale.total || 0) + " — " + itemsText);
+
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch (_) {}
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
