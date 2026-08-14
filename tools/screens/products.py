@@ -3,6 +3,7 @@
 
 import base64
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -19,6 +20,20 @@ from theme import apply_theme, page_header, admin_name
 GAS_URL  = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
 WAKA_S   = "wk26xK9mPqRt"  # shared secret doPost/doGet require via ?_s= (same value as stock.py's WAKA_S)
 ADMIN_CODE = "waka99"  # updateProduct/addProduct still require this to prove admin, same as stock.py
+
+
+def drive_thumbnail_url(url: str) -> str:
+    """catalog.image_url is stored as a Drive share link
+    (.../file/d/{id}/view?usp=sharing), which an <img> tag can't render —
+    convert to the thumbnail endpoint, same as gas/Code.gs's _driveUrl()
+    does server-side for the LIFF customer catalog."""
+    url = str(url or "")
+    if not url:
+        return ""
+    m = re.search(r"/d/([a-zA-Z0-9_-]+)", url)
+    if m:
+        return f"https://drive.google.com/thumbnail?id={m.group(1)}&sz=w800"
+    return url
 
 
 @st.cache_resource
@@ -109,7 +124,7 @@ with tab_manage:
 
             cur_image_url = str(edit_row.get("image_url") or "")
             if cur_image_url:
-                st.image(cur_image_url, width=200)
+                st.image(drive_thumbnail_url(cur_image_url), width=200)
             else:
                 st.caption("(ยังไม่มีรูปสินค้า)")
 
