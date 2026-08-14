@@ -286,6 +286,32 @@ function supabaseSelect_(table, query) {
   return JSON.parse(res.getContentText());
 }
 
+// UrlFetchApp.fetchAll() ยิงหลาย request จริงพร้อมกัน (ไม่ใช่ทีละตัวแบบเรียก
+// supabaseSelect_() วนลูป) — ใช้เฉพาะจุดที่ต้อง query Supabase มากกว่า 1 ครั้ง
+// ในการเรียกเดียวกัน อย่าง action=dashboard ที่โหลดทุกครั้งที่เปิด app.html
+function supabaseSelectBatch_(specs) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return specs.map(function() { return []; });
+  var requests = specs.map(function(s) {
+    return {
+      url: SUPABASE_URL + "/rest/v1/" + s.table + (s.query ? "?" + s.query : ""),
+      method: "get",
+      headers: {
+        apikey: SUPABASE_SERVICE_KEY,
+        Authorization: "Bearer " + SUPABASE_SERVICE_KEY,
+      },
+      muteHttpExceptions: true,
+    };
+  });
+  var responses = UrlFetchApp.fetchAll(requests);
+  return responses.map(function(res, i) {
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      throw new Error("supabaseSelectBatch_(" + specs[i].table + ") HTTP " + code + ": " + res.getContentText());
+    }
+    return JSON.parse(res.getContentText());
+  });
+}
+
 // ── _config: Supabase-primary ────────────────────────────────────────────
 function getConfig_() {
   var cache = CacheService.getScriptCache();
@@ -1528,8 +1554,6 @@ function handleApi(params) {
     // ปัญหาสองต่อ: (1) ตารางโตขึ้นเรื่อยๆ ก็ยังนับได้ครบไม่ต้องลาก full table,
     // (2) ออเดอร์ค้างตรวจเก่าๆ ที่หลุด limit ของ recent list ด้านล่างจะไม่ตกหล่น
     var dPendingFilter = dPendingSlips.map(function(s) { return encodeURIComponent(s); }).join(",");
-    var dPendingRows = supabaseSelect_("orders", "select=order_id&slip_status=in.(" + dPendingFilter + ")");
-    var dPendingCount = dPendingRows.length;
 
     // recent_orders ใช้แสดงผลบนหน้า LIFF "ออเดอร์" — โชว์เฉพาะออเดอร์ที่ยังไม่
     // เสร็จสมบูรณ์เท่านั้น (ดูรายการทั้งหมด/ประวัติย้อนหลังไปดูที่ Streamlit แทน)
@@ -1541,7 +1565,16 @@ function handleApi(params) {
     // "จัดส่งแล้ว" (delivery) นับเป็น done ด้วย เพราะพนักงานกดส่งมอบก็ปิด order
     // ทันทีแล้ว ไม่มีขั้นตอนรอลูกค้ากดยืนยันรับของแยกต่างหากอีกต่อไป
     var dDoneFulfillment = ["รับแล้ว", "สาขายืนยัน", "จัดส่งแล้ว", "ยกเลิก"];
-    var dashSb = supabaseSelect_("orders", "select=order_id,real_name,display_name,phone,items_json,total,slip_status,fulfillment,branch,address,timestamp&order=timestamp.desc&limit=300");
+
+    // ยิงสองคำขอนี้พร้อมกันจริง (fetchAll) แทนที่จะรอทีละอัน — ตัวนี้เป็นคำขอ
+    // แรกสุดที่ app.html ยิงทุกครั้งที่เปิดหน้า (cache miss ทุก 30 วิ) เวลาที่
+    // เสียไปกับ round-trip ที่สองจึงคุ้มพิเศษที่จะตัดออก
+    var dBatch = supabaseSelectBatch_([
+      { table: "orders", query: "select=order_id&slip_status=in.(" + dPendingFilter + ")" },
+      { table: "orders", query: "select=order_id,real_name,display_name,phone,items_json,total,slip_status,fulfillment,branch,address,timestamp&order=timestamp.desc&limit=300" },
+    ]);
+    var dPendingCount = dBatch[0].length;
+    var dashSb = dBatch[1];
     var dOrdersToday = 0, dRevenueToday = 0;
     var dRecentOrders = [];
     dashSb.forEach(function(r) {

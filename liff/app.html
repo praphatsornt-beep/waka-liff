@@ -4,8 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>WAKA SPACE - Staff</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Anuphan:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <!-- QR scanner lib is only needed once staff open a scan feature, not on
+       initial load - defer so it doesn't block first paint on every visit -->
+  <script defer src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <style>
     :root {
       --bg: #f4f3ef; --card-bg: #ffffff; --card-border: #e8e5df;
@@ -566,7 +570,7 @@ function esc(s) { const d=document.createElement('div');d.textContent=s;return d
 // ── ชื่อพนักงาน: ถามครั้งเดียวตอน login แล้วใช้ซ้ำทุกจุดที่ต้องบันทึกผู้ทำรายการ
 // (แทนที่จะ prompt() ทุกครั้งที่กดปุ่ม) — เก็บใน localStorage คนละคีย์กับ
 // waka_branch/waka_staff_role เพราะ "ใคร" (คน) กับ "auth ว่าเข้าได้" เป็นคนละเรื่องกัน
-// localStorage ใช้ร่วมกันได้ข้ามหน้า (products.html, warehouse.html) เพราะเป็น origin เดียวกัน
+// localStorage ใช้ร่วมกันได้ข้ามหน้า (warehouse.html) เพราะเป็น origin เดียวกัน
 function ensureStaffName() {
   let n = localStorage.getItem('waka_staff_name') || '';
   if (!n) {
