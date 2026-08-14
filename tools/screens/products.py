@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from theme import apply_theme, page_header, admin_name
+from theme import apply_theme, page_header, admin_name, badge
 
 GAS_URL  = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
 WAKA_S   = "wk26xK9mPqRt"  # shared secret doPost/doGet require via ?_s= (same value as stock.py's WAKA_S)
@@ -89,9 +89,20 @@ def _flash(msg: str) -> None:
     st.session_state["_flash_msg"] = msg
 
 
+def _num(v, default=0.0):
+    n = pd.to_numeric(v, errors="coerce")
+    return float(n) if pd.notna(n) else default
+
+
+def _is_active(row) -> bool:
+    # Supabase stores active as the string "TRUE"/"FALSE", not a real bool —
+    # bool("FALSE") is truthy in Python, so compare the string explicitly.
+    return str(row.get("active") or "").strip().upper() != "FALSE"
+
+
 # ── Page ──────────────────────────────────────────────────────────────────────
 apply_theme()
-page_header("จัดการสินค้าและหมวดหมู่", "เพิ่ม/แก้ไขสินค้า และจัดการหมวดหมู่สินค้า")
+page_header("จัดการสินค้าและหมวดหมู่", "ดูสถานะเปิด/ปิดขาย เพิ่ม/แก้ไขสินค้า และจัดการหมวดหมู่สินค้า")
 
 if "_flash_msg" in st.session_state:
     st.toast(st.session_state.pop("_flash_msg"), icon="✅")
@@ -104,196 +115,257 @@ _product_cats = sorted(set(catalog["category"].dropna().tolist())) if not catalo
 _product_cats = [c for c in _product_cats if c]
 ALL_CATEGORIES = sorted(set(_product_cats) | {k[len(CAT_DESC_PREFIX):] for k in _cat_cfg if k.startswith(CAT_DESC_PREFIX)})
 
-tab_manage, tab_categories = st.tabs(["🗂️ จัดการสินค้า", "🏷️ หมวดหมู่สินค้า"])
+tab_browse, tab_add, tab_edit, tab_categories = st.tabs(
+    ["📋 สินค้า", "🆕 เพิ่มสินค้าใหม่", "✏️ แก้ไขสินค้า", "🏷️ หมวดหมู่สินค้า"]
+)
 
-with tab_manage:
-    sub_edit, sub_add = st.tabs(["✏️ แก้ไขสินค้า", "🆕 เพิ่มสินค้าใหม่"])
+with tab_browse:
+    br1, br2 = st.columns([2, 1])
+    with br1:
+        browse_q = st.text_input("ค้นหาสินค้า", key="browse_product_q", placeholder="ชื่อ / หมวดหมู่ / บาร์โค้ด")
+    with br2:
+        browse_status = st.selectbox("สถานะ", ["ทั้งหมด", "เปิดขาย", "ปิดขาย"], key="browse_product_status")
 
-    with sub_edit:
-        manage_cat_sel = st.selectbox("กรองหมวดหมู่", ["ทุกหมวดหมู่"] + ALL_CATEGORIES, key="edit_product_cat_filter")
-        manage_catalog = catalog if manage_cat_sel == "ทุกหมวดหมู่" else catalog[catalog["category"] == manage_cat_sel]
-        edit_names = sorted(manage_catalog["name"].tolist()) if not manage_catalog.empty else []
-        edit_sel = st.selectbox("เลือกสินค้าที่จะแก้ไข", edit_names, key="edit_product_sel")
-        edit_row = catalog[catalog["name"] == edit_sel].iloc[0] if edit_sel else None
-        if edit_row is not None:
-            def _num(v, default=0.0):
-                n = pd.to_numeric(v, errors="coerce")
-                return float(n) if pd.notna(n) else default
+    browse_df = catalog.copy()
+    if not browse_df.empty:
+        if browse_q.strip():
+            q = browse_q.strip().lower()
+            browse_df = browse_df[
+                browse_df["name"].str.lower().str.contains(q, na=False)
+                | browse_df["category"].str.lower().str.contains(q, na=False)
+                | browse_df["barcode"].astype(str).str.lower().str.contains(q, na=False)
+            ]
+        if browse_status != "ทั้งหมด":
+            active_mask = browse_df.apply(_is_active, axis=1)
+            browse_df = browse_df[active_mask] if browse_status == "เปิดขาย" else browse_df[~active_mask]
 
-            st.caption(f"รหัสสินค้า: {edit_row.get('id') or '—'}")
+    st.caption(f"{len(browse_df)} รายการ")
 
-            cur_image_url = str(edit_row.get("image_url") or "")
-            preview_image_url = st.session_state.get(f"edit_product_image_url_{edit_sel}", "") or cur_image_url
-            if preview_image_url:
-                st.image(drive_thumbnail_url(preview_image_url), width=200)
-            else:
-                st.caption("(ยังไม่มีรูปสินค้า)")
+    if browse_df.empty:
+        st.info("ไม่พบสินค้า")
+    else:
+        for _, row in browse_df.sort_values("name").iterrows():
+            row_active = _is_active(row)
+            with st.container(border=True):
+                c1, c2, c3 = st.columns([1, 4, 1.4])
+                with c1:
+                    thumb_url = drive_thumbnail_url(str(row.get("image_url") or ""))
+                    if thumb_url:
+                        st.image(thumb_url, width=56)
+                    else:
+                        st.markdown(
+                            "<div style='width:56px;height:56px;border-radius:10px;background:#f0ede8;"
+                            "display:flex;align-items:center;justify-content:center;font-size:22px'>🎴</div>",
+                            unsafe_allow_html=True,
+                        )
+                with c2:
+                    st.markdown(f"**{row.get('name','')}**")
+                    meta_bits = [str(b) for b in [row.get("category"), row.get("id")] if b]
+                    if row.get("barcode"):
+                        meta_bits.append(f"🔖 {row['barcode']}")
+                    price_bits = []
+                    if _num(row.get("price_box")) > 0:
+                        price_bits.append(f"Box ฿{_num(row.get('price_box')):,.0f}")
+                    if _num(row.get("price_pack")) > 0:
+                        price_bits.append(f"Pack ฿{_num(row.get('price_pack')):,.0f}")
+                    st.caption(" · ".join(meta_bits + price_bits) or "—")
+                    st.caption(f"สต็อกกลาง — กล่อง {int(_num(row.get('qty_box')))} / ซอง {int(_num(row.get('qty_pack')))}")
+                with c3:
+                    st.markdown(
+                        badge("เปิดขาย" if row_active else "ปิดขาย", "success" if row_active else "danger"),
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+                    if st.button("ปิดขาย" if row_active else "เปิดขาย", key=f"browse_toggle_{row['name']}", use_container_width=True):
+                        try:
+                            gas_post({"_action": "updateProduct", "name": row["name"], "active": not row_active})
+                            _flash(f"{'ปิด' if row_active else 'เปิด'}ขาย \"{row['name']}\" แล้ว")
+                            st.cache_data.clear()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"ทำรายการไม่ได้: {e}")
 
-            edit_img_file = st.file_uploader(
-                "เปลี่ยนรูปสินค้า", type=["jpg", "jpeg", "png", "webp"], key=f"edit_product_img_{edit_sel}",
-            )
-            if edit_img_file is not None:
-                st.image(edit_img_file, width=200)
-                if st.button("📤 อัปโหลดรูปนี้", key=f"upload_edit_product_img_btn_{edit_sel}"):
-                    try:
-                        b64 = base64.b64encode(edit_img_file.getvalue()).decode("ascii")
-                        res = gas_post({
-                            "_action": "uploadProductImage",
-                            "base64": b64,
-                            "mimeType": edit_img_file.type or "image/jpeg",
-                            "filename": edit_img_file.name,
-                        })
-                        new_url = res.get("url", "")
-                        gas_post({"_action": "updateProduct", "name": edit_sel, "image_url": new_url})
-                        st.session_state[f"edit_product_image_url_{edit_sel}"] = new_url
-                        st.session_state.pop(f"edit_product_img_{edit_sel}", None)
-                        _flash("อัปโหลดและบันทึกรูปสินค้าแล้ว")
-                        st.cache_data.clear()
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"อัปโหลดรูปไม่ได้: {e}")
+with tab_edit:
+    manage_cat_sel = st.selectbox("กรองหมวดหมู่", ["ทุกหมวดหมู่"] + ALL_CATEGORIES, key="edit_product_cat_filter")
+    manage_catalog = catalog if manage_cat_sel == "ทุกหมวดหมู่" else catalog[catalog["category"] == manage_cat_sel]
+    edit_names = sorted(manage_catalog["name"].tolist()) if not manage_catalog.empty else []
+    edit_sel = st.selectbox("เลือกสินค้าที่จะแก้ไข", edit_names, key="edit_product_sel")
+    edit_row = catalog[catalog["name"] == edit_sel].iloc[0] if edit_sel else None
+    if edit_row is not None:
+        st.caption(f"รหัสสินค้า: {edit_row.get('id') or '—'}")
 
-            with st.form(f"edit_product_form_{edit_sel}"):
-                e_name = st.text_input("ชื่อสินค้า", value=edit_sel)
-                e1, e2 = st.columns(2)
-                _e_cur_cat = str(edit_row.get("category") or "")
-                _e_cat_opts = [""] + ALL_CATEGORIES
-                if _e_cur_cat and _e_cur_cat not in _e_cat_opts:
-                    _e_cat_opts.append(_e_cur_cat)
-                e_category = e1.selectbox(
-                    "หมวดหมู่", _e_cat_opts, index=_e_cat_opts.index(_e_cur_cat),
-                    format_func=lambda c: c or "(ไม่ระบุ)",
-                )
-                e_slug = e2.text_input(
-                    "Slug (สำหรับลิงก์สั่งของโดยตรง)", value=str(edit_row.get("slug") or ""),
-                    help="ใช้สร้างลิงก์สั่งของตรงจากหน้า order-links.html เช่น ใส่ bt11 ไว้ว่างได้",
-                )
-                # Supabase stores active as the string "TRUE"/"FALSE", not a real bool —
-                # bool("FALSE") is truthy in Python, so compare the string explicitly.
-                e_active = st.checkbox("เปิดขาย (ไม่ติ๊ก = ปิดการขาย/หมด)", value=str(edit_row.get("active") or "").strip().upper() != "FALSE")
-                e3, e4 = st.columns(2)
-                # Supabase's catalog table names the pack-cost column cost_p, not cost_pack
-                e_cost_box = e3.number_input("ต้นทุน/กล่อง", min_value=0.0, value=_num(edit_row.get("cost_box")), step=1.0)
-                e_cost_pack = e4.number_input("ต้นทุน/ซอง", min_value=0.0, value=_num(edit_row.get("cost_p")), step=1.0)
-                e5, e6 = st.columns(2)
-                e_price_box = e5.number_input("ราคาขาย/กล่อง", min_value=0.0, value=_num(edit_row.get("price_box")), step=1.0)
-                e_price_pack = e6.number_input("ราคาขาย/ซอง", min_value=0.0, value=_num(edit_row.get("price_pack")), step=1.0)
-                e7, e8 = st.columns(2)
-                e_limit_box = e7.number_input("จำนวนที่ขายออนไลน์ได้ (กล่อง)", min_value=0.0, value=_num(edit_row.get("limit_box")), step=1.0)
-                e_limit_pack = e8.number_input("จำนวนที่ขายออนไลน์ได้ (ซอง)", min_value=0.0, value=_num(edit_row.get("limit_pack")), step=1.0)
-                e_barcode = st.text_input("บาร์โค้ด", value=str(edit_row.get("barcode") or ""))
-                e_image_url = st.text_input("ลิงก์รูปภาพ", value=preview_image_url)
-                e_notice = st.text_area("ข้อความแจ้งเตือนในสินค้า (notice)", value=str(edit_row.get("notice") or ""))
-                submitted_e = st.form_submit_button("บันทึกการแก้ไข")
-                if submitted_e:
-                    try:
-                        payload = {
-                            "_action": "updateProduct", "name": edit_sel,
-                            "category": e_category.strip(), "active": e_active,
-                            "cost_box": e_cost_box, "cost_pack": e_cost_pack,
-                            "price_box": e_price_box, "price_pack": e_price_pack,
-                            "limit_box": e_limit_box, "limit_pack": e_limit_pack,
-                            "barcode": e_barcode.strip(), "slug": e_slug.strip(), "image_url": e_image_url.strip(),
-                            "notice": e_notice.strip(),
-                        }
-                        # Only send new_name when it actually changed — sending it
-                        # unconditionally would trigger the rename path (which
-                        # touches stock_branch too) on every no-op edit.
-                        if e_name.strip() and e_name.strip() != edit_sel:
-                            payload["new_name"] = e_name.strip()
-                        gas_post(payload)
-                        st.session_state.pop(f"edit_product_image_url_{edit_sel}", None)
-                        _flash(f"แก้ไข \"{edit_sel}\" แล้ว")
-                        st.cache_data.clear()
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"บันทึกไม่ได้: {e}")
+        cur_image_url = str(edit_row.get("image_url") or "")
+        preview_image_url = st.session_state.get(f"edit_product_image_url_{edit_sel}", "") or cur_image_url
+        if preview_image_url:
+            st.image(drive_thumbnail_url(preview_image_url), width=200)
+        else:
+            st.caption("(ยังไม่มีรูปสินค้า)")
 
-            with st.expander("🗑️ ลบสินค้า"):
-                st.caption(
-                    "ลบถาวร ลบไม่ได้ถ้ายังมีสต็อกเหลือ (คลังกลางหรือสาขาใดก็ตาม) — "
-                    "เคลียร์สต็อกให้เป็น 0 ก่อน หรือถ้าแค่ต้องการหยุดขาย ให้ไปติ๊กออก \"เปิดขาย\" แทน"
-                )
-                confirm_del = st.checkbox(f'ยืนยันลบ "{edit_sel}" ถาวร', key=f"confirm_del_product_{edit_sel}")
-                if st.button("🗑️ ลบสินค้านี้ถาวร", key=f"del_product_btn_{edit_sel}", disabled=not confirm_del):
-                    try:
-                        gas_post({"_action": "deleteProduct", "name": edit_sel})
-                        st.session_state.pop(f"edit_product_image_url_{edit_sel}", None)
-                        _flash(f"ลบ \"{edit_sel}\" แล้ว")
-                        st.cache_data.clear()
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"ลบไม่ได้: {e}")
-
-    with sub_add:
-        st.markdown("**รูปสินค้า**")
-        img_file = st.file_uploader("เลือกรูปสินค้า", type=["jpg", "jpeg", "png", "webp"], key="new_product_img")
-        if img_file is not None:
-            st.image(img_file, width=200)
-            if st.button("📤 อัปโหลดรูปนี้", key="upload_new_product_img_btn"):
+        edit_img_file = st.file_uploader(
+            "เปลี่ยนรูปสินค้า", type=["jpg", "jpeg", "png", "webp"], key=f"edit_product_img_{edit_sel}",
+        )
+        if edit_img_file is not None:
+            st.image(edit_img_file, width=200)
+            if st.button("📤 อัปโหลดรูปนี้", key=f"upload_edit_product_img_btn_{edit_sel}"):
                 try:
-                    b64 = base64.b64encode(img_file.getvalue()).decode("ascii")
+                    b64 = base64.b64encode(edit_img_file.getvalue()).decode("ascii")
                     res = gas_post({
                         "_action": "uploadProductImage",
                         "base64": b64,
-                        "mimeType": img_file.type or "image/jpeg",
-                        "filename": img_file.name,
+                        "mimeType": edit_img_file.type or "image/jpeg",
+                        "filename": edit_img_file.name,
                     })
-                    st.session_state["new_product_image_url"] = res.get("url", "")
-                    st.success("อัปโหลดรูปแล้ว — ลิงก์เติมในช่องด้านล่างให้แล้ว")
+                    new_url = res.get("url", "")
+                    gas_post({"_action": "updateProduct", "name": edit_sel, "image_url": new_url})
+                    st.session_state[f"edit_product_image_url_{edit_sel}"] = new_url
+                    st.session_state.pop(f"edit_product_img_{edit_sel}", None)
+                    _flash("อัปโหลดและบันทึกรูปสินค้าแล้ว")
+                    st.cache_data.clear()
+                    st.rerun()
                 except Exception as e:
                     st.error(f"อัปโหลดรูปไม่ได้: {e}")
 
-        uploaded_url = st.session_state.get("new_product_image_url", "")
-
-        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
-        with st.form("add_product_form_tab"):
-            new_name = st.text_input("ชื่อสินค้า")
-            p1, p2 = st.columns(2)
-            new_category = p1.selectbox("หมวดหมู่", [""] + ALL_CATEGORIES, format_func=lambda c: c or "(ไม่ระบุ)")
-            new_slug = p2.text_input(
-                "Slug (สำหรับลิงก์สั่งของโดยตรง, ถ้ามี)",
-                help="ใช้สร้างลิงก์สั่งของตรงจากหน้า order-links.html เช่น ใส่ bt11 เว้นว่างได้",
+        with st.form(f"edit_product_form_{edit_sel}"):
+            e_name = st.text_input("ชื่อสินค้า", value=edit_sel)
+            e1, e2 = st.columns(2)
+            _e_cur_cat = str(edit_row.get("category") or "")
+            _e_cat_opts = [""] + ALL_CATEGORIES
+            if _e_cur_cat and _e_cur_cat not in _e_cat_opts:
+                _e_cat_opts.append(_e_cur_cat)
+            e_category = e1.selectbox(
+                "หมวดหมู่", _e_cat_opts, index=_e_cat_opts.index(_e_cur_cat),
+                format_func=lambda c: c or "(ไม่ระบุ)",
             )
-            p3, p4 = st.columns(2)
-            new_cost_box = p3.number_input("ต้นทุน/กล่อง", min_value=0.0, value=0.0, step=1.0)
-            new_cost_pack = p4.number_input("ต้นทุน/ซอง", min_value=0.0, value=0.0, step=1.0)
-            p5, p6 = st.columns(2)
-            new_price_box = p5.number_input("ราคาขาย/กล่อง", min_value=0.0, value=0.0, step=1.0)
-            new_price_pack = p6.number_input("ราคาขาย/ซอง", min_value=0.0, value=0.0, step=1.0)
-            p7, p8 = st.columns(2)
-            new_initial_box = p7.number_input("สต็อกเริ่มต้น (กล่อง)", min_value=0, value=0, step=1)
-            new_initial_pack = p8.number_input("สต็อกเริ่มต้น (ซอง)", min_value=0, value=0, step=1)
-            p9, p10 = st.columns(2)
-            new_limit_box = p9.number_input("จำนวนที่ขายออนไลน์ได้ (กล่อง)", min_value=0, value=0, step=1)
-            new_limit_pack = p10.number_input("จำนวนที่ขายออนไลน์ได้ (ซอง)", min_value=0, value=0, step=1)
-            new_barcode = st.text_input("บาร์โค้ด (ถ้ามี)")
-            new_image_url = st.text_input("ลิงก์รูปภาพ", value=uploaded_url, help="อัปโหลดรูปด้านบนแล้วลิงก์จะเติมให้อัตโนมัติ หรือวางลิงก์เองก็ได้")
-            submitted_p = st.form_submit_button("เพิ่มสินค้า")
-            if submitted_p:
-                if not new_name.strip():
-                    st.warning("กรอกชื่อสินค้าก่อน")
-                elif not catalog.empty and new_name.strip() in catalog["name"].values:
-                    st.error("มีสินค้าชื่อนี้อยู่แล้ว")
-                else:
-                    try:
-                        gas_post({
-                            "_action": "addProduct",
-                            "name": new_name.strip(), "category": new_category.strip(),
-                            "cost_box": new_cost_box, "cost_pack": new_cost_pack,
-                            "price_box": new_price_box, "price_pack": new_price_pack,
-                            "initial_box": new_initial_box, "initial_pack": new_initial_pack,
-                            "limit_box": new_limit_box, "limit_pack": new_limit_pack,
-                            "barcode": new_barcode.strip(), "slug": new_slug.strip(),
-                            "image_url": new_image_url.strip(),
-                        })
-                        _flash(f"เพิ่มสินค้า \"{new_name}\" แล้ว")
-                        st.session_state.pop("new_product_image_url", None)
-                        st.cache_data.clear()
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"เพิ่มสินค้าไม่ได้: {e}")
+            e_slug = e2.text_input(
+                "Slug (สำหรับลิงก์สั่งของโดยตรง)", value=str(edit_row.get("slug") or ""),
+                help="ใช้สร้างลิงก์สั่งของตรงจากหน้า order-links.html เช่น ใส่ bt11 ไว้ว่างได้",
+            )
+            # Supabase stores active as the string "TRUE"/"FALSE", not a real bool —
+            # bool("FALSE") is truthy in Python, so compare the string explicitly.
+            e_active = st.checkbox("เปิดขาย (ไม่ติ๊ก = ปิดการขาย/หมด)", value=str(edit_row.get("active") or "").strip().upper() != "FALSE")
+            e3, e4 = st.columns(2)
+            # Supabase's catalog table names the pack-cost column cost_p, not cost_pack
+            e_cost_box = e3.number_input("ต้นทุน/กล่อง", min_value=0.0, value=_num(edit_row.get("cost_box")), step=1.0)
+            e_cost_pack = e4.number_input("ต้นทุน/ซอง", min_value=0.0, value=_num(edit_row.get("cost_p")), step=1.0)
+            e5, e6 = st.columns(2)
+            e_price_box = e5.number_input("ราคาขาย/กล่อง", min_value=0.0, value=_num(edit_row.get("price_box")), step=1.0)
+            e_price_pack = e6.number_input("ราคาขาย/ซอง", min_value=0.0, value=_num(edit_row.get("price_pack")), step=1.0)
+            e7, e8 = st.columns(2)
+            e_limit_box = e7.number_input("จำนวนที่ขายออนไลน์ได้ (กล่อง)", min_value=0.0, value=_num(edit_row.get("limit_box")), step=1.0)
+            e_limit_pack = e8.number_input("จำนวนที่ขายออนไลน์ได้ (ซอง)", min_value=0.0, value=_num(edit_row.get("limit_pack")), step=1.0)
+            e_barcode = st.text_input("บาร์โค้ด", value=str(edit_row.get("barcode") or ""))
+            e_image_url = st.text_input("ลิงก์รูปภาพ", value=preview_image_url)
+            e_notice = st.text_area("ข้อความแจ้งเตือนในสินค้า (notice)", value=str(edit_row.get("notice") or ""))
+            submitted_e = st.form_submit_button("บันทึกการแก้ไข")
+            if submitted_e:
+                try:
+                    payload = {
+                        "_action": "updateProduct", "name": edit_sel,
+                        "category": e_category.strip(), "active": e_active,
+                        "cost_box": e_cost_box, "cost_pack": e_cost_pack,
+                        "price_box": e_price_box, "price_pack": e_price_pack,
+                        "limit_box": e_limit_box, "limit_pack": e_limit_pack,
+                        "barcode": e_barcode.strip(), "slug": e_slug.strip(), "image_url": e_image_url.strip(),
+                        "notice": e_notice.strip(),
+                    }
+                    # Only send new_name when it actually changed — sending it
+                    # unconditionally would trigger the rename path (which
+                    # touches stock_branch too) on every no-op edit.
+                    if e_name.strip() and e_name.strip() != edit_sel:
+                        payload["new_name"] = e_name.strip()
+                    gas_post(payload)
+                    st.session_state.pop(f"edit_product_image_url_{edit_sel}", None)
+                    _flash(f"แก้ไข \"{edit_sel}\" แล้ว")
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"บันทึกไม่ได้: {e}")
+
+        with st.expander("🗑️ ลบสินค้า"):
+            st.caption(
+                "ลบถาวร ลบไม่ได้ถ้ายังมีสต็อกเหลือ (คลังกลางหรือสาขาใดก็ตาม) — "
+                "เคลียร์สต็อกให้เป็น 0 ก่อน หรือถ้าแค่ต้องการหยุดขาย ให้ไปติ๊กออก \"เปิดขาย\" แทน"
+            )
+            confirm_del = st.checkbox(f'ยืนยันลบ "{edit_sel}" ถาวร', key=f"confirm_del_product_{edit_sel}")
+            if st.button("🗑️ ลบสินค้านี้ถาวร", key=f"del_product_btn_{edit_sel}", disabled=not confirm_del):
+                try:
+                    gas_post({"_action": "deleteProduct", "name": edit_sel})
+                    st.session_state.pop(f"edit_product_image_url_{edit_sel}", None)
+                    _flash(f"ลบ \"{edit_sel}\" แล้ว")
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"ลบไม่ได้: {e}")
+
+with tab_add:
+    st.markdown("**รูปสินค้า**")
+    img_file = st.file_uploader("เลือกรูปสินค้า", type=["jpg", "jpeg", "png", "webp"], key="new_product_img")
+    if img_file is not None:
+        st.image(img_file, width=200)
+        if st.button("📤 อัปโหลดรูปนี้", key="upload_new_product_img_btn"):
+            try:
+                b64 = base64.b64encode(img_file.getvalue()).decode("ascii")
+                res = gas_post({
+                    "_action": "uploadProductImage",
+                    "base64": b64,
+                    "mimeType": img_file.type or "image/jpeg",
+                    "filename": img_file.name,
+                })
+                st.session_state["new_product_image_url"] = res.get("url", "")
+                st.success("อัปโหลดรูปแล้ว — ลิงก์เติมในช่องด้านล่างให้แล้ว")
+            except Exception as e:
+                st.error(f"อัปโหลดรูปไม่ได้: {e}")
+
+    uploaded_url = st.session_state.get("new_product_image_url", "")
+
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+    with st.form("add_product_form_tab"):
+        new_name = st.text_input("ชื่อสินค้า")
+        p1, p2 = st.columns(2)
+        new_category = p1.selectbox("หมวดหมู่", [""] + ALL_CATEGORIES, format_func=lambda c: c or "(ไม่ระบุ)")
+        new_slug = p2.text_input(
+            "Slug (สำหรับลิงก์สั่งของโดยตรง, ถ้ามี)",
+            help="ใช้สร้างลิงก์สั่งของตรงจากหน้า order-links.html เช่น ใส่ bt11 เว้นว่างได้",
+        )
+        p3, p4 = st.columns(2)
+        new_cost_box = p3.number_input("ต้นทุน/กล่อง", min_value=0.0, value=0.0, step=1.0)
+        new_cost_pack = p4.number_input("ต้นทุน/ซอง", min_value=0.0, value=0.0, step=1.0)
+        p5, p6 = st.columns(2)
+        new_price_box = p5.number_input("ราคาขาย/กล่อง", min_value=0.0, value=0.0, step=1.0)
+        new_price_pack = p6.number_input("ราคาขาย/ซอง", min_value=0.0, value=0.0, step=1.0)
+        p7, p8 = st.columns(2)
+        new_initial_box = p7.number_input("สต็อกเริ่มต้น (กล่อง)", min_value=0, value=0, step=1)
+        new_initial_pack = p8.number_input("สต็อกเริ่มต้น (ซอง)", min_value=0, value=0, step=1)
+        p9, p10 = st.columns(2)
+        new_limit_box = p9.number_input("จำนวนที่ขายออนไลน์ได้ (กล่อง)", min_value=0, value=0, step=1)
+        new_limit_pack = p10.number_input("จำนวนที่ขายออนไลน์ได้ (ซอง)", min_value=0, value=0, step=1)
+        new_barcode = st.text_input("บาร์โค้ด (ถ้ามี)")
+        new_image_url = st.text_input("ลิงก์รูปภาพ", value=uploaded_url, help="อัปโหลดรูปด้านบนแล้วลิงก์จะเติมให้อัตโนมัติ หรือวางลิงก์เองก็ได้")
+        submitted_p = st.form_submit_button("เพิ่มสินค้า")
+        if submitted_p:
+            if not new_name.strip():
+                st.warning("กรอกชื่อสินค้าก่อน")
+            elif not catalog.empty and new_name.strip() in catalog["name"].values:
+                st.error("มีสินค้าชื่อนี้อยู่แล้ว")
+            else:
+                try:
+                    gas_post({
+                        "_action": "addProduct",
+                        "name": new_name.strip(), "category": new_category.strip(),
+                        "cost_box": new_cost_box, "cost_pack": new_cost_pack,
+                        "price_box": new_price_box, "price_pack": new_price_pack,
+                        "initial_box": new_initial_box, "initial_pack": new_initial_pack,
+                        "limit_box": new_limit_box, "limit_pack": new_limit_pack,
+                        "barcode": new_barcode.strip(), "slug": new_slug.strip(),
+                        "image_url": new_image_url.strip(),
+                    })
+                    _flash(f"เพิ่มสินค้า \"{new_name}\" แล้ว")
+                    st.session_state.pop("new_product_image_url", None)
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"เพิ่มสินค้าไม่ได้: {e}")
 
 with tab_categories:
     desc_map = {k[len(CAT_DESC_PREFIX):]: v for k, v in _cat_cfg.items() if k.startswith(CAT_DESC_PREFIX)}
