@@ -247,6 +247,27 @@ function _renamePendingShipments_(oldName, newName) {
   });
 }
 
+// เหตุผลเดียวกับ _renamePendingShipments_ ข้างบน แต่ครอบคลุม orders/walkin_sales
+// ทั้งหมด (ไม่กรอง status) เพราะ action=report / walkin_product_report join
+// ต้นทุนจาก catalog ด้วยชื่อ ย้อนหลังได้ไม่จำกัดเวลา — ถ้าไม่ sync ตรงนี้
+// ออเดอร์/รายการขายหน้าร้านเก่าก่อน rename จะโชว์ต้นทุน 0 เงียบๆ ในรายงาน
+// (บั๊กจริงที่เจอกับ BT11 หลัง rename [Preorder] → [พร้อมส่ง], แก้ครั้งแรกด้วย
+// tools/backfill_renamed_product_names.py ก่อนจะมาป้องกันไว้ตรงนี้)
+function _renameHistoricalItemsJson_(table, idCol, oldName, newName) {
+  var rows = supabaseSelect_(table, "select=" + idCol + ",items_json");
+  rows.forEach(function(r) {
+    var items = Array.isArray(r.items_json) ? r.items_json : [];
+    var changed = false;
+    items.forEach(function(it) {
+      if (it.name === oldName) { it.name = newName; changed = true; }
+    });
+    if (!changed) return;
+    var idVal = r[idCol];
+    var res = patchSupabase_(table, idCol + "=eq." + encodeURIComponent(idVal), { items_json: items });
+    if (!res.ok) Logger.log("_renameHistoricalItemsJson_ failed for " + table + "." + idCol + "=" + idVal + ": " + res.text);
+  });
+}
+
 function supabaseSelect_(table, query) {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return [];
   var url = SUPABASE_URL + "/rest/v1/" + table + (query ? "?" + query : "");
@@ -3399,6 +3420,8 @@ function handleUpdateProduct(data) {
       var renameRes = _renameProductRpc_(data.name, newName);
       if (!renameRes.ok) { lock.releaseLock(); throw new Error("เปลี่ยนชื่อสินค้าไม่สำเร็จ: " + renameRes.text); }
       _renamePendingShipments_(data.name, newName);
+      _renameHistoricalItemsJson_("orders", "order_id", data.name, newName);
+      _renameHistoricalItemsJson_("walkin_sales", "sale_id", data.name, newName);
       changeLog.push("ชื่อ: " + data.name + " → " + newName);
       row.name = newName;
     }
