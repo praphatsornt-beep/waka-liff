@@ -315,24 +315,17 @@ if df.empty:
     st.info("ยังไม่มีออเดอร์")
     st.stop()
 
-@st.cache_data(ttl=120)
-def load_active_product_names():
-    """None means "couldn't load" — callers should treat that as "show
-    everything" rather than accidentally hiding every product on a transient
-    catalog-fetch error."""
-    try:
-        rows = get_supabase().table("catalog").select("name,active").execute().data
-        return {r["name"] for r in rows if str(r.get("active") or "").strip().upper() != "FALSE"}
-    except Exception:
-        return None
-
-
-_active_names = load_active_product_names()
+# ไม่กรองด้วย catalog.active — เคยกรองไว้ (เทียบชื่อกับ catalog ที่ active ตอนนี้)
+# แต่ product rename ไม่ย้อนไปแก้ items_json ของออเดอร์เก่า (ตั้งใจ ดู
+# handleUpdateProduct's _renameProductRpc_) ดังนั้นสินค้าที่เคยเปลี่ยนชื่อจะมีแต่
+# ชื่อเก่าอยู่ในออเดอร์เก่าตลอดไป — เทียบกับชื่อปัจจุบันแล้วไม่ตรง เลยหลุดจาก
+# ตัวกรองทั้งที่สินค้ายังขายอยู่จริง (เจอกับ BT11 หลังเปลี่ยนชื่อ) แสดงทุกชื่อที่
+# เคยปรากฏในออเดอร์ไปเลย ปลอดภัยกว่า
 all_products = sorted({
     i.get("name", "")
     for items_json in df.get("items_json", [])
     for i in parse_items(items_json)
-    if i.get("name") and (_active_names is None or i.get("name") in _active_names)
+    if i.get("name")
 })
 
 phone_counts = df["phone"].value_counts().to_dict() if "phone" in df.columns else {}
