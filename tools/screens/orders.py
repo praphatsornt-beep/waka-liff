@@ -321,6 +321,12 @@ def load_all_catalog_names() -> set:
     return {r["name"] for r in rows if r.get("name")}
 
 
+@st.cache_data(ttl=60)
+def load_name_to_category() -> dict:
+    rows = get_supabase().table("catalog").select("name,category").execute().data
+    return {r["name"]: (r.get("category") or "") for r in rows if r.get("name")}
+
+
 # รวม 2 แหล่ง: ชื่อที่เคยปรากฏในออเดอร์ (กันสินค้าที่เปลี่ยนชื่อไปแล้วหลุดจาก
 # ตัวกรอง — เจอกับ BT11, ดู commit ก่อนหน้า) + ชื่อสินค้าทั้งหมดใน catalog
 # ตอนนี้ (กันสินค้าที่เพิ่งเพิ่มเข้าระบบแต่ยังไม่มีใครสั่งเลยสักออเดอร์เดียว หาย
@@ -332,6 +338,9 @@ all_products = sorted({
     for i in parse_items(items_json)
     if i.get("name")
 } | load_all_catalog_names())
+
+name_to_category = load_name_to_category()
+all_categories = sorted({c for c in name_to_category.values() if c})
 
 phone_counts = df["phone"].value_counts().to_dict() if "phone" in df.columns else {}
 
@@ -355,10 +364,10 @@ with k4:
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
 # ── Filter bar (shared by every tab below) ───────────────────────────────────
-FILTER_KEYS = ["ord_search", "ord_branch", "ord_status"]
+FILTER_KEYS = ["ord_search", "ord_branch", "ord_status", "ord_categories"]
 
 with st.container(border=True):
-    f1, f2, f3, f4, f5 = st.columns([2.2, 1, 1.3, 1.8, 1.1])
+    f1, f2, f3, f4, f5, f6 = st.columns([2.2, 1, 1.3, 1.8, 1.5, 0.6])
     with f1:
         search = st.text_input("ค้นหา", placeholder="ค้นหาชื่อ / เบอร์โทร / เลขออเดอร์ / สินค้า", label_visibility="collapsed", key="ord_search")
     with f2:
@@ -408,6 +417,11 @@ with st.container(border=True):
             st.session_state["ord_products_sel"] = sorted(selected_set)
         product_filter = st.session_state.get("ord_products_sel", [])
     with f5:
+        category_filter = st.multiselect(
+            "หมวดหมู่", all_categories, default=[], placeholder="ทุกหมวดหมู่",
+            label_visibility="collapsed", key="ord_categories",
+        )
+    with f6:
         if st.button("Clear"):
             for k in FILTER_KEYS:
                 st.session_state.pop(k, None)
@@ -427,6 +441,11 @@ if product_filter:
     wanted = set(product_filter)
     filtered = filtered[filtered["items_json"].apply(
         lambda ij: any(i.get("name") in wanted for i in parse_items(ij))
+    )]
+if category_filter:
+    wanted_cats = set(category_filter)
+    filtered = filtered[filtered["items_json"].apply(
+        lambda ij: any(name_to_category.get(i.get("name"), "") in wanted_cats for i in parse_items(ij))
     )]
 if search:
     s = search.lower()
