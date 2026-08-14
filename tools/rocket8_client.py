@@ -104,13 +104,13 @@ def bulk_cancel(tracking_nos: list, remark: str = "") -> dict:
     return res.json().get("data", {})
 
 
-# WAKA SPACE's registered pickup point in Rocket8 (id confirmed live against
-# staging on 2026-08-14: GET /public/v1/pickup-points, default_flag=1,
-# "คลังสาธุ" — matches 108,110 ซ.สาธุประดิษฐ์ ทุ่งวัดดอน สาทร กรุงเทพฯ 10120).
-PICKUP_POINT_ID = 418
+# WAKA SPACE's registered pickup point in Rocket8 PRODUCTION (id confirmed
+# live on 2026-08-14: GET /public/v1/pickup-points, default_flag=1, account
+# name "ZL" — matches 108,110 ถนนสาธุประดิษฐ์ ทุ่งวัดดอน สาทร กรุงเทพฯ 10120).
+PICKUP_POINT_ID = 1294
 SENDER = {
     "name": "WAKA SPACE",
-    "address": "108, 110 ซ.สาธุประดิษฐ์",
+    "address": "108,110 ถนนสาธุประดิษฐ์",
     "district": "ทุ่งวัดดอน",
     "city": "สาทร",
     "province": "กรุงเทพมหานคร",
