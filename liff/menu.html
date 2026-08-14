@@ -261,12 +261,12 @@ function checkPin() {
   if (role) {
     document.getElementById('pinOverlay').style.display = 'none';
     document.getElementById('app').style.display = 'block';
-    sessionStorage.setItem('waka_portal_auth', '1');
-    sessionStorage.setItem('waka_staff_role', role);
-    sessionStorage.setItem('waka_staff_branch', branch);
-    sessionStorage.setItem('waka_tstaff_auth', '1');
-    sessionStorage.setItem('waka_tstaff_role', role);
-    sessionStorage.setItem('waka_tstaff_branch', branch);
+    localStorage.setItem('waka_portal_auth', '1');
+    localStorage.setItem('waka_staff_role', role);
+    localStorage.setItem('waka_staff_branch', branch);
+    localStorage.setItem('waka_tstaff_auth', '1');
+    localStorage.setItem('waka_tstaff_role', role);
+    localStorage.setItem('waka_tstaff_branch', branch);
     if (role === 'admin') { document.getElementById('adminSection').style.display = 'block'; }
     showRoleBadge(role, branch);
   } else {
@@ -281,17 +281,17 @@ function showRoleBadge(role, branch) {
   else if (branch) el.innerHTML = '<span class="role-badge staff">' + branch + '</span>';
 }
 
-if (sessionStorage.getItem('waka_portal_auth') === '1') {
+if (localStorage.getItem('waka_portal_auth') === '1') {
   document.getElementById('pinOverlay').style.display = 'none';
   document.getElementById('app').style.display = 'block';
-  var _r = sessionStorage.getItem('waka_staff_role') || '';
-  var _b = sessionStorage.getItem('waka_staff_branch') || '';
+  var _r = localStorage.getItem('waka_staff_role') || '';
+  var _b = localStorage.getItem('waka_staff_branch') || '';
   if (_r === 'admin') { document.getElementById('adminSection').style.display = 'block'; }
   showRoleBadge(_r, _b);
 }
 
 function logout() {
-  sessionStorage.clear();
+  localStorage.clear();
   location.reload();
 }
 </script>

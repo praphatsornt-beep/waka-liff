@@ -310,26 +310,26 @@ let branchSummary = {};
 let centralStock = [];
 
 // ── ชื่อพนักงาน: ถามครั้งเดียวตอน login แล้วใช้ซ้ำทุกจุด — คีย์เดียวกับ
-// app.html/products.html (origin เดียวกัน sessionStorage เลยใช้ร่วมกันได้)
+// app.html/products.html (origin เดียวกัน localStorage เลยใช้ร่วมกันได้)
 function ensureStaffName() {
-  let n = sessionStorage.getItem('waka_staff_name') || '';
+  let n = localStorage.getItem('waka_staff_name') || '';
   if (!n) {
     n = prompt('กรอกชื่อพนักงาน (ระบบจะจำไว้ตลอด session นี้ ไม่ต้องพิมพ์ซ้ำทุกครั้ง):');
     if (n === null) return '';
     n = n.trim();
-    if (n) { sessionStorage.setItem('waka_staff_name', n); renderStaffBadge(); }
+    if (n) { localStorage.setItem('waka_staff_name', n); renderStaffBadge(); }
   }
   return n;
 }
 function changeStaffName() {
-  const cur = sessionStorage.getItem('waka_staff_name') || '';
+  const cur = localStorage.getItem('waka_staff_name') || '';
   const n = prompt('เปลี่ยนชื่อพนักงาน:', cur);
   if (n === null) return;
   const t = n.trim();
-  if (t) { sessionStorage.setItem('waka_staff_name', t); renderStaffBadge(); }
+  if (t) { localStorage.setItem('waka_staff_name', t); renderStaffBadge(); }
 }
 function renderStaffBadge() {
-  const n = sessionStorage.getItem('waka_staff_name') || '';
+  const n = localStorage.getItem('waka_staff_name') || '';
   if (!n) return;
   let b = document.getElementById('staffBadge');
   if (!b) {
@@ -342,7 +342,7 @@ function renderStaffBadge() {
   b.textContent = '👤 ' + n;
 }
 
-if (sessionStorage.getItem('waka_portal_auth') === '1' && sessionStorage.getItem('waka_staff_role') === 'admin') {
+if (localStorage.getItem('waka_portal_auth') === '1' && localStorage.getItem('waka_staff_role') === 'admin') {
   document.getElementById('pinOverlay').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   ensureStaffName(); renderStaffBadge();
@@ -352,7 +352,7 @@ if (sessionStorage.getItem('waka_portal_auth') === '1' && sessionStorage.getItem
 function checkPin() {
   const pin = document.getElementById('pinInput').value.trim();
   if (pin === PIN_ADMIN) {
-    sessionStorage.setItem('waka_portal_auth', '1');
+    localStorage.setItem('waka_portal_auth', '1');
     document.getElementById('pinOverlay').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     ensureStaffName(); renderStaffBadge();

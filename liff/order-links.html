@@ -92,7 +92,7 @@ function esc(s) { const d = document.createElement('div'); d.textContent = s; re
 function checkPin() {
   const val = document.getElementById('pinInput').value.trim();
   if (val === PIN_ADMIN || BRANCH_CODES[val]) {
-    sessionStorage.setItem('waka_portal_auth', '1');
+    localStorage.setItem('waka_portal_auth', '1');
     document.getElementById('pinOverlay').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     loadLinks();
@@ -104,7 +104,7 @@ function checkPin() {
 }
 document.getElementById('pinInput').addEventListener('keydown', e => { if (e.key === 'Enter') checkPin(); });
 
-if (sessionStorage.getItem('waka_portal_auth') === '1') {
+if (localStorage.getItem('waka_portal_auth') === '1') {
   document.getElementById('pinOverlay').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   loadLinks();

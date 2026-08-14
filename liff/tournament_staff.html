@@ -250,7 +250,7 @@ function exportCSV() {
 function esc(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
 
 // Auth guard — must pass through menu.html PIN first
-if (sessionStorage.getItem("waka_portal_auth") !== "1" && sessionStorage.getItem("waka_tstaff_auth") !== "1") {
+if (localStorage.getItem("waka_portal_auth") !== "1" && localStorage.getItem("waka_tstaff_auth") !== "1") {
   location.replace("menu.html");
 } else {
   init();

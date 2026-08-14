@@ -621,33 +621,33 @@ const LIFF_BASE = 'https://liff.line.me/2010457385-UpJLXxJ0';
 let products = [], centralStock = [], branchSummary = {}, selectedProduct = null;
 let scanner = null, scannerNew = null;
 let userRole = 'staff';
-function _authCode() { return userRole === 'admin' ? PIN_ADMIN : (sessionStorage.getItem('waka_branch_code') || ''); }
+function _authCode() { return userRole === 'admin' ? PIN_ADMIN : (localStorage.getItem('waka_branch_code') || ''); }
 function gid(id) { return document.getElementById(id); }
 function esc(s) { const d=document.createElement('div');d.textContent=s;return d.innerHTML; }
 
 // ── ชื่อพนักงาน: ถามครั้งเดียวตอน login แล้วใช้ซ้ำทุกจุดที่ต้องบันทึกผู้ทำรายการ
-// (แทนที่จะ prompt() ทุกครั้งที่กดปุ่ม) — เก็บใน sessionStorage คนละคีย์กับ
+// (แทนที่จะ prompt() ทุกครั้งที่กดปุ่ม) — เก็บใน localStorage คนละคีย์กับ
 // waka_branch/waka_staff_role เพราะ "ใคร" (คน) กับ "auth ว่าเข้าได้" เป็นคนละเรื่องกัน
-// sessionStorage ใช้ร่วมกันได้ข้ามหน้า (products.html, warehouse.html) เพราะเป็น origin เดียวกัน
+// localStorage ใช้ร่วมกันได้ข้ามหน้า (products.html, warehouse.html) เพราะเป็น origin เดียวกัน
 function ensureStaffName() {
-  let n = sessionStorage.getItem('waka_staff_name') || '';
+  let n = localStorage.getItem('waka_staff_name') || '';
   if (!n) {
     n = prompt('กรอกชื่อพนักงาน (ระบบจะจำไว้ตลอด session นี้ ไม่ต้องพิมพ์ซ้ำทุกครั้ง):');
     if (n === null) return '';
     n = n.trim();
-    if (n) { sessionStorage.setItem('waka_staff_name', n); renderStaffBadge(); }
+    if (n) { localStorage.setItem('waka_staff_name', n); renderStaffBadge(); }
   }
   return n;
 }
 function changeStaffName() {
-  const cur = sessionStorage.getItem('waka_staff_name') || '';
+  const cur = localStorage.getItem('waka_staff_name') || '';
   const n = prompt('เปลี่ยนชื่อพนักงาน:', cur);
   if (n === null) return;
   const t = n.trim();
-  if (t) { sessionStorage.setItem('waka_staff_name', t); renderStaffBadge(); toast('เปลี่ยนชื่อเป็น ' + t); }
+  if (t) { localStorage.setItem('waka_staff_name', t); renderStaffBadge(); toast('เปลี่ยนชื่อเป็น ' + t); }
 }
 function renderStaffBadge() {
-  const n = sessionStorage.getItem('waka_staff_name') || '';
+  const n = localStorage.getItem('waka_staff_name') || '';
   if (!n) return;
   let b = gid('staffBadge');
   if (!b) {
@@ -669,7 +669,7 @@ function applyRole(role) {
 }
 
 function logout() {
-  sessionStorage.clear();
+  localStorage.clear();
   location.reload();
 }
 
@@ -677,34 +677,34 @@ function logout() {
 function checkPin() {
   const val = gid('pinInput').value.trim();
   if (val === PIN_ADMIN) {
-    sessionStorage.setItem('waka_app_auth','admin');
-    sessionStorage.setItem('waka_portal_auth','1');
-    sessionStorage.setItem('waka_staff_role','admin');
-    sessionStorage.setItem('waka_staff_branch','ทั้งหมด');
-    sessionStorage.setItem('waka_tstaff_auth','1');
-    sessionStorage.setItem('waka_tstaff_role','admin');
-    sessionStorage.setItem('waka_tstaff_branch','ทั้งหมด');
+    localStorage.setItem('waka_app_auth','admin');
+    localStorage.setItem('waka_portal_auth','1');
+    localStorage.setItem('waka_staff_role','admin');
+    localStorage.setItem('waka_staff_branch','ทั้งหมด');
+    localStorage.setItem('waka_tstaff_auth','1');
+    localStorage.setItem('waka_tstaff_role','admin');
+    localStorage.setItem('waka_tstaff_branch','ทั้งหมด');
     gid('pinOverlay').style.display='none'; gid('app').style.display='block';
     applyRole('admin'); ensureStaffName(); renderStaffBadge(); switchTab('branch'); initApp(); _applyDeepLink();
   } else if (BRANCH_CODES[val]) {
-    sessionStorage.setItem('waka_app_auth','staff');
-    sessionStorage.setItem('waka_portal_auth','1');
-    sessionStorage.setItem('waka_staff_role','staff');
-    sessionStorage.setItem('waka_staff_branch', BRANCH_CODES[val]);
-    sessionStorage.setItem('waka_tstaff_auth','1');
-    sessionStorage.setItem('waka_tstaff_role','staff');
-    sessionStorage.setItem('waka_tstaff_branch', BRANCH_CODES[val]);
-    sessionStorage.setItem('waka_branch', BRANCH_CODES[val]);
-    sessionStorage.setItem('waka_branch_code', val);
+    localStorage.setItem('waka_app_auth','staff');
+    localStorage.setItem('waka_portal_auth','1');
+    localStorage.setItem('waka_staff_role','staff');
+    localStorage.setItem('waka_staff_branch', BRANCH_CODES[val]);
+    localStorage.setItem('waka_tstaff_auth','1');
+    localStorage.setItem('waka_tstaff_role','staff');
+    localStorage.setItem('waka_tstaff_branch', BRANCH_CODES[val]);
+    localStorage.setItem('waka_branch', BRANCH_CODES[val]);
+    localStorage.setItem('waka_branch_code', val);
     gid('pinOverlay').style.display='none'; gid('app').style.display='block';
     applyRole('staff'); ensureStaffName(); renderStaffBadge(); autoLoginBranch(BRANCH_CODES[val]); switchTab('branch'); initApp(); _applyDeepLink();
   } else { gid('pinError').style.display='block'; setTimeout(()=>gid('pinError').style.display='none',2000); }
 }
-const savedAuth = sessionStorage.getItem('waka_app_auth') || (sessionStorage.getItem('waka_portal_auth') === '1' ? sessionStorage.getItem('waka_staff_role') : null);
+const savedAuth = localStorage.getItem('waka_app_auth') || (localStorage.getItem('waka_portal_auth') === '1' ? localStorage.getItem('waka_staff_role') : null);
 if (savedAuth) {
   gid('pinOverlay').style.display='none'; gid('app').style.display='block'; applyRole(savedAuth);
   ensureStaffName(); renderStaffBadge();
-  const sb=sessionStorage.getItem('waka_branch') || sessionStorage.getItem('waka_staff_branch');
+  const sb=localStorage.getItem('waka_branch') || localStorage.getItem('waka_staff_branch');
   if(savedAuth==='staff'&&sb){autoLoginBranch(sb);}
   else if(savedAuth==='admin'&&sb){gid('branchSelect').value=sb;gid('branchTitle').textContent=sb==='ทั้งหมด'?'ทุกสาขา':'สาขา'+sb;}
   switchTab('branch');
@@ -1120,7 +1120,7 @@ function adminPickBranch(name) {
   gid('branchAdminPicker').style.display='none';
   gid('branchApp').style.display='block';
   gid('branchTitle').textContent = name==='ทั้งหมด' ? 'ทุกสาขา' : 'สาขา'+name;
-  sessionStorage.setItem('waka_branch', name);
+  localStorage.setItem('waka_branch', name);
   _updateAdminOnlyCards();
 }
 function adminBackToPicker() {
@@ -1138,20 +1138,20 @@ function autoLoginBranch(name) {
 function loginBranch() {
   const code=gid('branchCodeInput').value.trim();
   if(BRANCH_CODES[code]){
-    sessionStorage.setItem('waka_branch',BRANCH_CODES[code]);
-    sessionStorage.setItem('waka_branch_code',code);
+    localStorage.setItem('waka_branch',BRANCH_CODES[code]);
+    localStorage.setItem('waka_branch_code',code);
     autoLoginBranch(BRANCH_CODES[code]);
   } else if(userRole==='admin') {
     // admin สามารถพิมพ์ชื่อสาขาตรงๆ
     const match=['ต้นสักคอร์เนอร์','เมืองทองธานี','ศรีนครินทร์'].find(b=>code.includes(b));
-    if(match){sessionStorage.setItem('waka_branch',match);autoLoginBranch(match);}
+    if(match){localStorage.setItem('waka_branch',match);autoLoginBranch(match);}
     else{gid('branchLoginError').style.display='block';setTimeout(()=>gid('branchLoginError').style.display='none',2000);}
   } else {
     gid('branchLoginError').style.display='block';setTimeout(()=>gid('branchLoginError').style.display='none',2000);
   }
 }
 function logoutBranch() {
-  sessionStorage.removeItem('waka_branch');sessionStorage.removeItem('waka_branch_code');
+  localStorage.removeItem('waka_branch');localStorage.removeItem('waka_branch_code');
   gid('branchApp').style.display='none';gid('branchLogin').style.display='block';
   gid('branchCodeInput').value='';
 }
@@ -1208,7 +1208,7 @@ async function confirmReceive(id,btn) {
 
 function onBranchChange() {
   if (userRole !== 'admin') return;
-  const sb = sessionStorage.getItem('waka_branch');
+  const sb = localStorage.getItem('waka_branch');
   if (sb && ['ต้นสักคอร์เนอร์','เมืองทองธานี','ศรีนครินทร์','ทั้งหมด'].includes(sb)) {
     gid('branchSelect').value = sb;
     gid('branchTitle').textContent = sb==='ทั้งหมด' ? 'ทุกสาขา' : 'สาขา' + sb;
@@ -1390,7 +1390,7 @@ async function submitWithdraw() {
   const type=gid('wdType').value,qty=+gid('wdQty').value||0,reason=gid('wdReason').value;
   if(qty<=0)return alert('ใส่จำนวน');
   const staff_name=gid('wdStaffName').value.trim();if(!staff_name)return alert('กรอกชื่อพนักงาน');
-  sessionStorage.setItem('waka_staff_name',staff_name);
+  localStorage.setItem('waka_staff_name',staff_name);
   try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'withdrawStock',branch,name,type,qty,reason,staff_name,code:_authCode()})});const d=await r.json();
     if(d.ok){toast('เบิก '+name+' x'+qty);gid('wdQty').value=1;loadBrStock();loadWithdrawals();}
     else alert(d.error||'ผิดพลาด');
@@ -1520,7 +1520,7 @@ async function shipSubmit() {
   const to_branch = gid('shipToBranch').value; if (!to_branch) { alert('เลือกสาขาปลายทาง'); return; }
   if (!shipCart.length) { alert('ยังไม่มีรายการที่จะส่ง'); return; }
   const staff_name = gid('shipStaffName').value.trim(); if (!staff_name) { alert('กรอกชื่อพนักงาน'); return; }
-  sessionStorage.setItem('waka_staff_name', staff_name);
+  localStorage.setItem('waka_staff_name', staff_name);
   try {
     const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'createShipment', to_branch, items: shipCart, staff_name }) });
     const d = await r.json();
@@ -1595,7 +1595,7 @@ async function wsSubmitSale() {
   const payment_method = gid('wsPayMethod').value;
   const bank = gid('wsBank').value.trim();
   const staff_name = gid('wsStaffName').value.trim(); if (!staff_name) { alert('กรอกชื่อพนักงาน'); return; }
-  sessionStorage.setItem('waka_staff_name', staff_name);
+  localStorage.setItem('waka_staff_name', staff_name);
   try {
     const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'walkinSale', branch, items: wsCart, payment_method, bank, staff_name, code: _authCode() }) });
     const d = await r.json();

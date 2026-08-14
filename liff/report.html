@@ -174,7 +174,7 @@ const WAKA_S = 'wk26xK9mPqRt';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec?_s=' + WAKA_S;
 const PIN_ADMIN = 'waka99';
 
-if (sessionStorage.getItem('waka_portal_auth') === '1' && sessionStorage.getItem('waka_staff_role') === 'admin') {
+if (localStorage.getItem('waka_portal_auth') === '1' && localStorage.getItem('waka_staff_role') === 'admin') {
   document.getElementById('pinOverlay').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   loadReport();
@@ -183,8 +183,8 @@ if (sessionStorage.getItem('waka_portal_auth') === '1' && sessionStorage.getItem
 function checkPin() {
   var pin = document.getElementById('pinInput').value.trim();
   if (pin === PIN_ADMIN) {
-    sessionStorage.setItem('waka_portal_auth', '1');
-    sessionStorage.setItem('waka_staff_role', 'admin');
+    localStorage.setItem('waka_portal_auth', '1');
+    localStorage.setItem('waka_staff_role', 'admin');
     document.getElementById('pinOverlay').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     loadReport();
