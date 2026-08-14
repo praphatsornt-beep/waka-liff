@@ -19,12 +19,23 @@ from theme import (
     SURFACE, SURFACE_ALT, BORDER, TEXT2, TEXT3, ACCENT_TEXT, ACCENT_LIGHT, DIVIDER2,
     PENDING_TEXT, SUCCESS_TEXT, DANGER_TEXT,
 )
+import rocket8_client
 
 BRANCHES     = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์", "จัดส่ง"]
 ALL_STATUS   = ["รอตรวจ", "รอตรวจเพิ่ม", "ยืนยัน", "ยอดไม่ตรง", "สลิปซ้ำ", "บัญชีไม่ตรง", "สงสัยปลอม", "ยกเลิก", "ไม่มีสลิป"]
 ALL_FULFILL  = ["", "กำลังจัดส่งไปสาขา", "พร้อมรับ", "รับบางส่วนแล้ว", "สาขายืนยัน", "จัดส่งแล้ว", "รับแล้ว"]
 
 TH_TZ = timezone(timedelta(hours=7))
+
+
+@st.cache_data
+def load_thai_address() -> list:
+    """Same source liff/index.html uses for its province/amphoe/tambon dropdowns."""
+    path = Path(__file__).resolve().parent.parent.parent / "liff" / "thai-address.json"
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
 
 
 @st.cache_resource
@@ -766,6 +777,89 @@ with tab_cards:
                                                     st.rerun()
                                                 except Exception as e:
                                                     st.error(f"ทำรายการไม่ได้: {e}")
+
+                    if is_del and cur_status == "ยืนยัน":
+                        with st.popover("🚚 จัดส่ง Rocket8", use_container_width=True):
+                            st.caption("ยืนยันที่อยู่ปลายทางก่อนสร้างเลขพัสดุ — Rocket8 ต้องการ ตำบล/อำเภอ/จังหวัด/รหัสไปรษณีย์ แยกฟิลด์ ไม่ใช่ที่อยู่แบบข้อความเดียว")
+                            st.text_input(
+                                "ที่อยู่เดิม (อ้างอิง)", value=str(row.get("address", "")),
+                                disabled=True, key=f"r8_addr_ref_{order_id}",
+                            )
+                            r8_line = st.text_input(
+                                "บ้านเลขที่ / ถนน / ซอย", key=f"r8_line_{order_id}",
+                            )
+                            thai_addr = load_thai_address()
+                            prov_names = [p["n"] for p in thai_addr]
+                            r8_prov = st.selectbox(
+                                "จังหวัด", [""] + prov_names, key=f"r8_prov_{order_id}",
+                            )
+                            amp_names = []
+                            if r8_prov:
+                                amp_names = [a["n"] for a in next(p["a"] for p in thai_addr if p["n"] == r8_prov)]
+                            r8_amp = st.selectbox(
+                                "อำเภอ/เขต", [""] + amp_names, key=f"r8_amp_{order_id}",
+                            )
+                            dist_opts = []
+                            if r8_prov and r8_amp:
+                                amp_obj = next(a for a in next(p["a"] for p in thai_addr if p["n"] == r8_prov) if a["n"] == r8_amp)
+                                dist_opts = amp_obj["d"]
+                            r8_dist = st.selectbox(
+                                "ตำบล/แขวง", [""] + [d["n"] for d in dist_opts], key=f"r8_dist_{order_id}",
+                            )
+                            r8_zip_default = next((d["z"] for d in dist_opts if d["n"] == r8_dist), "")
+                            r8_zip = st.text_input(
+                                "รหัสไปรษณีย์", value=r8_zip_default, key=f"r8_zip_{order_id}",
+                            )
+                            r8_name = st.text_input(
+                                "ชื่อผู้รับ", value=str(row.get("real_name", "")), key=f"r8_name_{order_id}",
+                            )
+                            r8_phone = st.text_input(
+                                "เบอร์ผู้รับ", value=str(row.get("phone", "")), key=f"r8_phone_{order_id}",
+                            )
+                            box_qty = sum(
+                                int(i.get("qty", 1)) for i in items if i.get("type") == "box"
+                            ) or 1
+                            r8_weight_kg = st.number_input(
+                                "น้ำหนักรวม (kg)", min_value=0.1, value=0.5 * box_qty, step=0.1,
+                                key=f"r8_weight_{order_id}",
+                            )
+                            r8c1, r8c2, r8c3 = st.columns(3)
+                            with r8c1:
+                                r8_w = st.number_input("กว้าง (ซม.)", min_value=1, value=20, key=f"r8_w_{order_id}")
+                            with r8c2:
+                                r8_h = st.number_input("สูง (ซม.)", min_value=1, value=10, key=f"r8_h_{order_id}")
+                            with r8c3:
+                                r8_l = st.number_input("ยาว (ซม.)", min_value=1, value=20, key=f"r8_l_{order_id}")
+                            r8_partner = st.selectbox(
+                                "ขนส่ง", rocket8_client.PARTNERS, key=f"r8_partner_{order_id}",
+                            )
+
+                            if st.button("🚚 ยืนยันสร้างเลขพัสดุ", key=f"r8_submit_{order_id}"):
+                                if not (r8_line and r8_prov and r8_amp and r8_dist and r8_zip and r8_name and r8_phone):
+                                    st.warning("กรอกที่อยู่/ชื่อ/เบอร์ผู้รับให้ครบก่อน")
+                                else:
+                                    try:
+                                        r8_items = [
+                                            {"name": i.get("name", ""), "qty": int(i.get("qty", 1)), "price": float(i.get("price", 0))}
+                                            for i in items
+                                        ]
+                                        result = rocket8_client.create_shipment_order(
+                                            to_name=r8_name, to_phone=r8_phone, to_address=r8_line,
+                                            to_district=r8_dist, to_city=r8_amp, to_province=r8_prov,
+                                            to_postal_code=r8_zip, weight_g=int(round(r8_weight_kg * 1000)),
+                                            width=int(r8_w), height=int(r8_h), length=int(r8_l),
+                                            items=r8_items, partner=r8_partner, ref_number=str(order_id),
+                                        )
+                                        awb = result.get("partner_awb_no", "")
+                                        new_note = f"{row.get('notes', '')}\nRocket8 AWB: {awb} ({r8_partner})".strip()
+                                        get_supabase().table("orders").update({"notes": new_note}).eq("order_id", order_id).execute()
+                                        st.success(f"สร้างเลขพัสดุแล้ว: {awb}")
+                                        st.cache_data.clear()
+                                        st.rerun()
+                                    except rocket8_client.Rocket8Error as e:
+                                        st.error(f"Rocket8 สร้างเลขพัสดุไม่ได้: {e}")
+                                    except Exception as e:
+                                        st.error(f"ทำรายการไม่ได้: {e}")
 
                     col_slip, col_act = st.columns([1, 2])
                     with col_slip:
