@@ -924,9 +924,23 @@ with tab_cards:
                                             items=r8_items, partner=r8_partner, ref_number=str(order_id),
                                         )
                                         awb = result.get("partner_awb_no", "")
-                                        new_note = f"{row.get('notes', '')}\nRocket8 AWB: {awb} ({r8_partner})".strip()
+                                        partner_name = (result.get("partner") or {}).get("partner_name") or r8_partner
+                                        new_note = f"{row.get('notes', '')}\nRocket8 AWB: {awb} ({partner_name})".strip()
                                         get_supabase().table("orders").update({"notes": new_note}).eq("order_id", order_id).execute()
-                                        st.success(f"สร้างเลขพัสดุแล้ว: {awb}")
+
+                                        line_msg = (
+                                            "📦 คำสั่งซื้อของคุณจัดส่งแล้ว!\n\n"
+                                            f"ออเดอร์: #{order_id}\n"
+                                            f"ขนส่ง: {partner_name}\n"
+                                            f"เลขพัสดุ: {awb}\n\n"
+                                            "ตรวจสอบสถานะพัสดุได้จากขนส่งโดยตรงด้วยเลขพัสดุด้านบนครับ"
+                                        )
+                                        try:
+                                            gas_post({"_action": "notifyCustomer", "order_id": order_id, "custom_message": line_msg})
+                                            st.success(f"ดำเนินการแล้ว — สร้างเลขพัสดุ {awb} และแจ้งลูกค้าทาง LINE แล้ว")
+                                        except Exception as line_err:
+                                            st.warning(f"สร้างเลขพัสดุสำเร็จ ({awb}) แต่แจ้งลูกค้าทาง LINE ไม่ได้: {line_err}")
+
                                         st.cache_data.clear()
                                         st.rerun()
                                     except rocket8_client.Rocket8Error as e:
