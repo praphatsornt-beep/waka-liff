@@ -315,18 +315,23 @@ if df.empty:
     st.info("ยังไม่มีออเดอร์")
     st.stop()
 
-# ไม่กรองด้วย catalog.active — เคยกรองไว้ (เทียบชื่อกับ catalog ที่ active ตอนนี้)
-# แต่ product rename ไม่ย้อนไปแก้ items_json ของออเดอร์เก่า (ตั้งใจ ดู
-# handleUpdateProduct's _renameProductRpc_) ดังนั้นสินค้าที่เคยเปลี่ยนชื่อจะมีแต่
-# ชื่อเก่าอยู่ในออเดอร์เก่าตลอดไป — เทียบกับชื่อปัจจุบันแล้วไม่ตรง เลยหลุดจาก
-# ตัวกรองทั้งที่สินค้ายังขายอยู่จริง (เจอกับ BT11 หลังเปลี่ยนชื่อ) แสดงทุกชื่อที่
-# เคยปรากฏในออเดอร์ไปเลย ปลอดภัยกว่า
+@st.cache_data(ttl=60)
+def load_all_catalog_names() -> set:
+    rows = get_supabase().table("catalog").select("name").execute().data
+    return {r["name"] for r in rows if r.get("name")}
+
+
+# รวม 2 แหล่ง: ชื่อที่เคยปรากฏในออเดอร์ (กันสินค้าที่เปลี่ยนชื่อไปแล้วหลุดจาก
+# ตัวกรอง — เจอกับ BT11, ดู commit ก่อนหน้า) + ชื่อสินค้าทั้งหมดใน catalog
+# ตอนนี้ (กันสินค้าที่เพิ่งเพิ่มเข้าระบบแต่ยังไม่มีใครสั่งเลยสักออเดอร์เดียว หาย
+# ไปจากตัวกรองเพราะไม่เคยปรากฏใน items_json ที่ไหนเลย — คนละสาเหตุ คนละบั๊ก
+# กับเคส BT11 แต่ต้องแก้พร้อมกันเพราะทั้งคู่ทำให้ "สินค้าไม่ขึ้นในตัวกรอง")
 all_products = sorted({
     i.get("name", "")
     for items_json in df.get("items_json", [])
     for i in parse_items(items_json)
     if i.get("name")
-})
+} | load_all_catalog_names())
 
 phone_counts = df["phone"].value_counts().to_dict() if "phone" in df.columns else {}
 
