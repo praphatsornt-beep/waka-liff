@@ -10,8 +10,10 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+import hashlib
 import json
 import os
+import urllib.parse
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -21,6 +23,38 @@ from theme import (
     apply_theme, page_header, flat, SURFACE, BORDER, TEXT2, TEXT3, ACCENT_LIGHT,
     ACCENT_TEXT, PRIMARY_BTN, DIVIDER, DIVIDER2, PENDING_TEXT, SUCCESS_TEXT, DANGER_TEXT,
 )
+
+COOKIE_MAX_AGE_DAYS = 180
+_COOKIE_NAME = "waka_admin_name"
+_COOKIE_TOKEN = "waka_admin_token"
+
+
+def _cookie_token(admin_password: str, name: str) -> str:
+    # Proof the browser previously saw the real admin_password, without
+    # storing the password itself in the cookie. Rotating ADMIN_PASSWORD
+    # naturally invalidates every existing "stay logged in" cookie.
+    return hashlib.sha256(f"{admin_password}:{name}".encode("utf-8")).hexdigest()
+
+
+def _set_login_cookie(name: str, admin_password: str) -> None:
+    token = _cookie_token(admin_password, name)
+    max_age = COOKIE_MAX_AGE_DAYS * 24 * 60 * 60
+    safe_name_js = json.dumps(name)
+    st.iframe(f"""
+        <script>
+        document.cookie = "{_COOKIE_NAME}=" + encodeURIComponent({safe_name_js}) + "; max-age={max_age}; path=/; SameSite=Lax";
+        document.cookie = "{_COOKIE_TOKEN}={token}; max-age={max_age}; path=/; SameSite=Lax";
+        </script>
+    """, height=1)
+
+
+def _clear_login_cookie() -> None:
+    st.iframe(f"""
+        <script>
+        document.cookie = "{_COOKIE_NAME}=; max-age=0; path=/";
+        document.cookie = "{_COOKIE_TOKEN}=; max-age=0; path=/";
+        </script>
+    """, height=1)
 
 
 def _require_login() -> None:
@@ -32,6 +66,10 @@ def _require_login() -> None:
     notes and LINE messages), not real access control. Runs once here at the
     entry point: every other page (screens/*.py) is executed by pg.run()
     inside this same script run, so this single check gates them all.
+
+    "Stay logged in" via a browser cookie (COOKIE_MAX_AGE_DAYS) - Streamlit's
+    session_state alone resets on every new browser tab/hard-refresh/app
+    sleep, which was forcing staff to log in constantly.
     """
     admin_password = os.environ.get("ADMIN_PASSWORD", "")
     if not admin_password:
@@ -42,6 +80,16 @@ def _require_login() -> None:
     if not admin_password:
         st.error("ยังไม่ได้ตั้งรหัสผ่านแอดมิน — เพิ่ม ADMIN_PASSWORD ใน Streamlit Secrets (หรือ .env ตอนรันเครื่อง local) ก่อนใช้งาน")
         st.stop()
+
+    if not (st.session_state.get("authed") and st.session_state.get("admin_name")):
+        cookies = st.context.cookies
+        cookie_name_raw = cookies.get(_COOKIE_NAME, "")
+        cookie_token = cookies.get(_COOKIE_TOKEN, "")
+        if cookie_name_raw and cookie_token:
+            cookie_name = urllib.parse.unquote(cookie_name_raw)
+            if _cookie_token(admin_password, cookie_name) == cookie_token:
+                st.session_state["authed"] = True
+                st.session_state["admin_name"] = cookie_name
 
     if st.session_state.get("authed") and st.session_state.get("admin_name"):
         return
@@ -63,6 +111,7 @@ def _require_login() -> None:
             name = st.text_input("ชื่อผู้ดูแลระบบ (แสดงในประวัติการยืนยัน/ยกเลิก/แก้ไขสินค้า)", key="login_name")
             if st.button("เริ่มใช้งาน", use_container_width=True, type="primary") and name.strip():
                 st.session_state["admin_name"] = name.strip()
+                _set_login_cookie(name.strip(), admin_password)
                 st.rerun()
     st.stop()
 
@@ -462,6 +511,7 @@ with st.sidebar:
     if st.button("ออกจากระบบ", use_container_width=True):
         st.session_state.pop("authed", None)
         st.session_state.pop("admin_name", None)
+        _clear_login_cookie()
         st.rerun()
 
 pg.run()
