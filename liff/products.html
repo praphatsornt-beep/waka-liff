@@ -46,17 +46,6 @@
       display: flex; align-items: center; justify-content: space-between;
     }
     .top-bar h1 { font-size: 16px; font-weight: 700; color: #fff; }
-    .btn-add {
-      background: rgba(255,255,255,.15);
-      color: #fff;
-      border: 1.5px solid rgba(255,255,255,.3);
-      border-radius: 10px;
-      padding: 7px 14px;
-      font-size: 13px; font-weight: 600;
-      cursor: pointer; font-family: inherit;
-      transition: background .2s;
-    }
-    .btn-add:active { background: rgba(255,255,255,.25); }
 
     /* ── Search ── */
     .search-row { position: relative; margin-bottom: 10px; }
@@ -247,7 +236,6 @@
 <div class="page" id="app" style="display:none">
   <div class="top-bar">
     <h1>🎴 จัดการสินค้า</h1>
-    <button class="btn-add" onclick="openAdd()">+ เพิ่มสินค้า</button>
   </div>
 
   <div class="search-row">
@@ -384,23 +372,6 @@
     </div>
   </div>
 
-  <!-- สต็อกเริ่มต้น (add mode only) -->
-  <div id="initStockRow" style="display:none">
-    <div class="form-sect">
-      <div class="form-sect-title">สต็อกเริ่มต้น</div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>จำนวน Box</label>
-          <input type="number" id="fInitBox" placeholder="0" min="0" inputmode="numeric">
-        </div>
-        <div class="form-group">
-          <label>จำนวน Pack</label>
-          <input type="number" id="fInitPack" placeholder="0" min="0" inputmode="numeric">
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- เปิดขาย toggle (edit mode only) -->
   <div class="toggle-row" id="activeToggleRow">
     <label>เปิดขาย</label>
@@ -462,7 +433,6 @@ function renderStaffBadge() {
 
 let _products = [];
 let _filter = 'all';
-let _isEdit = false;
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
@@ -620,7 +590,6 @@ async function quickToggle(name, newActive, btn) {
 
 // ── Drawer ──
 function openEdit(p) {
-  _isEdit = true;
   document.getElementById('drawerTitle').textContent = 'แก้ไข: ' + p.name;
   document.getElementById('editName').value         = p.name;
   document.getElementById('fName').value            = p.name;
@@ -636,25 +605,7 @@ function openEdit(p) {
   document.getElementById('fNotice').value          = p.notice || '';
   document.getElementById('fActive').checked        = p.active;
   document.getElementById('activeToggleRow').style.display = 'flex';
-  document.getElementById('initStockRow').style.display   = 'none';
   setImagePreview(p.image_url || '');
-  document.getElementById('drawerMsg').textContent = '';
-  openDrawer();
-}
-
-function openAdd() {
-  _isEdit = false;
-  document.getElementById('drawerTitle').textContent = 'เพิ่มสินค้าใหม่';
-  ['editName','fBarcode','fPriceBox','fPricePack','fCostBox','fCostPack','fNotice','fInitBox','fInitPack'].forEach(id => document.getElementById(id).value = '');
-  document.getElementById('fName').value     = '';
-  document.getElementById('fName').disabled  = false;
-  document.getElementById('fCategory').value = '';
-  document.getElementById('fLimitBox').value  = '-1';
-  document.getElementById('fLimitPack').value = '-1';
-  document.getElementById('fActive').checked  = true;
-  document.getElementById('activeToggleRow').style.display = 'none';
-  document.getElementById('initStockRow').style.display   = 'block';
-  setImagePreview('');
   document.getElementById('drawerMsg').textContent = '';
   openDrawer();
 }
@@ -743,14 +694,14 @@ async function saveProduct() {
   const msg = document.getElementById('drawerMsg');
   btn.disabled = true; msg.textContent = ''; msg.className = 'drawer-msg';
 
-  const name = _isEdit ? document.getElementById('editName').value : document.getElementById('fName').value.trim();
+  const name = document.getElementById('editName').value;
   if (!name) { msg.textContent = 'กรุณาใส่ชื่อสินค้า'; msg.className = 'drawer-msg err'; btn.disabled = false; return; }
 
   const staff_name = ensureStaffName();
   if (!staff_name) { btn.disabled = false; return; }
 
   const payload = {
-    _action:    _isEdit ? 'updateProduct' : 'addProduct',
+    _action:    'updateProduct',
     name,
     category:   document.getElementById('fCategory').value.trim(),
     barcode:    document.getElementById('fBarcode').value.trim(),
@@ -763,18 +714,14 @@ async function saveProduct() {
     notice:     document.getElementById('fNotice').value.trim(),
     image_url:  document.getElementById('fImageUrl').value,
     staff_name: staff_name.trim(),
+    active:     document.getElementById('fActive').checked,
   };
-  if (!_isEdit) {
-    payload.initial_box  = Number(document.getElementById('fInitBox').value)  || 0;
-    payload.initial_pack = Number(document.getElementById('fInitPack').value) || 0;
-  }
-  if (_isEdit) payload.active = document.getElementById('fActive').checked;
 
   try {
     const r = await fetch(G, { method: 'POST', body: JSON.stringify(payload) });
     const d = await r.json();
     if (d.ok) {
-      msg.textContent = _isEdit ? 'บันทึกแล้ว ✓' : 'เพิ่มสินค้าแล้ว ✓';
+      msg.textContent = 'บันทึกแล้ว ✓';
       msg.className = 'drawer-msg ok';
       await loadProducts();
       setTimeout(closeDrawer, 800);
