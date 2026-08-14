@@ -201,6 +201,26 @@ function _renameProductRpc_(oldName, newName) {
   }
 }
 
+// ล็อตที่สร้างไว้ก่อนเปลี่ยนชื่อสินค้าแต่สาขายังไม่กดรับ (status "จัดส่ง") มี
+// items_json เป็น snapshot ชื่อสินค้า ณ ตอนสร้างล็อต ไม่ได้ผูกกับ catalog.name
+// แบบ live — rename_product() RPC ข้างบนแก้แค่ catalog + stock_branch ที่มีอยู่
+// ตอนนั้น ไม่แตะ shipments เลย ถ้าไม่ sync ตรงนี้ด้วย พอสาขามากดรับของทีหลัง
+// (handleReceiveShipment อ่านชื่อจาก items_json ตรงๆ) ชื่อเก่าจะถูกเขียนกลับเข้า
+// stock_branch อีกรอบ ทั้งที่ catalog เปลี่ยนชื่อไปแล้ว (บั๊กจริงที่เจอกับ BT11)
+function _renamePendingShipments_(oldName, newName) {
+  var rows = supabaseSelect_("shipments", "select=id,items_json&status=eq." + encodeURIComponent("จัดส่ง"));
+  rows.forEach(function(r) {
+    var items = Array.isArray(r.items_json) ? r.items_json : [];
+    var changed = false;
+    items.forEach(function(it) {
+      if (it.name === oldName) { it.name = newName; changed = true; }
+    });
+    if (!changed) return;
+    var res = patchSupabase_("shipments", "id=eq." + r.id, { items_json: items });
+    if (!res.ok) Logger.log("_renamePendingShipments_ failed for shipment id " + r.id + ": " + res.text);
+  });
+}
+
 function supabaseSelect_(table, query) {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return [];
   var url = SUPABASE_URL + "/rest/v1/" + table + (query ? "?" + query : "");
@@ -3295,6 +3315,7 @@ function handleUpdateProduct(data) {
       if (dup) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "มีสินค้าชื่อนี้อยู่แล้ว" }))); }
       var renameRes = _renameProductRpc_(data.name, newName);
       if (!renameRes.ok) { lock.releaseLock(); throw new Error("เปลี่ยนชื่อสินค้าไม่สำเร็จ: " + renameRes.text); }
+      _renamePendingShipments_(data.name, newName);
       changeLog.push("ชื่อ: " + data.name + " → " + newName);
       row.name = newName;
     }
