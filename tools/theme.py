@@ -214,19 +214,33 @@ h1, h2, h3, h4,
 div[data-baseweb="popover"]:has(ul[data-testid*="VirtualDropdown"]),
 div[data-baseweb="popover"]:has(ul[data-testid*="VirtualDropdown"]) > div,
 div[data-baseweb="popover"]:has(ul[data-testid*="VirtualDropdown"]) > div > div {{
-  width: 340px !important;
-  max-width: 340px !important;
+  width: 480px !important;
+  max-width: 480px !important;
 }}
 ul[data-testid*="VirtualDropdown"],
 ul[data-testid*="VirtualDropdown"] > div,
 ul[data-testid*="VirtualDropdown"] li[role="option"] {{
-  width: 340px !important;
+  width: 480px !important;
 }}
+/* Applied to the option element itself, not just its descendants — BaseWeb's
+   own truncation rules (overflow/text-overflow/white-space) can live directly
+   on li[role="option"], not only on a nested span, so the earlier `* {{}}`-only
+   version still lost to those on long names (live report: still truncated
+   with "..." after the first fix, e.g. "Pokemon ชุด MA6 "30th CE..."). */
+ul[data-testid*="VirtualDropdown"] li[role="option"],
 ul[data-testid*="VirtualDropdown"] li[role="option"] * {{
   overflow: visible !important;
   text-overflow: unset !important;
   white-space: normal !important;
+  word-break: break-word !important;
 }}
+/* NOT forcing height:auto on the option row here — the list is a virtualized
+   (react-window-style) list where each row's vertical position is computed
+   in JS from a fixed itemSize, not measured from the DOM. Growing a row's
+   real height via CSS wouldn't shift the rows below it (JS still thinks
+   every row is the original short height), so wrapped text would visually
+   overlap the next option instead of pushing it down. Left as single-line;
+   the width bump above is what actually buys room for longer names. */
 
 /* Smaller text in form controls (search/select/date inputs + their dropdown
    options) — the default size felt oversized next to the rest of the UI. */
