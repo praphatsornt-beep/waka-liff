@@ -2838,7 +2838,9 @@ function handleHandoverOrder(data) {
 
     var groupStaffHandover = _getConfigValue(null, "group_staff");
     if (groupStaffHandover && staffName) {
-      _linePush(groupStaffHandover, "🤝 " + staffName + " ส่งมอบออเดอร์ #" + data.order_id + " ที่สาขา " + branch + " แล้ว\n" +
+      var custName = order.real_name || order.display_name || "";
+      _linePush(groupStaffHandover, "🤝 " + staffName + " ส่งมอบออเดอร์ #" + data.order_id + " ที่สาขา " + branch +
+        (custName ? " ให้ " + custName : "") + " แล้ว\n" +
         handoverNames.map(function(n) { return "- " + n; }).join("\n"));
     }
 
