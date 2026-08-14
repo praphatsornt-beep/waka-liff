@@ -3,6 +3,7 @@
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from datetime import date, datetime, timedelta, timezone
@@ -21,6 +22,16 @@ from theme import (
 )
 import rocket8_client
 
+# กล่องไปรษณีย์ตามขนาดมาตรฐาน (กว้าง, ยาว, สูง) ซม. — ใช้เติมค่าเริ่มต้นใน
+# popup "จัดส่ง Rocket8" ตามรหัสกล่องที่ร้านใช้จริง ปรับตัวเลขเองได้เสมอ
+BOX_SIZES = {
+    "0": (11, 17, 6), "0+4": (11, 17, 10), "00": (14, 10, 6),
+    "A": (14, 20, 6), "AA": (13, 17, 7), "AB": (14, 20, 9),
+    "2A": (14, 20, 12), "2B": (17, 25, 18), "2C": (20, 30, 22), "2D": (22, 35, 28),
+    "B": (17, 25, 9), "C": (20, 30, 11), "C+8": (20, 30, 19),
+    "CD": (15, 15, 15), "D": (22, 35, 14),
+}
+
 BRANCHES     = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์", "จัดส่ง"]
 ALL_STATUS   = ["รอตรวจ", "รอตรวจเพิ่ม", "ยืนยัน", "ยอดไม่ตรง", "สลิปซ้ำ", "บัญชีไม่ตรง", "สงสัยปลอม", "ยกเลิก", "ไม่มีสลิป"]
 ALL_FULFILL  = ["", "กำลังจัดส่งไปสาขา", "พร้อมรับ", "รับบางส่วนแล้ว", "สาขายืนยัน", "จัดส่งแล้ว", "รับแล้ว"]
@@ -36,6 +47,50 @@ def load_thai_address() -> list:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return []
+
+
+def parse_customer_address(address: str, thai_addr: list) -> dict:
+    """Best-effort split of the customer-entered address back into Rocket8's
+    fields. liff/index.html's getFullAddress() always joins as
+    "{line} {tambon} {amphoe} {province} {zip}" (dropdown-picked components,
+    not free text), so matching known province/amphoe/tambon names off the
+    end is reliable for orders placed through that form. Falls back to
+    leaving fields blank (just the raw string in "line") for anything it
+    can't confidently resolve — staff fills in the rest by hand."""
+    result = {"line": "", "prov": "", "amp": "", "dist": "", "zip": ""}
+    s = str(address or "").strip()
+    if not s:
+        return result
+
+    m = re.search(r"(\d{5})\s*$", s)
+    if m:
+        result["zip"] = m.group(1)
+        s = s[:m.start()].strip()
+
+    for p in thai_addr:
+        prov_name = p["n"]
+        if s != prov_name and not s.endswith(" " + prov_name):
+            continue
+        rest = s[: -len(prov_name)].strip()
+        for a in p["a"]:
+            amp_name = a["n"]
+            if rest != amp_name and not rest.endswith(" " + amp_name):
+                continue
+            rest2 = rest[: -len(amp_name)].strip()
+            for d in a["d"]:
+                dist_name = d["n"]
+                if rest2 != dist_name and not rest2.endswith(" " + dist_name):
+                    continue
+                result["prov"] = prov_name
+                result["amp"] = amp_name
+                result["dist"] = dist_name
+                result["line"] = rest2[: -len(dist_name)].strip()
+                if not result["zip"]:
+                    result["zip"] = d["z"]
+                return result
+
+    result["line"] = s
+    return result
 
 
 @st.cache_resource
@@ -785,28 +840,35 @@ with tab_cards:
                                 "ที่อยู่เดิม (อ้างอิง)", value=str(row.get("address", "")),
                                 disabled=True, key=f"r8_addr_ref_{order_id}",
                             )
-                            r8_line = st.text_input(
-                                "บ้านเลขที่ / ถนน / ซอย", key=f"r8_line_{order_id}",
-                            )
                             thai_addr = load_thai_address()
+                            addr_guess = parse_customer_address(row.get("address", ""), thai_addr)
+                            r8_line = st.text_input(
+                                "บ้านเลขที่ / ถนน / ซอย", value=addr_guess["line"], key=f"r8_line_{order_id}",
+                            )
                             prov_names = [p["n"] for p in thai_addr]
+                            prov_opts = [""] + prov_names
+                            prov_idx = prov_opts.index(addr_guess["prov"]) if addr_guess["prov"] in prov_opts else 0
                             r8_prov = st.selectbox(
-                                "จังหวัด", [""] + prov_names, key=f"r8_prov_{order_id}",
+                                "จังหวัด", prov_opts, index=prov_idx, key=f"r8_prov_{order_id}",
                             )
                             amp_names = []
                             if r8_prov:
                                 amp_names = [a["n"] for a in next(p["a"] for p in thai_addr if p["n"] == r8_prov)]
+                            amp_opts = [""] + amp_names
+                            amp_idx = amp_opts.index(addr_guess["amp"]) if addr_guess["amp"] in amp_opts else 0
                             r8_amp = st.selectbox(
-                                "อำเภอ/เขต", [""] + amp_names, key=f"r8_amp_{order_id}",
+                                "อำเภอ/เขต", amp_opts, index=amp_idx, key=f"r8_amp_{order_id}",
                             )
                             dist_opts = []
                             if r8_prov and r8_amp:
                                 amp_obj = next(a for a in next(p["a"] for p in thai_addr if p["n"] == r8_prov) if a["n"] == r8_amp)
                                 dist_opts = amp_obj["d"]
+                            dist_names_opts = [""] + [d["n"] for d in dist_opts]
+                            dist_idx = dist_names_opts.index(addr_guess["dist"]) if addr_guess["dist"] in dist_names_opts else 0
                             r8_dist = st.selectbox(
-                                "ตำบล/แขวง", [""] + [d["n"] for d in dist_opts], key=f"r8_dist_{order_id}",
+                                "ตำบล/แขวง", dist_names_opts, index=dist_idx, key=f"r8_dist_{order_id}",
                             )
-                            r8_zip_default = next((d["z"] for d in dist_opts if d["n"] == r8_dist), "")
+                            r8_zip_default = next((d["z"] for d in dist_opts if d["n"] == r8_dist), "") or addr_guess["zip"]
                             r8_zip = st.text_input(
                                 "รหัสไปรษณีย์", value=r8_zip_default, key=f"r8_zip_{order_id}",
                             )
@@ -823,13 +885,24 @@ with tab_cards:
                                 "น้ำหนักรวม (kg)", min_value=0.1, value=0.5 * box_qty, step=0.1,
                                 key=f"r8_weight_{order_id}",
                             )
+                            box_opts = list(BOX_SIZES.keys())
+                            box_code = st.selectbox(
+                                "ขนาดกล่อง", box_opts, index=box_opts.index("B"), key=f"r8_boxcode_{order_id}",
+                            )
+                            box_prev_key = f"r8_boxcode_prev_{order_id}"
+                            if st.session_state.get(box_prev_key) != box_code:
+                                bw, bl, bh = BOX_SIZES[box_code]
+                                st.session_state[f"r8_w_{order_id}"] = bw
+                                st.session_state[f"r8_h_{order_id}"] = bh
+                                st.session_state[f"r8_l_{order_id}"] = bl
+                                st.session_state[box_prev_key] = box_code
                             r8c1, r8c2, r8c3 = st.columns(3)
                             with r8c1:
-                                r8_w = st.number_input("กว้าง (ซม.)", min_value=1, value=20, key=f"r8_w_{order_id}")
+                                r8_w = st.number_input("กว้าง (ซม.)", min_value=1, key=f"r8_w_{order_id}")
                             with r8c2:
-                                r8_h = st.number_input("สูง (ซม.)", min_value=1, value=10, key=f"r8_h_{order_id}")
+                                r8_h = st.number_input("สูง (ซม.)", min_value=1, key=f"r8_h_{order_id}")
                             with r8c3:
-                                r8_l = st.number_input("ยาว (ซม.)", min_value=1, value=20, key=f"r8_l_{order_id}")
+                                r8_l = st.number_input("ยาว (ซม.)", min_value=1, key=f"r8_l_{order_id}")
                             r8_partner = st.selectbox(
                                 "ขนส่ง", rocket8_client.PARTNERS, key=f"r8_partner_{order_id}",
                             )
