@@ -1380,9 +1380,9 @@ function handleApi(params) {
 
   // ── สต็อกกลาง ──
   if (action === "central_stock") {
-    var csRows = supabaseSelect_("catalog", "select=name,category,qty_box,qty_pack");
+    var csRows = supabaseSelect_("catalog", "select=name,id,category,qty_box,qty_pack");
     var stock = csRows.filter(function(r) { return r.name; }).map(function(r) {
-      return { name: String(r.name), category: String(r.category || ""), qty_box: Number(r.qty_box) || 0, qty_pack: Number(r.qty_pack) || 0 };
+      return { name: String(r.name), id: String(r.id || ""), category: String(r.category || ""), qty_box: Number(r.qty_box) || 0, qty_pack: Number(r.qty_pack) || 0 };
     });
     return _cors(ContentService.createTextOutput(JSON.stringify({ stock: stock })));
   }

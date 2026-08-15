@@ -737,7 +737,8 @@ async function loadStock() {
         html += '<table><tr><th>สินค้า</th><th>กล่อง</th><th>ซอง</th><th></th></tr>';
         for (const s of byBranch[branch]) {
           html += '<tr><td>' + esc(s.name) + '</td><td>' + (s.qty_box||0) + '</td><td>' + (s.qty_pack||0) + '</td>';
-          html += '<td><button class="btn" style="padding:4px 8px;font-size:11px;background:#fee2e2;color:var(--red);border:none;width:auto;min-width:unset" onclick="returnStockItem(\'' + esc(branch) + '\',\'' + esc(s.name) + '\',' + (s.qty_box||0) + ',' + (s.qty_pack||0) + ')">📤 คืน</button></td>';
+          const _pid = (cStock.find(c => c.name === s.name) || {}).id || '';
+          html += '<td><button class="btn" style="padding:4px 8px;font-size:11px;background:#fee2e2;color:var(--red);border:none;width:auto;min-width:unset" onclick="returnStockItem(\'' + esc(branch) + '\',\'' + esc(s.name) + '\',' + (s.qty_box||0) + ',' + (s.qty_pack||0) + ',\'' + esc(_pid) + '\')">📤 คืน</button></td>';
           html += '</tr>';
         }
         html += '</table>';
@@ -750,7 +751,7 @@ async function loadStock() {
   }
 }
 
-async function returnStockItem(branch, name, maxBox, maxPack) {
+async function returnStockItem(branch, name, maxBox, maxPack, id) {
   let qtyBox = 0, qtyPack = 0;
   if (maxBox > 0) {
     const inp = prompt('คืนสต็อกกลับคลัง\n' + name + ' · ' + branch + '\n\nจำนวนกล่องที่คืน (มีอยู่ ' + maxBox + ' กล่อง)\nใส่ 0 เพื่อข้าม');
@@ -772,7 +773,7 @@ async function returnStockItem(branch, name, maxBox, maxPack) {
   try {
     const res = await fetch(GAS_URL, {
       method: 'POST',
-      body: JSON.stringify({ _action: 'returnStock', branch, name, qty_box: qtyBox, qty_pack: qtyPack, staff_name: staff_name.trim() })
+      body: JSON.stringify({ _action: 'returnStock', branch, name, id: id || undefined, qty_box: qtyBox, qty_pack: qtyPack, staff_name: staff_name.trim() })
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
