@@ -109,8 +109,18 @@ def parse_items(items_json) -> list:
         return []
 
 
+def _parse_ts(ts):
+    # ต้อง parse ทีละค่า ไม่ใช่ทั้งคอลัมน์พร้อมกัน — staff_actions.created_at,
+    # shipments.timestamp, และ shipments.received_at คนละ format กัน (เช่น
+    # "...+07:00" vs "yyyy-MM-dd HH:mm" ไม่มี offset) ถ้าโยนทั้ง Series ที่มี
+    # format ปนกันเข้า pd.to_datetime() รวดเดียว, pandas จะเดา format จากค่า
+    # แรกแล้วค่าที่ format ไม่ตรงกลายเป็น NaT ทั้งหมด (พังแบบเงียบๆ, เจอจริงว่า
+    # แถวล็อตส่งสาขาหล่นไปท้ายตารางเสมอไม่ว่าจะเวลาไหนก็ตาม)
+    return pd.to_datetime(ts, errors="coerce", utc=True)
+
+
 def _fmt_ts(ts) -> str:
-    dt = pd.to_datetime(ts, errors="coerce", utc=True)
+    dt = _parse_ts(ts)
     if pd.isna(dt):
         return ""
     return dt.tz_convert("Asia/Bangkok").strftime("%Y-%m-%d %H:%M")
@@ -153,7 +163,7 @@ def load_product_history(name: str, product_id: str = ""):
             created_text = _fmt_ts(r.get("created_at"))
         entries.append({
             "เวลา": _fmt_ts(r.get("created_at")),
-            "_ts": r.get("created_at"),
+            "_ts": _parse_ts(r.get("created_at")),
             "การกระทำ": PRODUCT_ACTION_LABELS.get(action, action),
             "พนักงาน": r.get("staff_name") or "ไม่ระบุ",
             "รายละเอียด": r.get("detail") or "",
@@ -188,7 +198,7 @@ def load_product_history(name: str, product_id: str = ""):
         qty_text = _shipment_item_qty_text(hit)
         entries.append({
             "เวลา": _fmt_ts(sr.get("timestamp")),
-            "_ts": sr.get("timestamp"),
+            "_ts": _parse_ts(sr.get("timestamp")),
             "การกระทำ": f"ส่งล็อตไปสาขา {sr.get('to_branch', '')}",
             "พนักงาน": ship_staff.get(sid, {}).get("create_shipment", "ไม่ระบุ"),
             "รายละเอียด": f"{qty_text} — ล็อต {sid} ({sr.get('status', '')})",
@@ -196,7 +206,7 @@ def load_product_history(name: str, product_id: str = ""):
         if sr.get("status") == "รับแล้ว" and sr.get("received_at"):
             entries.append({
                 "เวลา": _fmt_ts(sr.get("received_at")),
-                "_ts": sr.get("received_at"),
+                "_ts": _parse_ts(sr.get("received_at")),
                 "การกระทำ": f"สาขา {sr.get('to_branch', '')} รับของแล้ว",
                 "พนักงาน": ship_staff.get(sid, {}).get("receive_shipment", "ไม่ระบุ"),
                 "รายละเอียด": f"{qty_text} — ล็อต {sid}",
@@ -206,8 +216,7 @@ def load_product_history(name: str, product_id: str = ""):
         return created_text, pd.DataFrame()
 
     hist_df = pd.DataFrame(entries)
-    hist_df["_ts_dt"] = pd.to_datetime(hist_df["_ts"], errors="coerce", utc=True)
-    hist_df = hist_df.sort_values("_ts_dt", ascending=False, na_position="last")
+    hist_df = hist_df.sort_values("_ts", ascending=False, na_position="last")
     return created_text, hist_df[["เวลา", "การกระทำ", "พนักงาน", "รายละเอียด"]]
 
 
