@@ -432,23 +432,23 @@ with tab_central:
             st.session_state[snap_key] = show
         show = st.session_state[snap_key]
 
-        cap_col, refresh_col = st.columns([5, 1])
+        cap_col, save_col, refresh_col = st.columns([5, 1, 1])
         with cap_col:
             st.caption(
                 "แก้ไข กล่อง / ซอง / ขายออนไลน์ได้ ในตารางได้เลย แล้วกดบันทึก — เลขกล่อง/ซองที่แก้เป็นยอดสต็อกใหม่ทั้งหมด "
                 "ไม่ใช่จำนวนที่เพิ่ม, ขายออนไลน์ได้ = จำนวนที่ลูกค้ายังสั่งออนไลน์ได้ ลดลงทุกครั้งที่มีออเดอร์ (0 = ปิดขายออนไลน์)"
             )
+        # ปุ่มบันทึกอยู่ที่ตำแหน่งนี้ (ข้างๆ ก่อนรีเฟรช) แต่ต้องรอผลจาก data_editor
+        # ด้านล่างก่อนถึงจะรู้ว่ามีอะไรถูกแก้บ้าง — สร้าง placeholder ไว้ก่อน
+        # แล้วค่อยเรียก .button() ใส่ตำแหน่งเดิมทีหลัง ตัว widget จะยังโผล่ตรงนี้
+        # เหมือนเดิมแม้โค้ดที่สร้างมันรันทีหลัง (Streamlit วาดตาม container ไม่ใช่
+        # ลำดับโค้ด)
+        save_slot = save_col.empty()
         with refresh_col:
             if st.button("🔄 รีเฟรช", key=f"refresh_catalog_btn_{cat_sel}", use_container_width=True):
                 st.session_state.pop(snap_key, None)
                 st.cache_data.clear()
                 st.rerun()
-        # ปุ่มบันทึกอยู่ที่ตำแหน่งนี้ (เหนือตาราง) แต่ต้องรอผลจาก data_editor
-        # ด้านล่างก่อนถึงจะรู้ว่ามีอะไรถูกแก้บ้าง — สร้าง placeholder ไว้ก่อน
-        # แล้วค่อยเรียก .button() ใส่ตำแหน่งเดิมทีหลัง ตัว widget จะยังโผล่ตรงนี้
-        # เหมือนเดิมแม้โค้ดที่สร้างมันรันทีหลัง (Streamlit วาดตาม container ไม่ใช่
-        # ลำดับโค้ด)
-        save_slot = st.empty()
         edited = st.data_editor(
             show,
             use_container_width=True,
@@ -469,7 +469,7 @@ with tab_central:
             key=f"catalog_editor_{cat_sel}",
         )
 
-        if save_slot.button("บันทึก", key=f"save_catalog_btn_{cat_sel}"):
+        if save_slot.button("บันทึก", key=f"save_catalog_btn_{cat_sel}", use_container_width=True):
             try:
                 for idx in show.index:
                     orig_row = show.loc[idx]
