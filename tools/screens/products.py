@@ -23,8 +23,11 @@ WAKA_S   = "wk26xK9mPqRt"  # shared secret doPost/doGet require via ?_s= (same v
 ADMIN_CODE = "waka99"  # updateProduct/addProduct still require this to prove admin, same as stock.py
 
 # ประวัติเข้า-ออกสินค้าดึงจาก staff_actions (target_id = ชื่อสินค้า) — ครอบคลุม
-# เฉพาะ action ที่ target_id เป็นชื่อสินค้าจริงๆ (คำสั่งซื้อ/ขายหน้าร้านบันทึก
-# target_id เป็น order_id/sale_id แทน จึงไม่โผล่ที่นี่)
+# เฉพาะ action ที่ target_id เป็นชื่อสินค้าจริงๆ (คำสั่งซื้อออนไลน์บันทึก target_id
+# เป็น order_id แทน จึงไม่โผล่ที่นี่ — ดูยอดขายออนไลน์ได้ที่หน้ารายงานแทน. ขาย
+# หน้าร้าน (walk-in) ก็บันทึก target_id เป็น sale_id เหมือนกัน แต่ load_product_history()
+# ด้านล่างดึงมาแสดงด้วยวิธีอื่น — สแกน walkin_sales.items_json หาแถวที่มีสินค้านี้
+# แทน เหมือนที่ทำกับล็อตส่งสาขา (shipments) อยู่แล้ว)
 PRODUCT_ACTION_LABELS = {
     "add_product": "สร้างสินค้าใหม่",
     "rename_product": "เปลี่ยนชื่อสินค้า",
@@ -100,6 +103,12 @@ def load_shipments() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+@st.cache_data(ttl=60)
+def load_walkin_sales() -> pd.DataFrame:
+    rows = get_supabase().table("walkin_sales").select("*").order("timestamp", desc=True).execute().data
+    return pd.DataFrame(rows)
+
+
 def parse_items(items_json) -> list:
     if isinstance(items_json, list):
         return items_json
@@ -141,15 +150,18 @@ def _shipment_item_qty_text(it: dict) -> str:
 def load_product_history(name: str, product_id: str = ""):
     """คืน (created_text, history_df) สำหรับสินค้า — created_text มาจาก
     staff_actions ที่ action='add_product' (ถ้ามี), history_df รวมทั้งการเบิก/
-    ปรับสต็อกคลังกลาง/สาขา/เปลี่ยนชื่อ (staff_actions) และล็อตส่งสาขา (shipments
-    ที่ items_json มีสินค้านี้อยู่) เรียงจากล่าสุดไปเก่าสุด.
+    ปรับสต็อกคลังกลาง/สาขา/เปลี่ยนชื่อ (staff_actions), ล็อตส่งสาขา (shipments
+    ที่ items_json มีสินค้านี้อยู่), และยอดขายหน้าร้าน (walkin_sales ที่ items_json
+    มีสินค้านี้อยู่) เรียงจากล่าสุดไปเก่าสุด.
 
     ตั้งแต่ gas/Code.gs เวอร์ชันที่บันทึก target_id เป็น "รหัสสินค้า" (product_id,
     คงที่แม้เปลี่ยนชื่อ) แทนชื่อสินค้า (เปลี่ยนได้) — คิวรี่ทั้งสองแบบพร้อมกัน
     (target_id = product_id หรือ = name) เพื่อให้ประวัติเก่าที่ยังผูกกับชื่อ (ก่อน
-    ปรับ) กับประวัติใหม่ที่ผูกกับรหัส (หลังปรับ) รวมกันมาแสดงครบ. ส่วนล็อตส่งสาขา
-    ยังจับคู่ด้วยชื่อเท่านั้น (shipments.items_json เก็บ snapshot ชื่อ ไม่มีรหัส) —
-    ถ้าเคยเปลี่ยนชื่อ ล็อตเก่าก่อนเปลี่ยนชื่อจะไม่โผล่ในนี้"""
+    ปรับ) กับประวัติใหม่ที่ผูกกับรหัส (หลังปรับ) รวมกันมาแสดงครบ. ส่วนล็อตส่งสาขา/
+    ยอดขายหน้าร้านยังจับคู่ด้วยชื่อเท่านั้น (items_json เก็บ snapshot ชื่อ ไม่มีรหัส)
+    — ถ้าเคยเปลี่ยนชื่อ รายการเก่าก่อนเปลี่ยนชื่อจะไม่โผล่ในนี้. ยอดขายที่ถูกยกเลิก
+    ทีหลัง (cancel_walkin_sale) ไม่โผล่เช่นกัน — แถวใน walkin_sales ถูกลบทิ้งไปแล้ว
+    ตอนยกเลิก จึงไม่มีอะไรให้สแกนเจอ"""
     target_ids = [t for t in {name, product_id} if t]
     actions_rows = (
         get_supabase().table("staff_actions").select("*")
@@ -165,6 +177,7 @@ def load_product_history(name: str, product_id: str = ""):
             "เวลา": _fmt_ts(r.get("created_at")),
             "_ts": _parse_ts(r.get("created_at")),
             "การกระทำ": PRODUCT_ACTION_LABELS.get(action, action),
+            "สาขา": r.get("branch") or "",
             "พนักงาน": r.get("staff_name") or "ไม่ระบุ",
             "รายละเอียด": r.get("detail") or "",
         })
@@ -199,7 +212,8 @@ def load_product_history(name: str, product_id: str = ""):
         entries.append({
             "เวลา": _fmt_ts(sr.get("timestamp")),
             "_ts": _parse_ts(sr.get("timestamp")),
-            "การกระทำ": f"ส่งล็อตไปสาขา {sr.get('to_branch', '')}",
+            "การกระทำ": "ส่งล็อตไปสาขา",
+            "สาขา": sr.get("to_branch") or "",
             "พนักงาน": ship_staff.get(sid, {}).get("create_shipment", "ไม่ระบุ"),
             "รายละเอียด": f"{qty_text} — ล็อต {sid} ({sr.get('status', '')})",
         })
@@ -207,9 +221,32 @@ def load_product_history(name: str, product_id: str = ""):
             entries.append({
                 "เวลา": _fmt_ts(sr.get("received_at")),
                 "_ts": _parse_ts(sr.get("received_at")),
-                "การกระทำ": f"สาขา {sr.get('to_branch', '')} รับของแล้ว",
+                "การกระทำ": "สาขารับของแล้ว",
+                "สาขา": sr.get("to_branch") or "",
                 "พนักงาน": ship_staff.get(sid, {}).get("receive_shipment", "ไม่ระบุ"),
                 "รายละเอียด": f"{qty_text} — ล็อต {sid}",
+            })
+
+    # ยอดขายหน้าร้าน — สแกน items_json เหมือนล็อตส่งสาขาข้างบน แทนการหา target_id
+    # ตรงๆ เพราะ staff_actions บันทึก target_id ของ action="walkin_sale" เป็น
+    # sale_id ไม่ใช่ชื่อ/รหัสสินค้า. walkin_sales มีคอลัมน์ staff_name ของตัวเอง
+    # อยู่แล้ว (ไม่เหมือน shipments) จึงไม่ต้อง query staff_actions ซ้อนอีกชั้น
+    sales = load_walkin_sales()
+    if not sales.empty:
+        for _, sale_row in sales.iterrows():
+            hit = next((it for it in parse_items(sale_row.get("items_json")) if it.get("name") == name), None)
+            if not hit:
+                continue
+            qty = hit.get("qty") or 0
+            unit = "กล่อง" if hit.get("type") == "box" else "ซอง"
+            price = hit.get("price") or 0
+            entries.append({
+                "เวลา": _fmt_ts(sale_row.get("timestamp")),
+                "_ts": _parse_ts(sale_row.get("timestamp")),
+                "การกระทำ": "ขายหน้าร้าน",
+                "สาขา": sale_row.get("branch") or "",
+                "พนักงาน": sale_row.get("staff_name") or "ไม่ระบุ",
+                "รายละเอียด": f"{qty} {unit} x ฿{price:,.0f} = ฿{qty * price:,.0f} — เลขที่ {sale_row.get('sale_id', '')}",
             })
 
     if not entries:
@@ -217,7 +254,7 @@ def load_product_history(name: str, product_id: str = ""):
 
     hist_df = pd.DataFrame(entries)
     hist_df = hist_df.sort_values("_ts", ascending=False, na_position="last")
-    return created_text, hist_df[["เวลา", "การกระทำ", "พนักงาน", "รายละเอียด"]]
+    return created_text, hist_df[["เวลา", "การกระทำ", "สาขา", "พนักงาน", "รายละเอียด"]]
 
 
 # st.success() called right before st.rerun() never reaches the screen — the
