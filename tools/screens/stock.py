@@ -26,7 +26,7 @@ ADMIN_CODE = "waka99"  # withdrawStock now also requires this to prove branch ow
 
 BRANCHES = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์"]
 ADJUST_REASONS = ["", "ซื้อเข้า", "แก้ไขยอดผิด", "อื่นๆ"]
-WITHDRAW_REASONS = ["", "ขายออนไลน์", "ของชำรุด", "ตัวอย่าง/โชว์", "ส่งให้สปอนเซอร์", "อื่นๆ"]
+WITHDRAW_REASONS = ["", "เบิกขายออนไลน์", "ส่งให้สปอนเซอร์", "จัดกิจกรรม", "ชำรุด", "อื่นๆ"]
 
 
 @st.cache_resource
@@ -235,13 +235,15 @@ def _withdraw_central_stock_dialog():
         wc1, wc2 = st.columns(2)
         wc_type = wc1.radio("หน่วย", ["box", "pack"], format_func=lambda t: "กล่อง" if t == "box" else "ซอง", horizontal=True)
         wc_qty = wc2.number_input("จำนวน", min_value=1, value=1, step=1)
-        wc_reason = st.selectbox("เหตุผล", WITHDRAW_REASONS, index=WITHDRAW_REASONS.index("ขายออนไลน์"))
+        wc_reason = st.selectbox("เหตุผล", WITHDRAW_REASONS, index=WITHDRAW_REASONS.index("เบิกขายออนไลน์"))
+        wc_reason_other = st.text_input("ระบุเหตุผล (กรณีเลือก \"อื่นๆ\")", placeholder="เช่น คืนของชำรุดให้ผู้ผลิต")
         wc_submitted = st.form_submit_button("บันทึก")
         if wc_submitted:
+            final_reason = wc_reason_other.strip() if wc_reason == "อื่นๆ" and wc_reason_other.strip() else wc_reason
             try:
                 gas_post({
                     "_action": "withdrawCentralStock", "name": wc_name,
-                    "type": wc_type, "qty": wc_qty, "reason": wc_reason,
+                    "type": wc_type, "qty": wc_qty, "reason": final_reason,
                 })
                 _flash("เบิกของแล้ว + แจ้งทีมงานแล้ว")
                 st.cache_data.clear()
