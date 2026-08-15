@@ -1763,9 +1763,10 @@ function handleApi(params) {
         saleCost += cost;
 
         var key = it.name + "|" + it.type;
-        if (!wprByProduct[key]) wprByProduct[key] = { name: it.name, type: it.type, qty: 0, cost: 0 };
+        if (!wprByProduct[key]) wprByProduct[key] = { name: it.name, type: it.type, qty: 0, cost: 0, revenue: 0 };
         wprByProduct[key].qty += qty;
         wprByProduct[key].cost += cost;
+        wprByProduct[key].revenue += rev;
       });
 
       wprTotalRevenue += saleRev;

@@ -445,7 +445,7 @@
               <input type="month" id="repMonth" onchange="loadBrReport()">
             </div>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
             <div class="card" style="text-align:center;padding:14px;margin-bottom:0">
               <div style="font-size:18px;font-weight:700" id="repKpiRevenue">-</div>
               <div style="font-size:11px;color:var(--text2);margin-top:2px">ยอดขาย</div>
@@ -453,10 +453,6 @@
             <div class="card" style="text-align:center;padding:14px;margin-bottom:0">
               <div style="font-size:18px;font-weight:700" id="repKpiCost">-</div>
               <div style="font-size:11px;color:var(--text2);margin-top:2px">ต้นทุน</div>
-            </div>
-            <div class="card" style="text-align:center;padding:14px;margin-bottom:0">
-              <div style="font-size:18px;font-weight:700" id="repKpiProfit">-</div>
-              <div style="font-size:11px;color:var(--text2);margin-top:2px">กำไร</div>
             </div>
           </div>
           <div class="card" id="repBranchCard" style="display:none">
@@ -1321,8 +1317,6 @@ async function loadBrReport() {
   // สาขาปัจจุบันทั้งที่จริงเป็นข้อมูลเก่าค้างเฉยๆ
   gid('repKpiRevenue').textContent='-';
   gid('repKpiCost').textContent='-';
-  gid('repKpiProfit').textContent='-';
-  gid('repKpiProfit').style.color='';
   try{
     const branchParam=isAll?'':('&branch='+encodeURIComponent(branch));
     const r=await fetch(G+'&action=api&do=walkin_product_report'+branchParam+'&month='+encodeURIComponent(month)+'&code='+encodeURIComponent(_authCode()));
@@ -1331,20 +1325,16 @@ async function loadBrReport() {
 
     gid('repKpiRevenue').textContent=fmtMoney(d.total.revenue);
     gid('repKpiCost').textContent=fmtMoney(d.total.cost);
-    const profitEl=gid('repKpiProfit');
-    profitEl.textContent=fmtMoney(d.total.profit);
-    profitEl.style.color=d.total.profit>=0?'var(--green)':'var(--red)';
 
     if(isAll){
       const branches=Object.entries(d.by_branch||{}).sort((a,b)=>b[1].revenue-a[1].revenue);
       if(!branches.length){
         gid('repBranchList').innerHTML='<div class="empty">ไม่มีข้อมูลเดือนนี้</div>';
       }else{
-        let bh='<table><tr><th>สาขา</th><th class="num">รายการขาย</th><th class="num">ยอดขาย</th><th class="num">กำไร</th></tr>';
+        let bh='<table><tr><th>สาขา</th><th class="num">รายการขาย</th><th class="num">ยอดขาย</th><th class="num">ต้นทุน</th></tr>';
         for(const [br,bd] of branches){
-          const profit=bd.revenue-bd.cost;
           bh+='<tr><td>'+esc(br)+'</td><td class="num">'+bd.orders+'</td><td class="num">'+fmtMoney(bd.revenue)+'</td>';
-          bh+='<td class="num" style="color:'+(profit>=0?'var(--green)':'var(--red)')+';font-weight:600">'+fmtMoney(profit)+'</td></tr>';
+          bh+='<td class="num">'+fmtMoney(bd.cost)+'</td></tr>';
         }
         gid('repBranchList').innerHTML=bh+'</table>';
       }
@@ -1354,24 +1344,23 @@ async function loadBrReport() {
     if(!dates.length){
       gid('repDateList').innerHTML='<div class="empty">ไม่มีข้อมูลเดือนนี้</div>';
     }else{
-      let dh='<table><tr><th>วันที่</th><th class="num">รายการขาย</th><th class="num">ยอดขาย</th><th class="num">กำไร</th></tr>';
+      let dh='<table><tr><th>วันที่</th><th class="num">รายการขาย</th><th class="num">ยอดขาย</th><th class="num">ต้นทุน</th></tr>';
       for(const [date,dd] of dates){
-        const profit=dd.revenue-dd.cost;
         dh+='<tr><td>'+esc(date)+'</td><td class="num">'+dd.orders+'</td><td class="num">'+fmtMoney(dd.revenue)+'</td>';
-        dh+='<td class="num" style="color:'+(profit>=0?'var(--green)':'var(--red)')+';font-weight:600">'+fmtMoney(profit)+'</td></tr>';
+        dh+='<td class="num">'+fmtMoney(dd.cost)+'</td></tr>';
       }
       gid('repDateList').innerHTML=dh+'</table>';
     }
 
-    const products=(d.by_product||[]).slice().sort((a,b)=>b.cost-a.cost);
+    const products=(d.by_product||[]).slice().sort((a,b)=>b.revenue-a.revenue);
     if(!products.length){
       gid('repProductList').innerHTML='<div class="empty">ไม่มีข้อมูลขายหน้าร้านเดือนนี้</div>';
     }else{
-      let ph='<table><tr><th>สินค้า</th><th class="num">จำนวน</th><th class="num">ต้นทุน</th></tr>';
+      let ph='<table><tr><th>สินค้า</th><th class="num">จำนวน</th><th class="num">ต้นทุน</th><th class="num">ยอดขาย</th></tr>';
       for(const p of products){
         const unit=p.type==='box'?'กล่อง':'ซอง';
         ph+='<tr><td>'+esc(p.name)+' <small style="color:var(--label)">('+unit+')</small></td>';
-        ph+='<td class="num">'+p.qty+'</td><td class="num">'+fmtMoney(p.cost)+'</td></tr>';
+        ph+='<td class="num">'+p.qty+'</td><td class="num">'+fmtMoney(p.cost)+'</td><td class="num">'+fmtMoney(p.revenue)+'</td></tr>';
       }
       gid('repProductList').innerHTML=ph+'</table>';
     }
