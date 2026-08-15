@@ -109,6 +109,18 @@ def load_walkin_sales() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+@st.cache_data(ttl=30)
+def load_orders_light() -> pd.DataFrame:
+    # เฉพาะคอลัมน์ที่ใช้จริงในหน้าประวัติสินค้า — ไม่ดึงสลิป/เบอร์/ที่อยู่ที่ไม่
+    # เกี่ยวข้อง ตารางนี้โตเร็วกว่า shipments/walkin_sales มาก
+    rows = (
+        get_supabase().table("orders")
+        .select("order_id,timestamp,items_json,fulfillment,slip_status,branch,real_name,display_name")
+        .order("timestamp", desc=True).execute().data
+    )
+    return pd.DataFrame(rows)
+
+
 def parse_items(items_json) -> list:
     if isinstance(items_json, list):
         return items_json
@@ -151,17 +163,28 @@ def load_product_history(name: str, product_id: str = ""):
     """คืน (created_text, history_df) สำหรับสินค้า — created_text มาจาก
     staff_actions ที่ action='add_product' (ถ้ามี), history_df รวมทั้งการเบิก/
     ปรับสต็อกคลังกลาง/สาขา/เปลี่ยนชื่อ (staff_actions), ล็อตส่งสาขา (shipments
-    ที่ items_json มีสินค้านี้อยู่), และยอดขายหน้าร้าน (walkin_sales ที่ items_json
-    มีสินค้านี้อยู่) เรียงจากล่าสุดไปเก่าสุด.
+    ที่ items_json มีสินค้านี้อยู่), ยอดขายหน้าร้าน (walkin_sales) และคำสั่งซื้อ
+    ออนไลน์ (orders) ที่ items_json มีสินค้านี้อยู่ เรียงจากล่าสุดไปเก่าสุด.
 
     ตั้งแต่ gas/Code.gs เวอร์ชันที่บันทึก target_id เป็น "รหัสสินค้า" (product_id,
     คงที่แม้เปลี่ยนชื่อ) แทนชื่อสินค้า (เปลี่ยนได้) — คิวรี่ทั้งสองแบบพร้อมกัน
     (target_id = product_id หรือ = name) เพื่อให้ประวัติเก่าที่ยังผูกกับชื่อ (ก่อน
     ปรับ) กับประวัติใหม่ที่ผูกกับรหัส (หลังปรับ) รวมกันมาแสดงครบ. ส่วนล็อตส่งสาขา/
-    ยอดขายหน้าร้านยังจับคู่ด้วยชื่อเท่านั้น (items_json เก็บ snapshot ชื่อ ไม่มีรหัส)
-    — ถ้าเคยเปลี่ยนชื่อ รายการเก่าก่อนเปลี่ยนชื่อจะไม่โผล่ในนี้. ยอดขายที่ถูกยกเลิก
-    ทีหลัง (cancel_walkin_sale) ไม่โผล่เช่นกัน — แถวใน walkin_sales ถูกลบทิ้งไปแล้ว
-    ตอนยกเลิก จึงไม่มีอะไรให้สแกนเจอ"""
+    ยอดขายหน้าร้าน/ออเดอร์ออนไลน์ยังจับคู่ด้วยชื่อเท่านั้น (items_json เก็บ snapshot
+    ชื่อ ไม่มีรหัส) — ถ้าเคยเปลี่ยนชื่อ รายการเก่าก่อนเปลี่ยนชื่อจะไม่โผล่ในนี้.
+
+    ออเดอร์ออนไลน์: ข้าม order ที่ fulfillment='ยกเลิก' ทั้งใบ (คืนสต็อกครบแล้ว
+    ตอนยกเลิก, gas/Code.gs's handleApi's action=cancel_order) และข้าม item ที่มี
+    cancelled_at (ยกเลิกบางรายการผ่าน handlePartialCancelItems, คืนสต็อกแล้ว
+    เหมือนกัน) — กันไม่ให้แสดงว่า "ขายแล้ว" ทั้งที่จริงคืนของกลับสต็อกไปแล้ว.
+
+    ยอดขายหน้าร้านที่ถูกยกเลิก (cancel_walkin_sale) ไม่โผล่ — แถวใน walkin_sales
+    ถูกลบทิ้งไปแล้วตอนยกเลิก ไม่มีอะไรให้สแกนเจอ ส่วน staff_actions ของ
+    cancel_walkin_sale เองก็ target_id เป็น sale_id (เหมือน action ขายเดิม) ไม่ใช่
+    ชื่อ/รหัสสินค้า จะดึงมาโยงกับสินค้าตัวใดตัวหนึ่งได้ก็ต้องพาร์สชื่อสินค้าออกจาก
+    ข้อความ detail แบบ heuristic (เสี่ยง false-positive ถ้าชื่อสินค้าซ้อนคำกัน) —
+    ตั้งใจไม่ทำแบบนั้น ถ้าต้องการจริงๆ ควรแก้ gas/Code.gs ให้บันทึก item แยกเป็น
+    structured data แทน (ต้อง deploy ใหม่)"""
     target_ids = [t for t in {name, product_id} if t]
     actions_rows = (
         get_supabase().table("staff_actions").select("*")
@@ -247,6 +270,33 @@ def load_product_history(name: str, product_id: str = ""):
                 "สาขา": sale_row.get("branch") or "",
                 "พนักงาน": sale_row.get("staff_name") or "ไม่ระบุ",
                 "รายละเอียด": f"{qty} {unit} x ฿{price:,.0f} = ฿{qty * price:,.0f} — เลขที่ {sale_row.get('sale_id', '')}",
+            })
+
+    # ออเดอร์ออนไลน์ — สแกน items_json เหมือนสองก้อนบน. ไม่มี staff ที่ "ทำ"
+    # การขายโดยตรง (ลูกค้าสั่งเอง) เลยแสดงชื่อลูกค้าไว้ในคอลัมน์พนักงานแทน — เป็น
+    # ข้อมูลที่มีประโยชน์กว่าคำว่า "ไม่ระบุ" เฉยๆ
+    orders = load_orders_light()
+    if not orders.empty:
+        for _, o in orders.iterrows():
+            if str(o.get("fulfillment") or "") == "ยกเลิก":
+                continue
+            hit = next(
+                (it for it in parse_items(o.get("items_json")) if it.get("name") == name and not it.get("cancelled_at")),
+                None,
+            )
+            if not hit:
+                continue
+            qty = hit.get("qty") or 0
+            unit = "กล่อง" if hit.get("type") == "box" else "ซอง"
+            price = hit.get("price") or 0
+            cust = o.get("real_name") or o.get("display_name") or "ไม่ระบุ"
+            entries.append({
+                "เวลา": _fmt_ts(o.get("timestamp")),
+                "_ts": _parse_ts(o.get("timestamp")),
+                "การกระทำ": "สั่งซื้อออนไลน์",
+                "สาขา": o.get("branch") or "",
+                "พนักงาน": f"ลูกค้า: {cust}",
+                "รายละเอียด": f"{qty} {unit} x ฿{price:,.0f} = ฿{qty * price:,.0f} — ออเดอร์ {o.get('order_id', '')} ({o.get('slip_status', '')})",
             })
 
     if not entries:
