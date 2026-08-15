@@ -92,16 +92,21 @@ def load_central_withdrawals_df() -> pd.DataFrame:
 
 
 # detail is a formatted string written by handleWithdrawCentralStock, e.g.
-# "5 กล่อง — ส่งให้สปอนเซอร์" (or just "5 กล่อง" if no reason was given) —
-# there's no structured qty/unit/reason column on staff_actions, so parse it.
-_WITHDRAW_DETAIL_RE = re.compile(r"^(\d+)\s*(กล่อง|ซอง)(?:\s*—\s*(.*))?$")
+# "5 กล่อง 3 ซอง — ส่งให้สปอนเซอร์" (either unit can be absent, and the reason
+# is optional) — there's no structured qty_box/qty_pack/reason column on
+# staff_actions, so parse it. Both unit groups are individually optional so
+# this also still matches the older single-unit format ("5 กล่อง — เหตุผล")
+# from before the dialog supported box+pack in one submission.
+_WITHDRAW_DETAIL_RE = re.compile(r"^(?:(\d+)\s*กล่อง)?\s*(?:(\d+)\s*ซอง)?(?:\s*—\s*(.*))?$")
 
 
 def _parse_withdraw_detail(detail: str):
     m = _WITHDRAW_DETAIL_RE.match(str(detail or "").strip())
     if not m:
-        return 0, "", ""
-    return int(m.group(1)), m.group(2), (m.group(3) or "").strip()
+        return 0, 0, ""
+    qty_box = int(m.group(1)) if m.group(1) else 0
+    qty_pack = int(m.group(2)) if m.group(2) else 0
+    return qty_box, qty_pack, (m.group(3) or "").strip()
 
 
 @st.cache_data(ttl=60)
@@ -349,6 +354,47 @@ with tab_reimburse:
             key="dl_reimburse",
         )
 
+        st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+        st.markdown("**ยอดขายหน้าร้านแยกตามช่องทางชำระเงิน**")
+        if walkin_range.empty:
+            st.caption("ไม่มีข้อมูลขายหน้าร้านในช่วงที่เลือก")
+        else:
+            pay_range = walkin_range.copy()
+            pay_range["ช่องทาง"] = pay_range.apply(
+                lambda r: "💵 เงินสด" if r.get("payment_method") == "cash"
+                else f"📱 โอน{(' ' + str(r['bank'])) if r.get('bank') else ''}",
+                axis=1,
+            )
+            pay_range["พนักงาน"] = pay_range["staff_name"].fillna("ไม่ระบุ").replace("", "ไม่ระบุ")
+
+            pay_summary = (
+                pay_range.groupby("ช่องทาง")
+                .agg(ยอดขาย=("total", "sum"), รายการ=("sale_id", "count"))
+                .reset_index().sort_values("ยอดขาย", ascending=False)
+            )
+            pay_summary["รายการ"] = pay_summary["รายการ"].astype(int)
+
+            pc1, pc2 = st.columns([1, 1.4])
+            with pc1:
+                st.dataframe(pay_summary, use_container_width=True, hide_index=True)
+            with pc2:
+                st.bar_chart(pay_summary.set_index("ช่องทาง")["ยอดขาย"])
+
+            st.caption("แยกตามพนักงานผู้ขาย + ช่องทาง")
+            staff_pay_summary = (
+                pay_range.groupby(["พนักงาน", "ช่องทาง"])
+                .agg(ยอดขาย=("total", "sum"), รายการ=("sale_id", "count"))
+                .reset_index().sort_values("ยอดขาย", ascending=False)
+            )
+            staff_pay_summary["รายการ"] = staff_pay_summary["รายการ"].astype(int)
+            st.dataframe(staff_pay_summary, use_container_width=True, hide_index=True)
+
+            st.download_button(
+                "⬇️ ดาวน์โหลดยอดขายหน้าร้านแยกช่องทาง+พนักงาน (CSV)", df_to_csv_bytes(staff_pay_summary),
+                file_name=f"waka_walkin_by_payment_staff_{date_from}_{date_to}.csv", mime="text/csv",
+                key="dl_walkin_payment",
+            )
+
 with tab_withdraw:
     st.caption(
         "รายการเบิกของออกจากคลังกลาง (ปุ่ม \"เบิกของจากคลังกลาง\" ในหน้าสต็อก — ไม่รวมเบิกที่สาขา) "
@@ -363,12 +409,13 @@ with tab_withdraw:
     else:
         parsed = wd_df["detail"].apply(_parse_withdraw_detail)
         wd_df = wd_df.assign(
-            qty=[p[0] for p in parsed],
-            unit=[p[1] for p in parsed],
+            qty_box=[p[0] for p in parsed],
+            qty_pack=[p[1] for p in parsed],
             reason=[p[2] or "(ไม่ระบุ)" for p in parsed],
         )
         wd_df = wd_df.assign(cost=wd_df.apply(
-            lambda r: r["qty"] * (cost_map.get(r["target_id"], {}).get("cost_box" if r["unit"] == "กล่อง" else "cost_p", 0)),
+            lambda r: r["qty_box"] * cost_map.get(r["target_id"], {}).get("cost_box", 0)
+                    + r["qty_pack"] * cost_map.get(r["target_id"], {}).get("cost_p", 0),
             axis=1,
         ))
 
@@ -385,8 +432,8 @@ with tab_withdraw:
         st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
         wd_show = wd_df.rename(columns={
             "date": "วันที่", "staff_name": "พนักงาน", "target_id": "สินค้า",
-            "qty": "จำนวน", "unit": "หน่วย", "reason": "เหตุผล", "cost": "ต้นทุน",
-        })[["วันที่", "พนักงาน", "สินค้า", "จำนวน", "หน่วย", "เหตุผล", "ต้นทุน"]].sort_values("วันที่", ascending=False)
+            "qty_box": "กล่อง", "qty_pack": "ซอง", "reason": "เหตุผล", "cost": "ต้นทุน",
+        })[["วันที่", "พนักงาน", "สินค้า", "กล่อง", "ซอง", "เหตุผล", "ต้นทุน"]].sort_values("วันที่", ascending=False)
         st.dataframe(wd_show, use_container_width=True, hide_index=True)
         st.download_button(
             "⬇️ ดาวน์โหลดรายการเบิกคลังกลาง (CSV)", df_to_csv_bytes(wd_show),

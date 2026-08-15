@@ -230,26 +230,41 @@ def _adjust_central_stock_dialog():
 @st.dialog("➖ เบิกของจากคลังกลาง")
 def _withdraw_central_stock_dialog():
     names = catalog["name"].tolist() if not catalog.empty else []
+    # สินค้าอยู่นอก form โดยตั้งใจ (เหมือน "คืนสต็อกจากสาขากลับคลังกลาง" ด้านล่าง) —
+    # widget ใน st.form ไม่ trigger rerun จนกว่าจะกด submit ปุ่มเดียว ถ้าเอาตัวเลือก
+    # สินค้าไว้ในฟอร์มเดียวกับคำบอกยอดคงเหลือ ตอนเปลี่ยนสินค้ายอดคงเหลือจะยังไม่อัปเดต
+    # ตามจนกว่าจะกด submit ไปแล้วรอบนึง
+    wc_name = st.selectbox("สินค้า", names, key="wc_name_sel")
+
+    cur_row = pd.DataFrame()
+    if not catalog.empty:
+        cur_row = catalog[catalog["name"] == wc_name]
+    max_box = int(pd.to_numeric(cur_row["qty_box"], errors="coerce").fillna(0).iloc[0]) if not cur_row.empty else 0
+    max_pack = int(pd.to_numeric(cur_row["qty_pack"], errors="coerce").fillna(0).iloc[0]) if not cur_row.empty else 0
+    st.caption(f"คงเหลือคลังกลาง: กล่อง {max_box} · ซอง {max_pack}")
+
     with st.form("withdraw_central_stock_form"):
-        wc_name = st.selectbox("สินค้า", names)
         wc1, wc2 = st.columns(2)
-        wc_type = wc1.radio("หน่วย", ["box", "pack"], format_func=lambda t: "กล่อง" if t == "box" else "ซอง", horizontal=True)
-        wc_qty = wc2.number_input("จำนวน", min_value=1, value=1, step=1)
+        wc_qty_box = wc1.number_input("เบิกกล่อง", min_value=0, max_value=max(max_box, 0), value=0, step=1)
+        wc_qty_pack = wc2.number_input("เบิกซอง", min_value=0, max_value=max(max_pack, 0), value=0, step=1)
         wc_reason = st.selectbox("เหตุผล", WITHDRAW_REASONS, index=WITHDRAW_REASONS.index("เบิกขายออนไลน์"))
         wc_reason_other = st.text_input("ระบุเหตุผล (กรณีเลือก \"อื่นๆ\")", placeholder="เช่น คืนของชำรุดให้ผู้ผลิต")
         wc_submitted = st.form_submit_button("บันทึก")
         if wc_submitted:
-            final_reason = wc_reason_other.strip() if wc_reason == "อื่นๆ" and wc_reason_other.strip() else wc_reason
-            try:
-                gas_post({
-                    "_action": "withdrawCentralStock", "name": wc_name,
-                    "type": wc_type, "qty": wc_qty, "reason": final_reason,
-                })
-                _flash("เบิกของแล้ว + แจ้งทีมงานแล้ว")
-                st.cache_data.clear()
-                st.rerun()
-            except Exception as e:
-                st.error(f"บันทึกไม่ได้: {e}")
+            if wc_qty_box <= 0 and wc_qty_pack <= 0:
+                st.warning("ใส่จำนวนที่จะเบิกอย่างน้อย 1 ช่องก่อน")
+            else:
+                final_reason = wc_reason_other.strip() if wc_reason == "อื่นๆ" and wc_reason_other.strip() else wc_reason
+                try:
+                    gas_post({
+                        "_action": "withdrawCentralStock", "name": wc_name,
+                        "qty_box": wc_qty_box, "qty_pack": wc_qty_pack, "reason": final_reason,
+                    })
+                    _flash("เบิกของแล้ว + แจ้งทีมงานแล้ว")
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"บันทึกไม่ได้: {e}")
 
 
 @st.dialog("🚚 สร้างล็อตส่งสาขา", width="large")
