@@ -2472,14 +2472,25 @@ function handleHandoverOrder(data) {
     var items = Array.isArray(order.items_json) ? order.items_json : [];
 
     // หา item ที่จะส่งมอบรอบนี้:
-    // ถ้ามี ready_at (partial flow) → เอาเฉพาะที่ ready_at set แต่ยังไม่ handed_at
-    // ถ้าไม่มี ready_at เลย (old order) → เอา item ทั้งหมดที่ยังไม่ handed_at
-    var hasReadyAt = items.some(function(it) { return !!it.ready_at; });
-    var itemsToHandover = items.filter(function(it) {
-      if (it.cancelled_at) return false;
-      if (it.handed_at) return false;
-      return hasReadyAt ? !!it.ready_at : true;
-    });
+    // ถ้า data.indices ส่งมา (staff เลือกเองจาก dialog) → ใช้รายการนั้นตรงๆ
+    // (กรอง cancelled/handed ออกอยู่ดี กันเลือกรายการที่ทำไปแล้วซ้ำ)
+    // ไม่งั้น ใช้ auto-logic เดิม: มี ready_at (partial flow) → เอาเฉพาะที่ ready_at
+    // set แต่ยังไม่ handed_at, ไม่มี ready_at เลย (old order) → เอาทั้งหมดที่ยังไม่ handed_at
+    var itemsToHandover;
+    if (Array.isArray(data.indices) && data.indices.length > 0) {
+      var idxSet = {};
+      data.indices.forEach(function(i) { idxSet[i] = true; });
+      itemsToHandover = items.filter(function(it, idx) {
+        return idxSet[idx] && !it.cancelled_at && !it.handed_at;
+      });
+    } else {
+      var hasReadyAt = items.some(function(it) { return !!it.ready_at; });
+      itemsToHandover = items.filter(function(it) {
+        if (it.cancelled_at) return false;
+        if (it.handed_at) return false;
+        return hasReadyAt ? !!it.ready_at : true;
+      });
+    }
 
     if (itemsToHandover.length === 0) {
       lock.releaseLock();

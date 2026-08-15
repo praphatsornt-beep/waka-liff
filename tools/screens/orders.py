@@ -34,7 +34,7 @@ BOX_SIZES = {
 
 BRANCHES     = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์", "จัดส่ง"]
 ALL_STATUS   = ["รอตรวจ", "รอตรวจเพิ่ม", "ยืนยัน", "ยอดไม่ตรง", "สลิปซ้ำ", "บัญชีไม่ตรง", "สงสัยปลอม", "ยกเลิก", "ไม่มีสลิป"]
-ALL_FULFILL  = ["", "กำลังจัดส่งไปสาขา", "พร้อมรับ", "รับบางส่วนแล้ว", "สาขายืนยัน", "จัดส่งแล้ว", "รับแล้ว"]
+ALL_FULFILL  = ["", "กำลังจัดส่งไปสาขา", "พร้อมรับ", "รับบางส่วนแล้ว", "สาขายืนยัน", "จัดส่งบางส่วนแล้ว", "จัดส่งแล้ว", "รับแล้ว"]
 
 TH_TZ = timezone(timedelta(hours=7))
 
@@ -771,16 +771,29 @@ with tab_cards:
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"ทำรายการไม่ได้: {e}")
-                                elif handover_idx and not is_del and st.button(
-                                    "🤝 ส่งมอบสินค้า", key=f"handover_{order_id}", use_container_width=True,
-                                ):
-                                    try:
-                                        gas_post({"_action": "handoverOrder", "order_id": order_id})
-                                        st.success("ส่งมอบแล้ว + แจ้ง LINE ลูกค้าแล้ว")
-                                        st.cache_data.clear()
-                                        st.rerun()
-                                    except Exception as e:
-                                        st.error(f"ทำรายการไม่ได้: {e}")
+                                elif handover_idx and not is_del:
+                                    ho_nonce = st.session_state.get(f"ho_nonce_{order_id}", 0)
+                                    with st.popover("🤝 ส่งมอบสินค้า", use_container_width=True, key=f"ho_popover_{order_id}_{ho_nonce}"):
+                                        st.caption("เลือกสินค้าที่จะส่งมอบรอบนี้")
+                                        sel_handover = [
+                                            idx for idx in handover_idx
+                                            if st.checkbox(
+                                                f"{items[idx].get('name','')} x{items[idx].get('qty',1)}",
+                                                value=True, key=f"handover_chk_{order_id}_{idx}",
+                                            )
+                                        ]
+                                        if st.button("🤝 ยืนยันส่งมอบ", key=f"handover_submit_{order_id}"):
+                                            if not sel_handover:
+                                                st.warning("เลือกสินค้าอย่างน้อย 1 รายการ")
+                                            else:
+                                                try:
+                                                    gas_post({"_action": "handoverOrder", "order_id": order_id, "indices": sel_handover})
+                                                    st.success("ส่งมอบแล้ว + แจ้ง LINE ลูกค้าแล้ว")
+                                                    st.session_state[f"ho_nonce_{order_id}"] = ho_nonce + 1
+                                                    st.cache_data.clear()
+                                                    st.rerun()
+                                                except Exception as e:
+                                                    st.error(f"ทำรายการไม่ได้: {e}")
                             with fc2:
                                 if pending_idx:
                                     with st.popover("📣 แจ้งพร้อมรับ", use_container_width=True):
@@ -840,6 +853,15 @@ with tab_cards:
                         # Streamlit มองเป็น widget ใหม่ ซึ่ง default ปิดอยู่เสมอ
                         r8_nonce = st.session_state.get(f"r8_nonce_{order_id}", 0)
                         with st.popover("🚚 จัดส่ง Rocket8", use_container_width=True, key=f"r8_popover_{order_id}_{r8_nonce}"):
+                            st.caption("เลือกสินค้าที่จะจัดส่งรอบนี้ (ค่าเริ่มต้นเลือกทั้งหมด — ยกเลิกติ๊กได้ถ้าจะส่งบางส่วนก่อน แล้วสร้างเลขพัสดุรอบถัดไปทีหลังสำหรับที่เหลือ)")
+                            sel_ship = [
+                                idx for idx in cancelable_idx
+                                if st.checkbox(
+                                    f"{items[idx].get('name','')} x{items[idx].get('qty',1)}",
+                                    value=True, key=f"r8_ship_chk_{order_id}_{idx}",
+                                )
+                            ]
+                            ship_items = [items[idx] for idx in sel_ship]
                             st.caption("ยืนยันที่อยู่ปลายทางก่อนสร้างเลขพัสดุ — Rocket8 ต้องการ ตำบล/อำเภอ/จังหวัด/รหัสไปรษณีย์ แยกฟิลด์ ไม่ใช่ที่อยู่แบบข้อความเดียว")
                             st.text_input(
                                 "ที่อยู่เดิม (อ้างอิง)", value=str(row.get("address", "")),
@@ -884,7 +906,7 @@ with tab_cards:
                                 "เบอร์ผู้รับ", value=str(row.get("phone", "")), key=f"r8_phone_{order_id}",
                             )
                             box_qty = sum(
-                                int(i.get("qty", 1)) for i in items if i.get("type") == "box"
+                                int(i.get("qty", 1)) for i in ship_items if i.get("type") == "box"
                             ) or 1
                             r8_weight_kg = st.number_input(
                                 "น้ำหนักรวม (kg)", min_value=0.1, value=0.5 * box_qty, step=0.1,
@@ -913,13 +935,15 @@ with tab_cards:
                             )
 
                             if st.button("🚚 ยืนยันสร้างเลขพัสดุ", key=f"r8_submit_{order_id}"):
-                                if not (r8_line and r8_prov and r8_amp and r8_dist and r8_zip and r8_name and r8_phone):
+                                if not sel_ship:
+                                    st.warning("เลือกสินค้าที่จะจัดส่งอย่างน้อย 1 รายการ")
+                                elif not (r8_line and r8_prov and r8_amp and r8_dist and r8_zip and r8_name and r8_phone):
                                     st.warning("กรอกที่อยู่/ชื่อ/เบอร์ผู้รับให้ครบก่อน")
                                 else:
                                     try:
                                         r8_items = [
                                             {"name": i.get("name", ""), "qty": int(i.get("qty", 1)), "price": float(i.get("price", 0))}
-                                            for i in items
+                                            for i in ship_items
                                         ]
                                         result = rocket8_client.create_shipment_order(
                                             to_name=r8_name, to_phone=r8_phone, to_address=r8_line,
@@ -933,23 +957,51 @@ with tab_cards:
                                         partner_name = (result.get("partner") or {}).get("partner_name") or r8_partner
                                         new_note = f"{row.get('notes', '')}\nRocket8 AWB: {awb} ({partner_name})".strip()
                                         now_str = datetime.now(TH_TZ).strftime("%Y-%m-%d %H:%M")
-                                        get_supabase().table("orders").update({
+
+                                        updated_items = [dict(it) for it in items]
+                                        for idx in sel_ship:
+                                            updated_items[idx]["handed_at"] = now_str
+                                        all_done = all(it.get("handed_at") or it.get("cancelled_at") for it in updated_items)
+                                        new_ff = "จัดส่งแล้ว" if all_done else "จัดส่งบางส่วนแล้ว"
+
+                                        update_payload = {
                                             "notes": new_note,
-                                            "fulfillment": "จัดส่งแล้ว",
-                                            "staff_confirmed_at": now_str,
-                                            "customer_confirmed_at": now_str,
-                                        }).eq("order_id", order_id).execute()
+                                            "items_json": updated_items,
+                                            "fulfillment": new_ff,
+                                        }
+                                        if all_done:
+                                            update_payload["staff_confirmed_at"] = now_str
+                                            update_payload["customer_confirmed_at"] = now_str
+                                        get_supabase().table("orders").update(update_payload).eq("order_id", order_id).execute()
 
                                         track_url = rocket8_client.tracking_url(partner_code, awb)
                                         track_block = f"ติดตามพัสดุ:\n{track_url}" if track_url else "ตรวจสอบสถานะพัสดุได้จากขนส่งโดยตรงด้วยเลขพัสดุด้านบนครับ"
-                                        line_msg = (
-                                            "📦 คำสั่งซื้อของคุณจัดส่งแล้ว!\n\n"
-                                            f"ออเดอร์: #{order_id}\n\n"
-                                            f"ขนส่ง: {partner_name}\n"
-                                            f"เลขพัสดุ: {awb}\n\n"
-                                            f"{track_block}\n"
-                                            "ขอบคุณที่อุดหนุน WAKA SPACE ครับ 🙏"
-                                        )
+                                        if all_done:
+                                            line_msg = (
+                                                "📦 คำสั่งซื้อของคุณจัดส่งแล้ว!\n\n"
+                                                f"ออเดอร์: #{order_id}\n\n"
+                                                f"ขนส่ง: {partner_name}\n"
+                                                f"เลขพัสดุ: {awb}\n\n"
+                                                f"{track_block}\n"
+                                                "ขอบคุณที่อุดหนุน WAKA SPACE ครับ 🙏"
+                                            )
+                                        else:
+                                            shipped_line = "\n".join(f"- {i.get('name','')} x{i.get('qty',1)}" for i in ship_items)
+                                            pending_items = [
+                                                it for i2, it in enumerate(updated_items)
+                                                if i2 not in sel_ship and not it.get("handed_at") and not it.get("cancelled_at")
+                                            ]
+                                            pending_line = "\n".join(f"- {it.get('name','')} x{it.get('qty',1)}" for it in pending_items)
+                                            line_msg = (
+                                                "📦 คำสั่งซื้อของคุณจัดส่งบางส่วนแล้ว!\n\n"
+                                                f"ออเดอร์: #{order_id}\n\n"
+                                                f"ขนส่ง: {partner_name}\n"
+                                                f"เลขพัสดุ: {awb}\n\n"
+                                                f"✅ ส่งแล้ว:\n{shipped_line}\n\n"
+                                                f"⏳ รอจัดส่งรอบถัดไป:\n{pending_line}\n\n"
+                                                f"{track_block}\n"
+                                                "ขอบคุณที่อุดหนุน WAKA SPACE ครับ 🙏"
+                                            )
                                         try:
                                             gas_post({"_action": "notifyCustomer", "order_id": order_id, "custom_message": line_msg})
                                             _flash(f"ดำเนินการแล้ว — สร้างเลขพัสดุ {awb} และแจ้งลูกค้าทาง LINE แล้ว")
