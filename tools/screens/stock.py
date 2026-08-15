@@ -25,6 +25,7 @@ ADMIN_CODE = "waka99"  # withdrawStock now also requires this to prove branch ow
                         # liff/app.html's admin bypass — Streamlit is an admin-only tool
 
 BRANCHES = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์"]
+WITHDRAW_REASONS = ["", "ขายออนไลน์", "ของชำรุด", "ตัวอย่าง/โชว์", "ส่งให้สปอนเซอร์", "แก้ไขยอดผิด", "อื่นๆ"]
 
 
 @st.cache_resource
@@ -207,10 +208,7 @@ def _adjust_central_stock_dialog():
         c1, c2 = st.columns(2)
         add_box = c1.number_input("กล่อง (+/-)", value=0, step=1)
         add_pack = c2.number_input("ซอง (+/-)", value=0, step=1)
-        reason = st.selectbox(
-            "เหตุผล (กรณีเบิกออก)",
-            ["", "ขายออนไลน์", "ของชำรุด", "ตัวอย่าง/โชว์", "แก้ไขยอดผิด", "อื่นๆ"],
-        )
+        reason = st.selectbox("เหตุผล (กรณีเบิกออก)", WITHDRAW_REASONS)
         submitted = st.form_submit_button("บันทึก")
         if submitted:
             if add_box == 0 and add_pack == 0:
@@ -236,7 +234,7 @@ def _withdraw_central_stock_dialog():
         wc1, wc2 = st.columns(2)
         wc_type = wc1.radio("หน่วย", ["box", "pack"], format_func=lambda t: "กล่อง" if t == "box" else "ซอง", horizontal=True)
         wc_qty = wc2.number_input("จำนวน", min_value=1, value=1, step=1)
-        wc_reason = st.text_input("เหตุผล", value="ขายออนไลน์", placeholder="เช่น ขายออนไลน์, ของชำรุด")
+        wc_reason = st.selectbox("เหตุผล", WITHDRAW_REASONS, index=WITHDRAW_REASONS.index("ขายออนไลน์"))
         wc_submitted = st.form_submit_button("บันทึก")
         if wc_submitted:
             try:
