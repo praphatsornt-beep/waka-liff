@@ -505,6 +505,10 @@ function doPost(e) {
       return handleWithdrawStock(data);
     }
 
+    if (data._action === "withdrawCentralStock") {
+      return handleWithdrawCentralStock(data);
+    }
+
     if (data._action === "returnStock") {
       return handleReturnStock(data);
     }
@@ -3133,6 +3137,54 @@ function handleWithdrawStock(data) {
         (reason ? "\nเหตุผล: " + reason : ""));
     }
     _logStaffAction_(staffName, branch, "withdraw_stock", name, qty + (type === "box" ? " กล่อง" : " ซอง") + (reason ? " — " + reason : ""));
+
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+  } catch (err) {
+    try { lock.releaseLock(); } catch(_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+// ── เบิกสินค้าจากคลังกลาง (เช่น เอาไปขายออนไลน์เอง นอกช่องทางร้าน) ───────────
+// ต่างจาก handleWithdrawStock ตรงที่หักจาก catalog.qty_box/pack (สต็อกกลาง)
+// ไม่ใช่ stock_branch — ไม่มี branch ให้ระบุ/ตรวจสิทธิ์ เหมือน handleAddStock
+// data: { name, type, qty, reason, staff_name }
+function handleWithdrawCentralStock(data) {
+  var name   = String(data.name   || "").trim();
+  var type   = String(data.type   || "box").trim();
+  var qty    = Number(data.qty)   || 0;
+  var reason = String(data.reason || "").trim();
+  var staffName = String(data.staff_name || "").trim();
+
+  if (!name || qty <= 0) {
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ข้อมูลไม่ครบ (name, qty)" })));
+  }
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var row = getSupabaseRow_("catalog", "name", name);
+    if (!row) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบสินค้า: " + name })));
+    }
+    var wcField = type === "box" ? "qty_box" : "qty_pack";
+    var wcHave = Number(row[wcField]) || 0;
+    if (qty > wcHave) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: name + " สต็อกคลังกลางไม่พอ (เหลือ " + wcHave + ")" })));
+    }
+    row[wcField] = wcHave - qty;
+    CacheService.getScriptCache().remove("catalog_config");
+    writeSupabaseRow_("catalog", row, SUPABASE_CATALOG_HEADER, "name", lock);
+
+    var groupStaffWithdrawCentral = _getConfigValue(null, "group_staff");
+    if (groupStaffWithdrawCentral && staffName) {
+      var wcUnitLabel = type === "box" ? "กล่อง" : "ซอง";
+      _linePush(groupStaffWithdrawCentral, "📤 " + staffName + " เบิก " + name + " x" + qty + " " + wcUnitLabel + " จากคลังกลาง" +
+        (reason ? "\nเหตุผล: " + reason : ""));
+    }
+    _logStaffAction_(staffName, null, "withdraw_central_stock", name, qty + (type === "box" ? " กล่อง" : " ซอง") + (reason ? " — " + reason : ""));
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {

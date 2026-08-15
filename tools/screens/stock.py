@@ -228,6 +228,29 @@ def _adjust_central_stock_dialog():
                     st.error(f"บันทึกไม่ได้: {e}")
 
 
+@st.dialog("➖ เบิกของจากคลังกลาง")
+def _withdraw_central_stock_dialog():
+    names = catalog["name"].tolist() if not catalog.empty else []
+    with st.form("withdraw_central_stock_form"):
+        wc_name = st.selectbox("สินค้า", names)
+        wc1, wc2 = st.columns(2)
+        wc_type = wc1.radio("หน่วย", ["box", "pack"], format_func=lambda t: "กล่อง" if t == "box" else "ซอง", horizontal=True)
+        wc_qty = wc2.number_input("จำนวน", min_value=1, value=1, step=1)
+        wc_reason = st.text_input("เหตุผล", value="ขายออนไลน์", placeholder="เช่น ขายออนไลน์, ของชำรุด")
+        wc_submitted = st.form_submit_button("บันทึก")
+        if wc_submitted:
+            try:
+                gas_post({
+                    "_action": "withdrawCentralStock", "name": wc_name,
+                    "type": wc_type, "qty": wc_qty, "reason": wc_reason,
+                })
+                _flash("เบิกของแล้ว + แจ้งทีมงานแล้ว")
+                st.cache_data.clear()
+                st.rerun()
+            except Exception as e:
+                st.error(f"บันทึกไม่ได้: {e}")
+
+
 @st.dialog("🚚 สร้างล็อตส่งสาขา", width="large")
 def _create_shipment_dialog():
     ship_branch = st.selectbox("สาขาปลายทาง", BRANCHES, key="ship_branch_sel")
@@ -338,10 +361,14 @@ def _create_shipment_dialog():
 
 
 with tab_central:
-    ac1, ac3 = st.columns(2)
+    ac1, ac2, ac3 = st.columns(3)
     with ac1:
         if st.button("➕ เพิ่ม/ลด สต็อกคลังกลาง", use_container_width=True):
             _adjust_central_stock_dialog()
+
+    with ac2:
+        if st.button("➖ เบิกของจากคลังกลาง", use_container_width=True):
+            _withdraw_central_stock_dialog()
 
     with ac3:
         if st.button("🚚 สร้างล็อตส่งสาขา", use_container_width=True):
