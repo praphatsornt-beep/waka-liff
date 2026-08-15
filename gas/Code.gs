@@ -3100,8 +3100,9 @@ function handleDeleteProduct(data) {
   lock.waitLock(10000);
   try {
     var name = String(data.name || "").trim();
-    var row = getSupabaseRow_("catalog", "name", name);
+    var row = _resolveProductRow_(name, data.id);
     if (!row) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบสินค้า: " + name }))); }
+    name = row.name; // ชื่อปัจจุบันจริง เผื่อ dialog ค้างไว้ข้ามช่วง rename
 
     var centralQty = (Number(row.qty_box) || 0) + (Number(row.qty_pack) || 0);
     if (centralQty > 0) {
@@ -3123,7 +3124,7 @@ function handleDeleteProduct(data) {
     if (branchRows.length) deleteSupabase_("stock_branch", "name=eq." + encodeURIComponent(name));
 
     CacheService.getScriptCache().remove("catalog_config");
-    _logStaffAction_(String(data.staff_name || "").trim(), null, "delete_product", name, null);
+    _logStaffAction_(String(data.staff_name || "").trim(), null, "delete_product", row.id || name, "ชื่อ: " + name);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch (_) {}

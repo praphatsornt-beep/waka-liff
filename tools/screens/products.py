@@ -470,7 +470,7 @@ with tab_edit:
             confirm_del = st.checkbox(f'ยืนยันลบ "{edit_sel}" ถาวร', key=f"confirm_del_product_{edit_sel}")
             if st.button("🗑️ ลบสินค้านี้ถาวร", key=f"del_product_btn_{edit_sel}", disabled=not confirm_del):
                 try:
-                    gas_post({"_action": "deleteProduct", "name": edit_sel})
+                    gas_post({"_action": "deleteProduct", "name": edit_sel, "id": edit_row.get("id") or None})
                     st.session_state.pop(f"edit_product_image_url_{edit_sel}", None)
                     _flash(f"ลบ \"{edit_sel}\" แล้ว")
                     st.cache_data.clear()
