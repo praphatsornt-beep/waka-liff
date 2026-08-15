@@ -25,7 +25,8 @@ ADMIN_CODE = "waka99"  # withdrawStock now also requires this to prove branch ow
                         # liff/app.html's admin bypass — Streamlit is an admin-only tool
 
 BRANCHES = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์"]
-WITHDRAW_REASONS = ["", "ขายออนไลน์", "ของชำรุด", "ตัวอย่าง/โชว์", "ส่งให้สปอนเซอร์", "แก้ไขยอดผิด", "อื่นๆ"]
+ADJUST_REASONS = ["", "ซื้อเข้า", "แก้ไขยอดผิด", "อื่นๆ"]
+WITHDRAW_REASONS = ["", "ขายออนไลน์", "ของชำรุด", "ตัวอย่าง/โชว์", "ส่งให้สปอนเซอร์", "อื่นๆ"]
 
 
 @st.cache_resource
@@ -204,11 +205,11 @@ def _adjust_central_stock_dialog():
     names = catalog["name"].tolist() if not catalog.empty else []
     with st.form("add_stock_form"):
         sel_name = st.selectbox("สินค้า", names)
-        st.caption("ใส่ค่าติดลบเพื่อลดสต็อก เช่น กดเพิ่มสต็อกผิดจำนวน หรือเบิกไปขายออนไลน์")
+        st.caption("สำหรับซื้อสินค้าเข้าคลัง หรือแก้ไขยอดนับที่ผิดพลาดเท่านั้น — ถ้าจะเบิกออกไปขาย/แจก/ทำตัวอย่าง ใช้ปุ่ม \"เบิกของจากคลังกลาง\" แทน")
         c1, c2 = st.columns(2)
         add_box = c1.number_input("กล่อง (+/-)", value=0, step=1)
         add_pack = c2.number_input("ซอง (+/-)", value=0, step=1)
-        reason = st.selectbox("เหตุผล (กรณีเบิกออก)", WITHDRAW_REASONS)
+        reason = st.selectbox("เหตุผล", ADJUST_REASONS)
         submitted = st.form_submit_button("บันทึก")
         if submitted:
             if add_box == 0 and add_pack == 0:

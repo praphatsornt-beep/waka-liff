@@ -3179,9 +3179,9 @@ function handleWithdrawCentralStock(data) {
     writeSupabaseRow_("catalog", row, SUPABASE_CATALOG_HEADER, "name", lock);
 
     var groupStaffWithdrawCentral = _getConfigValue(null, "group_staff");
-    if (groupStaffWithdrawCentral && staffName) {
+    if (groupStaffWithdrawCentral) {
       var wcUnitLabel = type === "box" ? "กล่อง" : "ซอง";
-      _linePush(groupStaffWithdrawCentral, "📤 " + staffName + " เบิก " + name + " x" + qty + " " + wcUnitLabel + " จากคลังกลาง" +
+      _linePush(groupStaffWithdrawCentral, "📤 " + (staffName || "ไม่ระบุชื่อ") + " เบิก " + name + " x" + qty + " " + wcUnitLabel + " จากคลังกลาง" +
         (reason ? "\nเหตุผล: " + reason : ""));
     }
     _logStaffAction_(staffName, null, "withdraw_central_stock", name, qty + (type === "box" ? " กล่อง" : " ซอง") + (reason ? " — " + reason : ""));

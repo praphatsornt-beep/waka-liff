@@ -3,6 +3,7 @@
 
 import json
 import os
+import re
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -71,6 +72,36 @@ def load_tournament_data():
     events = sb.table("tournament_events").select("*").execute().data
     regs = sb.table("tournament_registrations").select("*").execute().data
     return events, regs
+
+
+@st.cache_data(ttl=60)
+def load_central_withdrawals_df() -> pd.DataFrame:
+    """staff_actions rows logged by gas/Code.gs's handleWithdrawCentralStock —
+    the only place "withdraw_central_stock" actions get written."""
+    rows = (
+        get_supabase().table("staff_actions")
+        .select("*").eq("action", "withdraw_central_stock")
+        .order("created_at", desc=True).execute().data
+    )
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    df["timestamp_dt"] = pd.to_datetime(df.get("created_at", ""), errors="coerce", utc=True)
+    df["date"] = df["timestamp_dt"].dt.tz_convert("Asia/Bangkok").dt.date
+    return df
+
+
+# detail is a formatted string written by handleWithdrawCentralStock, e.g.
+# "5 กล่อง — ส่งให้สปอนเซอร์" (or just "5 กล่อง" if no reason was given) —
+# there's no structured qty/unit/reason column on staff_actions, so parse it.
+_WITHDRAW_DETAIL_RE = re.compile(r"^(\d+)\s*(กล่อง|ซอง)(?:\s*—\s*(.*))?$")
+
+
+def _parse_withdraw_detail(detail: str):
+    m = _WITHDRAW_DETAIL_RE.match(str(detail or "").strip())
+    if not m:
+        return 0, "", ""
+    return int(m.group(1)), m.group(2), (m.group(3) or "").strip()
 
 
 @st.cache_data(ttl=60)
@@ -174,8 +205,8 @@ st.download_button(
 
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
-tab_sales, tab_branch, tab_reimburse, tab_products, tab_compare = st.tabs(
-    ["ยอดขาย", "แยกสาขา", "สรุปคืนต้นทุน", "สินค้าขายดี", "ทัวร์นาเมนต์"]
+tab_sales, tab_branch, tab_reimburse, tab_withdraw, tab_products, tab_compare = st.tabs(
+    ["ยอดขาย", "แยกสาขา", "สรุปคืนต้นทุน", "เบิกคลังกลาง", "สินค้าขายดี", "ทัวร์นาเมนต์"]
 )
 
 with tab_sales:
@@ -316,6 +347,51 @@ with tab_reimburse:
             "⬇️ ดาวน์โหลดสรุปคืนต้นทุนแยกสาขา (CSV)", df_to_csv_bytes(reimburse[display_cols]),
             file_name=f"waka_reimburse_by_branch_{date_from}_{date_to}.csv", mime="text/csv",
             key="dl_reimburse",
+        )
+
+with tab_withdraw:
+    st.caption(
+        "รายการเบิกของออกจากคลังกลาง (ปุ่ม \"เบิกของจากคลังกลาง\" ในหน้าสต็อก — ไม่รวมเบิกที่สาขา) "
+        "พร้อมต้นทุนโดยประมาณตามราคาต้นทุนปัจจุบันของสินค้า ใช้ตรวจว่าใครเบิกอะไรไปเท่าไหร่ "
+        "โดยเฉพาะของที่ให้ฟรี (สปอนเซอร์/ตัวอย่าง) ที่มีต้นทุนจริงแต่ไม่มีรายได้มาชดเชย"
+    )
+    wd_df = load_central_withdrawals_df()
+    if not wd_df.empty:
+        wd_df = wd_df[(wd_df["date"] >= date_from) & (wd_df["date"] <= date_to)]
+    if wd_df.empty:
+        st.caption("ไม่มีรายการเบิกคลังกลางในช่วงที่เลือก")
+    else:
+        parsed = wd_df["detail"].apply(_parse_withdraw_detail)
+        wd_df = wd_df.assign(
+            qty=[p[0] for p in parsed],
+            unit=[p[1] for p in parsed],
+            reason=[p[2] or "(ไม่ระบุ)" for p in parsed],
+        )
+        wd_df = wd_df.assign(cost=wd_df.apply(
+            lambda r: r["qty"] * (cost_map.get(r["target_id"], {}).get("cost_box" if r["unit"] == "กล่อง" else "cost_p", 0)),
+            axis=1,
+        ))
+
+        wk1, wk2 = st.columns(2)
+        with wk1:
+            st.markdown(kpi_card("ต้นทุนที่เบิกออกรวม", f"฿{wd_df['cost'].sum():,.0f}", DANGER_TEXT), unsafe_allow_html=True)
+        with wk2:
+            st.markdown(kpi_card("จำนวนรายการเบิก", len(wd_df)), unsafe_allow_html=True)
+
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+        st.caption("ต้นทุนแยกตามเหตุผล")
+        st.bar_chart(wd_df.groupby("reason")["cost"].sum().sort_values(ascending=False))
+
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+        wd_show = wd_df.rename(columns={
+            "date": "วันที่", "staff_name": "พนักงาน", "target_id": "สินค้า",
+            "qty": "จำนวน", "unit": "หน่วย", "reason": "เหตุผล", "cost": "ต้นทุน",
+        })[["วันที่", "พนักงาน", "สินค้า", "จำนวน", "หน่วย", "เหตุผล", "ต้นทุน"]].sort_values("วันที่", ascending=False)
+        st.dataframe(wd_show, use_container_width=True, hide_index=True)
+        st.download_button(
+            "⬇️ ดาวน์โหลดรายการเบิกคลังกลาง (CSV)", df_to_csv_bytes(wd_show),
+            file_name=f"waka_central_withdrawals_{date_from}_{date_to}.csv", mime="text/csv",
+            key="dl_withdraw",
         )
 
 with tab_products:
