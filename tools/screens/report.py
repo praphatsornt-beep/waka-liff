@@ -62,8 +62,25 @@ def load_orders_df() -> pd.DataFrame:
 
 @st.cache_data(ttl=120)
 def load_catalog_cost() -> dict:
-    rows = get_supabase().table("catalog").select("name,cost_box,cost_p").execute().data
-    return {r["name"]: {"cost_box": r.get("cost_box") or 0, "cost_p": r.get("cost_p") or 0} for r in rows}
+    # keyed by BOTH name and id (product code) pointing at the same cost dict —
+    # staff_actions.target_id for product-management actions is now the id
+    # (rename-safe), but older rows and other tables still use the name, so a
+    # single lookup needs to resolve either.
+    rows = get_supabase().table("catalog").select("name,id,cost_box,cost_p").execute().data
+    cost_map = {}
+    for r in rows:
+        c = {"cost_box": r.get("cost_box") or 0, "cost_p": r.get("cost_p") or 0}
+        if r.get("name"):
+            cost_map[r["name"]] = c
+        if r.get("id"):
+            cost_map[r["id"]] = c
+    return cost_map
+
+
+@st.cache_data(ttl=120)
+def load_catalog_id_to_name() -> dict:
+    rows = get_supabase().table("catalog").select("id,name").execute().data
+    return {r["id"]: r["name"] for r in rows if r.get("id")}
 
 
 @st.cache_data(ttl=60)
@@ -430,8 +447,13 @@ with tab_withdraw:
         st.bar_chart(wd_df.groupby("reason")["cost"].sum().sort_values(ascending=False))
 
         st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+        # target_id เป็น id (รหัสสินค้า, รองรับ rename) สำหรับรายการเบิกใหม่ — resolve
+        # กลับเป็นชื่อปัจจุบันเพื่อแสดงผล ส่วนรายการเก่า (target_id ยังเป็นชื่อ) ที่หา
+        # ใน id_to_name ไม่เจอ ก็แสดงค่าดิบนั้นต่อไป (มันคือชื่ออยู่แล้ว)
+        id_to_name = load_catalog_id_to_name()
+        wd_df = wd_df.assign(product_name=wd_df["target_id"].map(lambda t: id_to_name.get(t, t)))
         wd_show = wd_df.rename(columns={
-            "date": "วันที่", "staff_name": "พนักงาน", "target_id": "สินค้า",
+            "date": "วันที่", "staff_name": "พนักงาน", "product_name": "สินค้า",
             "qty_box": "กล่อง", "qty_pack": "ซอง", "reason": "เหตุผล", "cost": "ต้นทุน",
         })[["วันที่", "พนักงาน", "สินค้า", "กล่อง", "ซอง", "เหตุผล", "ต้นทุน"]].sort_values("วันที่", ascending=False)
         st.dataframe(wd_show, use_container_width=True, hide_index=True)

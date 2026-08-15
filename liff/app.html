@@ -963,7 +963,7 @@ async function submitAddStock() {
   const staff_name=ensureStaffName();
   if(!staff_name)return;
   const b=gid('addStockBtn');b.disabled=1;b.textContent='บันทึก...';
-  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'addStock',name:selectedProduct.name,category:selectedProduct.category,add_box:ab,add_pack:ap,limit_box:lb===''?null:+lb,limit_pack:lp===''?null:+lp,staff_name:staff_name.trim()})});const d=await r.json();
+  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'addStock',name:selectedProduct.name,id:selectedProduct.id,category:selectedProduct.category,add_box:ab,add_pack:ap,limit_box:lb===''?null:+lb,limit_pack:lp===''?null:+lp,staff_name:staff_name.trim()})});const d=await r.json();
     if(d.ok){let m=selectedProduct.name+': ';if(ab>0)m+='+'+ab+' Box ';if(ap>0)m+='+'+ap+' Pack';if(limChanged)m+=' (limit อัปเดต)';toast(m);selectedProduct.stock_box=(selectedProduct.stock_box||0)+ab;selectedProduct.stock_pack=(selectedProduct.stock_pack||0)+ap;if(lb!=='')selectedProduct.limit_box=+lb;if(lp!=='')selectedProduct.limit_pack=+lp;showProduct(selectedProduct);}
     else alert(d.error||'ผิดพลาด');
   }catch(e){alert('บันทึกไม่ได้');}b.disabled=0;b.textContent='✅ เพิ่มสต็อก';
@@ -1379,7 +1379,8 @@ async function submitWithdraw() {
   if(qty<=0)return alert('ใส่จำนวน');
   const staff_name=gid('wdStaffName').value.trim();if(!staff_name)return alert('กรอกชื่อพนักงาน');
   localStorage.setItem('waka_staff_name',staff_name);
-  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'withdrawStock',branch,name,type,qty,reason,staff_name,code:_authCode()})});const d=await r.json();
+  const _p=products.find(x=>x.name===name);
+  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'withdrawStock',branch,name,id:_p?_p.id:undefined,type,qty,reason,staff_name,code:_authCode()})});const d=await r.json();
     if(d.ok){toast('เบิก '+name+' x'+qty);gid('wdQty').value=1;loadBrStock();loadWithdrawals();}
     else alert(d.error||'ผิดพลาด');
   }catch(e){alert('บันทึกไม่ได้');}
@@ -1478,7 +1479,8 @@ function shipAddToCart() {
   const qty_box = (d.qty_box || 0) + (+gid('shipQtyBox').value || 0);
   const qty_pack = (d.qty_pack || 0) + (+gid('shipQtyPack').value || 0);
   if (qty_box <= 0 && qty_pack <= 0) { alert('ใส่จำนวนที่จะส่ง'); return; }
-  shipCart.push({ name, qty_box, qty_pack, qty_box_extra: 0, qty_pack_extra: 0 });
+  const _p = products.find(x => x.name === name);
+  shipCart.push({ name, id: _p ? _p.id : undefined, qty_box, qty_pack, qty_box_extra: 0, qty_pack_extra: 0 });
   gid('shipQtyBox').value = 0; gid('shipQtyPack').value = 0;
   shipOnProductChange();
   shipRenderCart();
@@ -1546,7 +1548,8 @@ function wsAddToCart() {
   const type = gid('wsType').value;
   const qty = +gid('wsQty').value || 0; if (qty <= 0) { alert('ใส่จำนวน'); return; }
   const price = +gid('wsPrice').value || 0;
-  wsCart.push({ name, type, qty, price });
+  const _p = products.find(x => x.name === name);
+  wsCart.push({ name, id: _p ? _p.id : undefined, type, qty, price });
   gid('wsQty').value = 1;
   wsRenderCart();
 }

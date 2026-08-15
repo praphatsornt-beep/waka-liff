@@ -1403,8 +1403,8 @@
       const key = encodeKey(p.name);
       const qBox  = quantities[key + "__box"]  || 0;
       const qPack = quantities[key + "__pack"] || 0;
-      if (qBox  > 0) items.push({ name: p.name, type: "box",  qty: qBox,  price: p.price_box  });
-      if (qPack > 0) items.push({ name: p.name, type: "pack", qty: qPack, price: p.price_pack });
+      if (qBox  > 0) items.push({ name: p.name, id: p.id, type: "box",  qty: qBox,  price: p.price_box  });
+      if (qPack > 0) items.push({ name: p.name, id: p.id, type: "pack", qty: qPack, price: p.price_pack });
     }
     return items;
   }

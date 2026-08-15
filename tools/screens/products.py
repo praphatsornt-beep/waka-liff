@@ -357,7 +357,7 @@ with tab_browse:
                     st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
                     if st.button("ปิดขาย" if row_active else "เปิดขาย", key=f"browse_toggle_{row['name']}", use_container_width=True):
                         try:
-                            gas_post({"_action": "updateProduct", "name": row["name"], "active": not row_active})
+                            gas_post({"_action": "updateProduct", "name": row["name"], "id": row.get("id") or None, "active": not row_active})
                             _flash(f"{'ปิด' if row_active else 'เปิด'}ขาย \"{row['name']}\" แล้ว")
                             st.cache_data.clear()
                             st.rerun()
@@ -397,7 +397,7 @@ with tab_edit:
                         "filename": edit_img_file.name,
                     })
                     new_url = res.get("url", "")
-                    gas_post({"_action": "updateProduct", "name": edit_sel, "image_url": new_url})
+                    gas_post({"_action": "updateProduct", "name": edit_sel, "id": edit_row.get("id") or None, "image_url": new_url})
                     st.session_state[f"edit_product_image_url_{edit_sel}"] = new_url
                     st.session_state.pop(f"edit_product_img_{edit_sel}", None)
                     _flash("อัปโหลดและบันทึกรูปสินค้าแล้ว")
@@ -441,7 +441,7 @@ with tab_edit:
             if submitted_e:
                 try:
                     payload = {
-                        "_action": "updateProduct", "name": edit_sel,
+                        "_action": "updateProduct", "name": edit_sel, "id": edit_row.get("id") or None,
                         "category": e_category.strip(), "active": e_active,
                         "cost_box": e_cost_box, "cost_pack": e_cost_pack,
                         "price_box": e_price_box, "price_pack": e_price_pack,

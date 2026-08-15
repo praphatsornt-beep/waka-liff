@@ -203,6 +203,7 @@ tab_central, tab_branch, tab_history = st.tabs(
 @st.dialog("➕ เพิ่ม/ลด สต็อกคลังกลาง")
 def _adjust_central_stock_dialog():
     names = catalog["name"].tolist() if not catalog.empty else []
+    name_to_id = dict(zip(catalog["name"], catalog.get("id", ""))) if not catalog.empty else {}
     with st.form("add_stock_form"):
         sel_name = st.selectbox("สินค้า", names)
         st.caption("สำหรับซื้อสินค้าเข้าคลัง หรือแก้ไขยอดนับที่ผิดพลาดเท่านั้น — ถ้าจะเบิกออกไปขาย/แจก/ทำตัวอย่าง ใช้ปุ่ม \"เบิกของจากคลังกลาง\" แทน")
@@ -216,7 +217,10 @@ def _adjust_central_stock_dialog():
                 st.warning("ใส่จำนวนที่จะปรับก่อน")
             else:
                 try:
-                    payload = {"_action": "addStock", "name": sel_name, "add_box": add_box, "add_pack": add_pack}
+                    payload = {
+                        "_action": "addStock", "name": sel_name, "id": name_to_id.get(sel_name) or None,
+                        "add_box": add_box, "add_pack": add_pack,
+                    }
                     if reason:
                         payload["reason"] = reason
                     gas_post(payload)
@@ -256,8 +260,9 @@ def _withdraw_central_stock_dialog():
             else:
                 final_reason = wc_reason_other.strip() if wc_reason == "อื่นๆ" and wc_reason_other.strip() else wc_reason
                 try:
+                    wc_id = cur_row.iloc[0]["id"] if not cur_row.empty and "id" in cur_row.columns else None
                     gas_post({
-                        "_action": "withdrawCentralStock", "name": wc_name,
+                        "_action": "withdrawCentralStock", "name": wc_name, "id": wc_id or None,
                         "qty_box": wc_qty_box, "qty_pack": wc_qty_pack, "reason": final_reason,
                     })
                     _flash("เบิกของแล้ว + แจ้งทีมงานแล้ว")
@@ -270,6 +275,7 @@ def _withdraw_central_stock_dialog():
 @st.dialog("🚚 สร้างล็อตส่งสาขา", width="large")
 def _create_shipment_dialog():
     ship_branch = st.selectbox("สาขาปลายทาง", BRANCHES, key="ship_branch_sel")
+    ship_name_to_id = dict(zip(catalog["name"], catalog.get("id", ""))) if not catalog.empty else {}
 
     # Snapshot demand ONCE per branch selection instead of re-deriving it from
     # load_pending_branch_demand() (ttl=30 cache) on every rerun. The table's
@@ -344,7 +350,7 @@ def _create_shipment_dialog():
             if not row["ส่ง"]:
                 continue
             ship_items.append({
-                "name": row["สินค้า"],
+                "name": row["สินค้า"], "id": ship_name_to_id.get(row["สินค้า"]) or None,
                 "qty_box": _safe_int(row["รวม (กล่อง)"]),
                 "qty_pack": _safe_int(row["รวม (ซอง)"]),
                 "qty_box_extra": 0, "qty_pack_extra": 0,
@@ -360,7 +366,7 @@ def _create_shipment_dialog():
             ec1, ec2 = st.columns(2)
             eb = ec1.number_input(f"{name} — กล่อง", min_value=0, value=0, step=1, key=f"shipextrabox_{ship_branch}_{name}")
             ep = ec2.number_input(f"{name} — ซอง", min_value=0, value=0, step=1, key=f"shipextrapack_{ship_branch}_{name}")
-            ship_items.append({"name": name, "qty_box": eb, "qty_pack": ep, "qty_box_extra": 0, "qty_pack_extra": 0})
+            ship_items.append({"name": name, "id": ship_name_to_id.get(name) or None, "qty_box": eb, "qty_pack": ep, "qty_box_extra": 0, "qty_pack_extra": 0})
 
     if st.button("📦 สร้างล็อตส่งสาขา", key=f"submit_ship_{ship_branch}", type="primary"):
         items_payload = [it for it in ship_items if it["qty_box"] > 0 or it["qty_pack"] > 0]
@@ -562,6 +568,8 @@ with tab_branch:
         else:
             st.table(pivot_df)
 
+    branch_name_to_id = dict(zip(catalog["name"], catalog.get("id", ""))) if not catalog.empty else {}
+
     with st.expander("➖ เบิก / ปรับสต็อกสาขา"):
         names_b = sorted(stock_branch["name"].unique().tolist()) if not stock_branch.empty else []
         with st.form("withdraw_stock_form"):
@@ -577,6 +585,7 @@ with tab_branch:
                 try:
                     gas_post({
                         "_action": "withdrawStock", "branch": w_branch, "name": w_name,
+                        "id": branch_name_to_id.get(w_name) or None,
                         "type": w_type, "qty": w_qty, "reason": w_reason,
                     })
                     _flash("บันทึกแล้ว")
@@ -617,6 +626,7 @@ with tab_branch:
                     try:
                         gas_post({
                             "_action": "returnStock", "branch": r_branch, "name": r_name,
+                            "id": branch_name_to_id.get(r_name) or None,
                             "qty_box": r_qty_box, "qty_pack": r_qty_pack,
                         })
                         _flash("คืนสต็อกแล้ว สต็อกกลางได้รับคืนแล้ว")

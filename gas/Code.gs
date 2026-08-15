@@ -227,32 +227,13 @@ function _renameProductRpc_(oldName, newName) {
   }
 }
 
-// ล็อตที่สร้างไว้ก่อนเปลี่ยนชื่อสินค้าแต่สาขายังไม่กดรับ (status "จัดส่ง") มี
-// items_json เป็น snapshot ชื่อสินค้า ณ ตอนสร้างล็อต ไม่ได้ผูกกับ catalog.name
-// แบบ live — rename_product() RPC ข้างบนแก้แค่ catalog + stock_branch ที่มีอยู่
-// ตอนนั้น ไม่แตะ shipments เลย ถ้าไม่ sync ตรงนี้ด้วย พอสาขามากดรับของทีหลัง
-// (handleReceiveShipment อ่านชื่อจาก items_json ตรงๆ) ชื่อเก่าจะถูกเขียนกลับเข้า
-// stock_branch อีกรอบ ทั้งที่ catalog เปลี่ยนชื่อไปแล้ว (บั๊กจริงที่เจอกับ BT11)
-function _renamePendingShipments_(oldName, newName) {
-  var rows = supabaseSelect_("shipments", "select=id,items_json&status=eq." + encodeURIComponent("จัดส่ง"));
-  rows.forEach(function(r) {
-    var items = Array.isArray(r.items_json) ? r.items_json : [];
-    var changed = false;
-    items.forEach(function(it) {
-      if (it.name === oldName) { it.name = newName; changed = true; }
-    });
-    if (!changed) return;
-    var res = patchSupabase_("shipments", "id=eq." + r.id, { items_json: items });
-    if (!res.ok) Logger.log("_renamePendingShipments_ failed for shipment id " + r.id + ": " + res.text);
-  });
-}
-
-// เหตุผลเดียวกับ _renamePendingShipments_ ข้างบน แต่ครอบคลุม orders/walkin_sales
-// ทั้งหมด (ไม่กรอง status) เพราะ action=report / walkin_product_report join
-// ต้นทุนจาก catalog ด้วยชื่อ ย้อนหลังได้ไม่จำกัดเวลา — ถ้าไม่ sync ตรงนี้
-// ออเดอร์/รายการขายหน้าร้านเก่าก่อน rename จะโชว์ต้นทุน 0 เงียบๆ ในรายงาน
-// (บั๊กจริงที่เจอกับ BT11 หลัง rename [Preorder] → [พร้อมส่ง], แก้ครั้งแรกด้วย
-// tools/backfill_renamed_product_names.py ก่อนจะมาป้องกันไว้ตรงนี้)
+// ครอบคลุมทุกแถวของตารางที่มี items_json (ไม่กรอง status/เวลา) เพราะ
+// action=report / walkin_product_report join ต้นทุนจาก catalog ด้วยชื่อ
+// ย้อนหลังได้ไม่จำกัดเวลา, และ handleReceiveShipment อ่านชื่อจาก
+// shipments.items_json ตรงๆ ตอนสาขากดรับของ — ถ้าไม่ sync ทุกแถว (ไม่ใช่แค่
+// ล็อตที่ยังไม่รับ) ทั้งรายงานย้อนหลังและล็อตที่รับไปแล้วก่อนหน้านี้จะโชว์/จับคู่
+// ด้วยชื่อเก่าเงียบๆ (บั๊กจริงที่เจอกับ BT11 หลัง rename [Preorder] → [พร้อมส่ง],
+// แก้ครั้งแรกด้วย tools/backfill_renamed_product_names.py ก่อนจะมาป้องกันไว้ตรงนี้)
 function _renameHistoricalItemsJson_(table, idCol, oldName, newName) {
   var rows = supabaseSelect_(table, "select=" + idCol + ",items_json");
   rows.forEach(function(r) {
@@ -416,6 +397,7 @@ function doGet(e) {
       if (active === false || active === "FALSE" || active === 0) continue;
       catalog.push({
         name:       String(cr.name),
+        id:         String(cr.id || ""),
         category:   String(cr.category || ""),
         price_box:  Number(cr.price_box)  || 0,
         price_pack: Number(cr.price_pack) || 0,
@@ -672,6 +654,10 @@ function doPost(e) {
     var catRowsForOrder = null;
     if (data.items && data.items.length > 0) {
       catRowsForOrder = _fetchCatalogRows_();
+      // ปิดช่องโหว่ลูกค้าค้างหน้าตะกร้าไว้ข้ามช่วงที่มีคน rename สินค้า — เขียน
+      // item.name ให้ตรงกับชื่อปัจจุบันเสมอถ้า item มี id ที่ resolve เจอ ก่อนตรวจ
+      // limit/หักสต็อกด้านล่างซึ่งยัง match ด้วยชื่อเหมือนเดิมทั้งหมด
+      _resolveItemsAgainstCatalog_(data.items, catRowsForOrder);
       var limitCheck = checkCatalogLimits(data.items, catRowsForOrder);
       if (limitCheck.error) {
         try { lock.releaseLock(); } catch(_) {}
@@ -827,6 +813,34 @@ function _findCatalogRow_(rows, name) {
     if (String(rows[i].name).trim() === n) return rows[i];
   }
   return null;
+}
+function _findCatalogRowById_(rows, id) {
+  if (!id) return null;
+  var idStr = String(id).trim();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i].id || "").trim() === idStr) return rows[i];
+  }
+  return null;
+}
+// เขียน item.name ให้ตรงกับชื่อปัจจุบันใน catalog เสมอ เมื่อ item มี id (รหัส
+// สินค้า) ที่ resolve เจอ — ปิดช่องโหว่ตอนลูกค้า/staff ค้าง cart ไว้ข้ามช่วงที่
+// มีคน rename สินค้า: ชื่อที่ client แคชไว้อาจเก่า แต่ id ไม่เปลี่ยน ทำให้ row ที่
+// บันทึกจริงเป็นชื่อปัจจุบันเสมอ ไม่ทำให้ deductStock/checkCatalogLimits หา
+// แถวไม่เจอแล้วข้ามการหักสต็อกไปเงียบๆ. item ที่ไม่มี id (client เก่า/ข้อมูล
+// ย้อนหลัง) ผ่านไปเหมือนเดิมโดยไม่แก้อะไร
+function _resolveItemsAgainstCatalog_(items, catRows) {
+  (items || []).forEach(function(it) {
+    var row = _findCatalogRowById_(catRows, it.id);
+    if (row) it.name = row.name;
+  });
+  return items;
+}
+// ใช้แทน getSupabaseRow_("catalog","name",...) ตรงๆ ในจุดที่รับ id มาด้วย —
+// ลอง id ก่อน (คงที่ไม่เปลี่ยนตามชื่อ) แล้วค่อย fallback เป็นชื่อ (รองรับ client/
+// session เก่าที่ยังไม่ส่ง id มา)
+function _resolveProductRow_(name, id) {
+  var row = id ? getSupabaseRow_("catalog", "id", id) : null;
+  return row || getSupabaseRow_("catalog", "name", name);
 }
 // เขียน row ที่เปลี่ยนกลับ Supabase — เรียกหลังแก้ rows ใน memory
 function _pushCatalogRows_(rows, changedNames) {
@@ -1497,7 +1511,7 @@ function handleApi(params) {
       return _cors(ContentService.createTextOutput(JSON.stringify({
         found: true,
         product: {
-          name: String(lr.name), category: String(lr.category || ""),
+          name: String(lr.name), id: String(lr.id || ""), category: String(lr.category || ""),
           price_box: Number(lr.price_box) || 0, price_pack: Number(lr.price_pack) || 0,
           cost_box: Number(lr.cost_box) || 0, cost_pack: Number(lr.cost_p) || 0,
           barcode: barcode, stock_box: Number(lr.qty_box) || 0, stock_pack: Number(lr.qty_pack) || 0,
@@ -1512,7 +1526,7 @@ function handleApi(params) {
     var plRows = supabaseSelect_("catalog", "select=*");
     var products = plRows.filter(function(r) { return r.name; }).map(function(r) {
       return {
-        name: String(r.name).trim(), category: String(r.category || ""),
+        name: String(r.name).trim(), id: String(r.id || ""), category: String(r.category || ""),
         price_box: Number(r.price_box) || 0, price_pack: Number(r.price_pack) || 0,
         cost_box: Number(r.cost_box) || 0, cost_pack: Number(r.cost_p) || 0,
         barcode: String(r.barcode || ""),
@@ -2246,6 +2260,9 @@ function handleCreateShipment(data) {
     var items = data.items || [];
     // ตัดสต็อกกลาง (catalog, Supabase-primary)
     var shCatRows = _fetchCatalogRows_();
+    // ปิดช่องโหว่เดียวกับ doPost/handleWalkinSale — เผื่อ Streamlit ค้างฟอร์ม
+    // สร้างล็อตไว้ข้ามช่วงที่มีคน rename สินค้า
+    _resolveItemsAgainstCatalog_(items, shCatRows);
     var shChangedNames = [];
     for (var idx = 0; idx < items.length; idx++) {
       var it = items[idx];
@@ -2925,7 +2942,7 @@ function handleAddStock(data) {
   try {
     var staffName = String(data.staff_name || "").trim();
     var reason = String(data.reason || "").trim();
-    var row = getSupabaseRow_("catalog", "name", data.name);
+    var row = _resolveProductRow_(data.name, data.id);
     if (!row) {
       lock.releaseLock();
       return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบสินค้าใน catalog: " + data.name })));
@@ -3002,8 +3019,12 @@ function handleUpdateProduct(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var row = getSupabaseRow_("catalog", "name", data.name);
+    // id-first: Streamlit ส่ง data.id มาด้วยตอนนี้ (แถวที่เลือกไว้ตอนเปิดฟอร์ม) —
+    // ถ้ามีคนอื่น rename สินค้านี้ไปแล้วระหว่างที่ฟอร์มเปิดค้างอยู่ data.name จะ
+    // เก่า แต่ id ไม่เปลี่ยน จึงยังหาแถวที่ถูกต้องเจอ (ไม่ fallback ผิดสินค้า)
+    var row = _resolveProductRow_(data.name, data.id);
     if (!row) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบสินค้า: " + data.name }))); }
+    var currentName = row.name;
 
     var staffName = String(data.staff_name || "").trim();
     var changeLog = [];
@@ -3014,17 +3035,22 @@ function handleUpdateProduct(data) {
 
     var newName = String(data.new_name || "").trim();
     var renameLog = "";
-    if (newName && newName !== data.name) {
+    if (newName && newName !== currentName) {
       var dup = getSupabaseRow_("catalog", "name", newName);
       if (dup) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "มีสินค้าชื่อนี้อยู่แล้ว" }))); }
-      var renameRes = _renameProductRpc_(data.name, newName);
+      var renameRes = _renameProductRpc_(currentName, newName);
       if (!renameRes.ok) { lock.releaseLock(); throw new Error("เปลี่ยนชื่อสินค้าไม่สำเร็จ: " + renameRes.text); }
-      _renamePendingShipments_(data.name, newName);
-      _renameHistoricalItemsJson_("orders", "order_id", data.name, newName);
-      _renameHistoricalItemsJson_("walkin_sales", "sale_id", data.name, newName);
+      _renameHistoricalItemsJson_("shipments", "id", currentName, newName);
+      _renameHistoricalItemsJson_("orders", "order_id", currentName, newName);
+      _renameHistoricalItemsJson_("walkin_sales", "sale_id", currentName, newName);
+      // withdrawals/stock_returns เป็นตาราง flat (name เป็น column ตรงๆ ไม่ใช่
+      // items_json array) — patch ด้วย filter ตรงๆ ทีเดียวได้เลย ไม่ต้องวนอ่าน/
+      // เขียนทีละแถวแบบ items_json ด้านบน
+      patchSupabase_("withdrawals", "name=eq." + encodeURIComponent(currentName), { name: newName });
+      patchSupabase_("stock_returns", "name=eq." + encodeURIComponent(currentName), { name: newName });
       // เก็บแยกจาก changeLog เดิม — log เป็น action ของตัวเอง (rename_product)
       // แทนที่จะรวมกับ update_product ทั่วไป จะได้เด่นชัดในประวัติสินค้า
-      renameLog = data.name + " → " + newName;
+      renameLog = currentName + " → " + newName;
       row.name = newName;
     }
 
@@ -3125,6 +3151,11 @@ function handleWithdrawStock(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
+    // resolve id-first ก่อนทำอะไรทั้งหมด แล้วใช้ชื่อปัจจุบันจากผลลัพธ์แทน `name`
+    // ดิบที่ client ส่งมา — ปิดช่องโหว่ฟอร์มค้างไว้ข้ามช่วง rename เหมือนจุดอื่นๆ
+    var wCatRow = _resolveProductRow_(name, data.id);
+    if (wCatRow) name = wCatRow.name;
+
     var bsRow = _findStockBranchRow_(_fetchStockBranchRows_(branch), name, branch);
     if (!bsRow) {
       lock.releaseLock();
@@ -3151,9 +3182,6 @@ function handleWithdrawStock(data) {
       _linePush(groupStaffWithdraw, "📤 " + staffName + " เบิก " + name + " x" + qty + " " + unitLabel + " จากสาขา " + branch +
         (reason ? "\nเหตุผล: " + reason : ""));
     }
-    // ต้องอ่าน catalog แยกเพื่อเอา id (รหัสสินค้า) มาใช้เป็น target_id — ฟังก์ชันนี้
-    // แก้แค่ stock_branch ด้านบน ไม่เคยอ่าน catalog row มาก่อนหน้านี้เลย
-    var wCatRow = getSupabaseRow_("catalog", "name", name);
     _logStaffAction_(staffName, branch, "withdraw_stock", (wCatRow && wCatRow.id) || name, qty + (type === "box" ? " กล่อง" : " ซอง") + (reason ? " — " + reason : ""));
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
@@ -3183,11 +3211,12 @@ function handleWithdrawCentralStock(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var row = getSupabaseRow_("catalog", "name", name);
+    var row = _resolveProductRow_(name, data.id);
     if (!row) {
       lock.releaseLock();
       return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบสินค้า: " + name })));
     }
+    name = row.name; // ชื่อปัจจุบันจริง เผื่อ dialog ค้างไว้ข้ามช่วง rename
     var wcHaveBox = Number(row.qty_box) || 0;
     var wcHavePack = Number(row.qty_pack) || 0;
     if (qtyBox > wcHaveBox || qtyPack > wcHavePack) {
@@ -3234,6 +3263,11 @@ function handleReturnStock(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
+    // resolve id-first ก่อน — ใช้ชื่อปัจจุบันจากผลลัพธ์ตลอดฟังก์ชัน เผื่อฟอร์ม
+    // ค้างไว้ข้ามช่วง rename (เหมือน handleWithdrawStock/handleWithdrawCentralStock)
+    var catRow = _resolveProductRow_(name, data.id);
+    if (catRow) name = catRow.name;
+
     // ลดสต็อกสาขา (Supabase-primary)
     var bsRow = _findStockBranchRow_(_fetchStockBranchRows_(branch), name, branch);
     if (!bsRow) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบ " + name + " ในสต็อกสาขา " + branch }))); }
@@ -3248,7 +3282,6 @@ function handleReturnStock(data) {
     _writeStockBranchRow_(bsRow);
 
     // เพิ่มสต็อกกลาง (catalog, Supabase-primary)
-    var catRow = getSupabaseRow_("catalog", "name", name);
     if (catRow) {
       if (qtyBox  > 0) catRow.qty_box  = (Number(catRow.qty_box)  || 0) + qtyBox;
       if (qtyPack > 0) catRow.qty_pack = (Number(catRow.qty_pack) || 0) + qtyPack;
@@ -3300,6 +3333,10 @@ function handleWalkinSale(data) {
       lock.releaseLock();
       return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
     }
+
+    // ปิดช่องโหว่ staff ค้างตะกร้าขายหน้าร้านไว้ข้ามช่วงที่มีคน rename สินค้า —
+    // เหมือน doPost ด้านบน (ดู _resolveItemsAgainstCatalog_)
+    _resolveItemsAgainstCatalog_(items, _fetchCatalogRows_());
 
     var bsRows = _fetchStockBranchRows_(branch);
     // ตรวจสต็อกให้ครบทุกรายการก่อนตัดจริงรายการใดรายการหนึ่ง — กันเคสตัดสต็อก
