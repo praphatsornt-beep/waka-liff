@@ -446,10 +446,17 @@ with tab_central:
                 st.session_state.pop(snap_key, None)
                 st.cache_data.clear()
                 st.rerun()
+        # ปุ่มบันทึกอยู่ที่ตำแหน่งนี้ (เหนือตาราง) แต่ต้องรอผลจาก data_editor
+        # ด้านล่างก่อนถึงจะรู้ว่ามีอะไรถูกแก้บ้าง — สร้าง placeholder ไว้ก่อน
+        # แล้วค่อยเรียก .button() ใส่ตำแหน่งเดิมทีหลัง ตัว widget จะยังโผล่ตรงนี้
+        # เหมือนเดิมแม้โค้ดที่สร้างมันรันทีหลัง (Streamlit วาดตาม container ไม่ใช่
+        # ลำดับโค้ด)
+        save_slot = st.empty()
         edited = st.data_editor(
             show,
             use_container_width=True,
             hide_index=True,
+            height=int((len(show) + 1) * 35 + 3),
             disabled=["รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "แจ้งเตือน"],
             column_config={
                 "สถานะ": st.column_config.SelectboxColumn(" ", options=[STATUS_ON, STATUS_OFF], required=True, width="small"),
@@ -466,7 +473,7 @@ with tab_central:
             key=f"catalog_editor_{cat_sel}",
         )
 
-        if st.button("บันทึก", key=f"save_catalog_btn_{cat_sel}"):
+        if save_slot.button("บันทึก", key=f"save_catalog_btn_{cat_sel}"):
             try:
                 for idx in show.index:
                     orig_row = show.loc[idx]
