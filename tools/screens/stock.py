@@ -393,8 +393,6 @@ with tab_central:
         # หน้าจัดการสินค้าแทน (มี toggle เปิด/ปิดขายอยู่แล้ว)
         catalog_show = catalog_show[catalog_show["active"].apply(lambda v: str(v or "").strip().upper() != "FALSE")]
 
-        STATUS_ON, STATUS_OFF = "🟢", "🔴"
-
         show = catalog_show[["name", "category", "qty_box", "qty_pack", "limit_box", "limit_pack", "active"]].copy()
         show["id"] = catalog_show["id"] if "id" in catalog_show.columns else ""
         show["slug"] = catalog_show["slug"] if "slug" in catalog_show.columns else ""
@@ -404,7 +402,6 @@ with tab_central:
         show["limit_box"] = pd.to_numeric(show["limit_box"], errors="coerce").fillna(0)
         show["limit_pack"] = pd.to_numeric(show["limit_pack"], errors="coerce").fillna(0)
         show["active"] = show["active"].apply(lambda v: str(v or "").strip().upper() != "FALSE")
-        show["สถานะ"] = show["active"].apply(lambda a: STATUS_ON if a else STATUS_OFF)
 
         def _low_stock(r):
             if not r["active"]:
@@ -414,12 +411,12 @@ with tab_central:
             return ""
 
         show["แจ้งเตือน"] = show.apply(_low_stock, axis=1)
-        show = show.sort_values("active", ascending=False, kind="stable")
         show = show.rename(columns={
             "id": "รหัสสินค้า", "name": "สินค้า", "slug": "Slug", "category": "หมวดหมู่", "qty_box": "กล่อง", "qty_pack": "ซอง",
             "limit_box": "ขายออนไลน์ได้ (กล่อง)", "limit_pack": "ขายออนไลน์ได้ (ซอง)",
         })
-        show = show[["สถานะ", "รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "กล่อง", "ซอง", "ขายออนไลน์ได้ (กล่อง)", "ขายออนไลน์ได้ (ซอง)", "แจ้งเตือน"]]
+        show = show.sort_values("รหัสสินค้า", kind="stable")
+        show = show[["รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "กล่อง", "ซอง", "ขายออนไลน์ได้ (กล่อง)", "ขายออนไลน์ได้ (ซอง)", "แจ้งเตือน"]]
 
         # data_editor เก็บ edit ไว้ตาม "ตำแหน่งแถว" ไม่ใช่ชื่อสินค้า — ถ้า show ที่
         # build ใหม่จาก catalog สดทุก rerun เปลี่ยนลำดับแถวระหว่างที่ยังแก้ไม่เสร็จ
@@ -438,7 +435,7 @@ with tab_central:
         cap_col, refresh_col = st.columns([5, 1])
         with cap_col:
             st.caption(
-                "แก้ไข สถานะ / กล่อง / ซอง / ขายออนไลน์ได้ ในตารางได้เลย แล้วกดบันทึก — เลขกล่อง/ซองที่แก้เป็นยอดสต็อกใหม่ทั้งหมด "
+                "แก้ไข กล่อง / ซอง / ขายออนไลน์ได้ ในตารางได้เลย แล้วกดบันทึก — เลขกล่อง/ซองที่แก้เป็นยอดสต็อกใหม่ทั้งหมด "
                 "ไม่ใช่จำนวนที่เพิ่ม, ขายออนไลน์ได้ = จำนวนที่ลูกค้ายังสั่งออนไลน์ได้ ลดลงทุกครั้งที่มีออเดอร์ (0 = ปิดขายออนไลน์)"
             )
         with refresh_col:
@@ -459,7 +456,6 @@ with tab_central:
             height=int((len(show) + 1) * 35 + 3),
             disabled=["รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "แจ้งเตือน"],
             column_config={
-                "สถานะ": st.column_config.SelectboxColumn(" ", options=[STATUS_ON, STATUS_OFF], required=True, width="small"),
                 "รหัสสินค้า": st.column_config.TextColumn("CODE", width="small"),
                 "สินค้า": st.column_config.TextColumn(width="large"),
                 "Slug": st.column_config.TextColumn(width="small"),
@@ -486,14 +482,11 @@ with tab_central:
                     orig_limit_pack = _safe_int(orig_row["ขายออนไลน์ได้ (ซอง)"])
                     limit_changed = new_limit_box != orig_limit_box or new_limit_pack != orig_limit_pack
 
-                    if new_row["สถานะ"] != orig_row["สถานะ"] or limit_changed:
-                        payload = {"_action": "updateProduct", "name": prod_name}
-                        if new_row["สถานะ"] != orig_row["สถานะ"]:
-                            payload["active"] = new_row["สถานะ"] == STATUS_ON
-                        if limit_changed:
-                            payload["limit_box"] = new_limit_box
-                            payload["limit_pack"] = new_limit_pack
-                        gas_post(payload)
+                    if limit_changed:
+                        gas_post({
+                            "_action": "updateProduct", "name": prod_name,
+                            "limit_box": new_limit_box, "limit_pack": new_limit_pack,
+                        })
 
                     # updateProduct ไม่รองรับตั้งค่า qty_box/qty_pack ตรงๆ — ส่งเป็นผลต่าง
                     # (ใหม่ - เดิม) ผ่าน addStock แทน ซึ่งรองรับค่าติดลบอยู่แล้ว
