@@ -28,11 +28,13 @@ ACTION_LABELS = {
     "cancel_shipment": "ยกเลิกล็อตส่งสาขา",
     "receive_shipment": "รับของเข้าสาขา",
     "withdraw_stock": "เบิกสต็อกสาขา",
+    "withdraw_central_stock": "เบิกคลังกลาง",
     "return_stock": "คืนสต็อกกลับคลังกลาง",
     "add_stock": "ปรับสต็อกคลังกลาง",
     "add_product": "เพิ่มสินค้าใหม่",
     "update_product": "แก้ไขสินค้า",
     "walkin_sale": "ขายหน้าร้าน",
+    "cancel_walkin_sale": "ยกเลิกขายหน้าร้าน",
 }
 
 

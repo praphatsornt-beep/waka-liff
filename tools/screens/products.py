@@ -2,6 +2,7 @@
 """จัดการสินค้าและหมวดหมู่ — เพิ่ม/แก้ไขสินค้า และจัดการหมวดหมู่สินค้า, แยกออกมาจากหน้าสต็อกสินค้า"""
 
 import base64
+import json
 import os
 import re
 import sys
@@ -20,6 +21,18 @@ from theme import apply_theme, page_header, admin_name, badge
 GAS_URL  = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
 WAKA_S   = "wk26xK9mPqRt"  # shared secret doPost/doGet require via ?_s= (same value as stock.py's WAKA_S)
 ADMIN_CODE = "waka99"  # updateProduct/addProduct still require this to prove admin, same as stock.py
+
+# ประวัติเข้า-ออกสินค้าดึงจาก staff_actions (target_id = ชื่อสินค้า) — ครอบคลุม
+# เฉพาะ action ที่ target_id เป็นชื่อสินค้าจริงๆ (คำสั่งซื้อ/ขายหน้าร้านบันทึก
+# target_id เป็น order_id/sale_id แทน จึงไม่โผล่ที่นี่)
+PRODUCT_ACTION_LABELS = {
+    "add_product": "สร้างสินค้าใหม่",
+    "update_product": "แก้ไขข้อมูลสินค้า",
+    "add_stock": "ปรับสต็อกคลังกลาง",
+    "withdraw_central_stock": "เบิกจากคลังกลาง",
+    "withdraw_stock": "เบิกจากสต็อกสาขา",
+    "return_stock": "คืนจากสาขากลับคลังกลาง",
+}
 
 
 def drive_thumbnail_url(url: str) -> str:
@@ -80,6 +93,117 @@ def load_config() -> dict:
     return {r["key"]: (r.get("value") or "") for r in rows}
 
 
+@st.cache_data(ttl=60)
+def load_shipments() -> pd.DataFrame:
+    rows = get_supabase().table("shipments").select("*").order("timestamp", desc=True).execute().data
+    return pd.DataFrame(rows)
+
+
+def parse_items(items_json) -> list:
+    if isinstance(items_json, list):
+        return items_json
+    try:
+        return json.loads(items_json) if items_json else []
+    except Exception:
+        return []
+
+
+def _fmt_ts(ts) -> str:
+    dt = pd.to_datetime(ts, errors="coerce", utc=True)
+    if pd.isna(dt):
+        return ""
+    return dt.tz_convert("Asia/Bangkok").strftime("%Y-%m-%d %H:%M")
+
+
+def _shipment_item_qty_text(it: dict) -> str:
+    box = (it.get("qty_box") or 0) + (it.get("qty_box_extra") or 0)
+    pack = (it.get("qty_pack") or 0) + (it.get("qty_pack_extra") or 0)
+    parts = []
+    if box:
+        parts.append(f"{box} กล่อง")
+    if pack:
+        parts.append(f"{pack} ซอง")
+    return " ".join(parts) or "—"
+
+
+@st.cache_data(ttl=30)
+def load_product_history(name: str):
+    """คืน (created_text, history_df) สำหรับสินค้าชื่อ name — created_text มาจาก
+    staff_actions ที่ action='add_product' (ถ้ามี), history_df รวมทั้งการเบิก/
+    ปรับสต็อกคลังกลาง/สาขา (staff_actions ที่ target_id ตรงชื่อสินค้า) และล็อต
+    ส่งสาขา (shipments ที่ items_json มีสินค้านี้อยู่) เรียงจากล่าสุดไปเก่าสุด.
+    ข้อจำกัด: ถ้าสินค้าเคยถูกเปลี่ยนชื่อมาก่อน ประวัติภายใต้ชื่อเดิมจะไม่โผล่ที่นี่
+    (staff_actions เก็บชื่อ ณ ตอนทำรายการจริง ไม่ได้ sync ตอน rename)"""
+    actions_rows = (
+        get_supabase().table("staff_actions").select("*")
+        .eq("target_id", name).order("created_at", desc=True).execute().data
+    )
+    entries = []
+    created_text = ""
+    for r in actions_rows:
+        action = r.get("action", "")
+        if action == "add_product" and not created_text:
+            created_text = _fmt_ts(r.get("created_at"))
+        entries.append({
+            "เวลา": _fmt_ts(r.get("created_at")),
+            "_ts": r.get("created_at"),
+            "การกระทำ": PRODUCT_ACTION_LABELS.get(action, action),
+            "พนักงาน": r.get("staff_name") or "ไม่ระบุ",
+            "รายละเอียด": r.get("detail") or "",
+        })
+
+    ships = load_shipments()
+    shipment_hits = []
+    matching_shipment_ids = []
+    if not ships.empty:
+        for _, sr in ships.iterrows():
+            hit = next((it for it in parse_items(sr.get("items_json")) if it.get("name") == name), None)
+            if not hit:
+                continue
+            shipment_hits.append((sr, hit))
+            sid = sr.get("shipment_id", "")
+            if sid:
+                matching_shipment_ids.append(sid)
+
+    ship_staff = {}
+    if matching_shipment_ids:
+        ship_action_rows = (
+            get_supabase().table("staff_actions").select("*")
+            .in_("target_id", matching_shipment_ids)
+            .in_("action", ["create_shipment", "receive_shipment"])
+            .execute().data
+        )
+        for r in ship_action_rows:
+            ship_staff.setdefault(r.get("target_id", ""), {})[r.get("action", "")] = r.get("staff_name") or "ไม่ระบุ"
+
+    for sr, hit in shipment_hits:
+        sid = sr.get("shipment_id", "")
+        qty_text = _shipment_item_qty_text(hit)
+        entries.append({
+            "เวลา": _fmt_ts(sr.get("timestamp")),
+            "_ts": sr.get("timestamp"),
+            "การกระทำ": f"ส่งล็อตไปสาขา {sr.get('to_branch', '')}",
+            "พนักงาน": ship_staff.get(sid, {}).get("create_shipment", "ไม่ระบุ"),
+            "รายละเอียด": f"{qty_text} — ล็อต {sid} ({sr.get('status', '')})",
+        })
+        if sr.get("status") == "รับแล้ว" and sr.get("received_at"):
+            entries.append({
+                "เวลา": _fmt_ts(sr.get("received_at")),
+                "_ts": sr.get("received_at"),
+                "การกระทำ": f"สาขา {sr.get('to_branch', '')} รับของแล้ว",
+                "พนักงาน": ship_staff.get(sid, {}).get("receive_shipment", "ไม่ระบุ"),
+                "รายละเอียด": f"{qty_text} — ล็อต {sid}",
+            })
+
+    if not entries:
+        return created_text, pd.DataFrame()
+
+    hist_df = pd.DataFrame(entries)
+    hist_df["_ts_dt"] = pd.to_datetime(hist_df["_ts"], errors="coerce", utc=True)
+    hist_df = hist_df.sort_values("_ts_dt", ascending=False, na_position="last")
+    return created_text, hist_df[["เวลา", "การกระทำ", "พนักงาน", "รายละเอียด"]]
+
+
 # st.success() called right before st.rerun() never reaches the screen — the
 # rerun wipes it before the browser paints, so the person clicking "บันทึก"
 # sees nothing happen and clicks again. Stash the message in session_state
@@ -118,6 +242,54 @@ ALL_CATEGORIES = sorted(set(_product_cats) | {k[len(CAT_DESC_PREFIX):] for k in 
 tab_browse, tab_add, tab_edit, tab_categories = st.tabs(
     ["📋 สินค้า", "🆕 เพิ่มสินค้าใหม่", "✏️ แก้ไขสินค้า", "🏷️ หมวดหมู่สินค้า"]
 )
+
+
+@st.dialog("📜 รายละเอียดสินค้า", width="large")
+def _product_detail_dialog(name: str):
+    row_df = catalog[catalog["name"] == name]
+    if row_df.empty:
+        st.caption("ไม่พบสินค้านี้แล้ว")
+        return
+    row = row_df.iloc[0]
+    row_active = _is_active(row)
+
+    dc1, dc2 = st.columns([1, 3])
+    with dc1:
+        thumb_url = drive_thumbnail_url(str(row.get("image_url") or ""))
+        if thumb_url:
+            st.image(thumb_url, width=120)
+    with dc2:
+        st.markdown(f"### {name}")
+        meta_bits = [str(b) for b in [row.get("category"), row.get("id")] if b]
+        st.caption(" · ".join(meta_bits) or "—")
+        st.markdown(
+            badge("เปิดขาย" if row_active else "ปิดขาย", "success" if row_active else "danger"),
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("คลังกลาง (กล่อง)", int(_num(row.get("qty_box"))))
+    m2.metric("คลังกลาง (ซอง)", int(_num(row.get("qty_pack"))))
+    m3.metric("ราคา/กล่อง", f"฿{_num(row.get('price_box')):,.0f}")
+    m4.metric("ราคา/ซอง", f"฿{_num(row.get('price_pack')):,.0f}")
+
+    with st.spinner("กำลังโหลดประวัติ..."):
+        created_text, history_df = load_product_history(name)
+
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    if created_text:
+        st.caption(f"🕓 สร้างเมื่อ: {created_text}")
+    else:
+        st.caption("🕓 ไม่ทราบวันที่สร้าง (สินค้านี้มีอยู่ก่อนระบบบันทึกประวัติ หรือถูกเพิ่มโดยวิธีอื่น)")
+
+    st.markdown("**ประวัติเข้า-ออกสินค้า**")
+    if history_df.empty:
+        st.caption("ยังไม่มีประวัติเข้า-ออกที่บันทึกไว้")
+    else:
+        st.dataframe(history_df, use_container_width=True, hide_index=True)
+        st.caption("หมายเหตุ: ถ้าสินค้านี้เคยถูกเปลี่ยนชื่อมาก่อน ประวัติภายใต้ชื่อเดิมจะไม่แสดงในนี้")
+
 
 with tab_browse:
     br1, br2 = st.columns([2, 1])
@@ -184,6 +356,8 @@ with tab_browse:
                             st.rerun()
                         except Exception as e:
                             st.error(f"ทำรายการไม่ได้: {e}")
+                    if st.button("📜 ประวัติ", key=f"browse_history_{row['name']}", use_container_width=True):
+                        _product_detail_dialog(row["name"])
 
 with tab_edit:
     manage_cat_sel = st.selectbox("กรองหมวดหมู่", ["ทุกหมวดหมู่"] + ALL_CATEGORIES, key="edit_product_cat_filter")
