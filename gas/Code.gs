@@ -2939,7 +2939,10 @@ function handleAddStock(data) {
     var addStockDetail = (data.add_box ? (Number(data.add_box) > 0 ? "+" : "") + data.add_box + " กล่อง " : "") +
       (data.add_pack ? (Number(data.add_pack) > 0 ? "+" : "") + data.add_pack + " ซอง" : "");
     if (reason) addStockDetail = (addStockDetail || "").trim() + " — " + reason;
-    _logStaffAction_(staffName, null, "add_stock", data.name, addStockDetail || null);
+    // target_id = รหัสสินค้า (คงที่แม้เปลี่ยนชื่อทีหลัง) ไม่ใช่ชื่อสินค้า — กัน
+    // ประวัติเข้า-ออกสินค้าใน Streamlit หลุดหายไปเวลามีการเปลี่ยนชื่อสินค้า
+    // (fallback เป็นชื่อถ้าแถวไม่มี id ด้วยเหตุผลใดก็ตาม)
+    _logStaffAction_(staffName, null, "add_stock", row.id || data.name, addStockDetail || null);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -2980,7 +2983,8 @@ function handleAddProduct(data) {
     };
     CacheService.getScriptCache().remove("catalog_config");
     writeSupabaseRow_("catalog", newRow, SUPABASE_CATALOG_HEADER, "name", lock);
-    _logStaffAction_(staffName, null, "add_product", newRow.name, newId);
+    // target_id = รหัสสินค้า (id), ไม่ใช่ชื่อ — ดู comment เดียวกันใน handleAddStock
+    _logStaffAction_(staffName, null, "add_product", newId, "ชื่อ: " + newRow.name);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
@@ -3009,6 +3013,7 @@ function handleUpdateProduct(data) {
     };
 
     var newName = String(data.new_name || "").trim();
+    var renameLog = "";
     if (newName && newName !== data.name) {
       var dup = getSupabaseRow_("catalog", "name", newName);
       if (dup) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "มีสินค้าชื่อนี้อยู่แล้ว" }))); }
@@ -3017,7 +3022,9 @@ function handleUpdateProduct(data) {
       _renamePendingShipments_(data.name, newName);
       _renameHistoricalItemsJson_("orders", "order_id", data.name, newName);
       _renameHistoricalItemsJson_("walkin_sales", "sale_id", data.name, newName);
-      changeLog.push("ชื่อ: " + data.name + " → " + newName);
+      // เก็บแยกจาก changeLog เดิม — log เป็น action ของตัวเอง (rename_product)
+      // แทนที่จะรวมกับ update_product ทั่วไป จะได้เด่นชัดในประวัติสินค้า
+      renameLog = data.name + " → " + newName;
       row.name = newName;
     }
 
@@ -3040,8 +3047,15 @@ function handleUpdateProduct(data) {
     CacheService.getScriptCache().remove("catalog_config");
     writeSupabaseRow_("catalog", row, SUPABASE_CATALOG_HEADER, "name", lock);
 
+    // target_id = รหัสสินค้า (id) เสมอ — คงที่แม้ชื่อเพิ่งเปลี่ยนไปข้างบน ทำให้
+    // ประวัติของสินค้าเดียวกัน (ทั้ง rename และแก้ไขฟิลด์อื่น) รวมกันได้ถูกต้อง
+    // แม้ผ่านการเปลี่ยนชื่อหลายรอบ ไม่หลุดหายไปหาด้วยชื่อเก่า
+    var logTargetId = row.id || row.name;
+    if (renameLog) {
+      _logStaffAction_(staffName, null, "rename_product", logTargetId, renameLog);
+    }
     if (changeLog.length > 0) {
-      _logStaffAction_(staffName, null, "update_product", row.name, changeLog.join("; "));
+      _logStaffAction_(staffName, null, "update_product", logTargetId, changeLog.join("; "));
     }
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
@@ -3137,7 +3151,10 @@ function handleWithdrawStock(data) {
       _linePush(groupStaffWithdraw, "📤 " + staffName + " เบิก " + name + " x" + qty + " " + unitLabel + " จากสาขา " + branch +
         (reason ? "\nเหตุผล: " + reason : ""));
     }
-    _logStaffAction_(staffName, branch, "withdraw_stock", name, qty + (type === "box" ? " กล่อง" : " ซอง") + (reason ? " — " + reason : ""));
+    // ต้องอ่าน catalog แยกเพื่อเอา id (รหัสสินค้า) มาใช้เป็น target_id — ฟังก์ชันนี้
+    // แก้แค่ stock_branch ด้านบน ไม่เคยอ่าน catalog row มาก่อนหน้านี้เลย
+    var wCatRow = getSupabaseRow_("catalog", "name", name);
+    _logStaffAction_(staffName, branch, "withdraw_stock", (wCatRow && wCatRow.id) || name, qty + (type === "box" ? " กล่อง" : " ซอง") + (reason ? " — " + reason : ""));
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
@@ -3192,7 +3209,7 @@ function handleWithdrawCentralStock(data) {
       _linePush(groupStaffWithdrawCentral, "📤 " + (staffName || "ไม่ระบุชื่อ") + " เบิก " + name + " " + wcQtyText + " จากคลังกลาง" +
         (reason ? "\nเหตุผล: " + reason : ""));
     }
-    _logStaffAction_(staffName, null, "withdraw_central_stock", name, wcQtyText + (reason ? " — " + reason : ""));
+    _logStaffAction_(staffName, null, "withdraw_central_stock", row.id || name, wcQtyText + (reason ? " — " + reason : ""));
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
@@ -3245,7 +3262,7 @@ function handleReturnStock(data) {
     if (!srRes.ok) throw new Error("Supabase stock_returns write failed: " + srRes.text);
     CacheService.getScriptCache().remove("catalog_config");
     lock.releaseLock();
-    _logStaffAction_(staffName, branch, "return_stock", name, "Box:" + qtyBox + " Pack:" + qtyPack);
+    _logStaffAction_(staffName, branch, "return_stock", (catRow && catRow.id) || name, "Box:" + qtyBox + " Pack:" + qtyPack);
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {

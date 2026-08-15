@@ -27,6 +27,7 @@ ADMIN_CODE = "waka99"  # updateProduct/addProduct still require this to prove ad
 # target_id เป็น order_id/sale_id แทน จึงไม่โผล่ที่นี่)
 PRODUCT_ACTION_LABELS = {
     "add_product": "สร้างสินค้าใหม่",
+    "rename_product": "เปลี่ยนชื่อสินค้า",
     "update_product": "แก้ไขข้อมูลสินค้า",
     "add_stock": "ปรับสต็อกคลังกลาง",
     "withdraw_central_stock": "เบิกจากคลังกลาง",
@@ -127,16 +128,22 @@ def _shipment_item_qty_text(it: dict) -> str:
 
 
 @st.cache_data(ttl=30)
-def load_product_history(name: str):
-    """คืน (created_text, history_df) สำหรับสินค้าชื่อ name — created_text มาจาก
+def load_product_history(name: str, product_id: str = ""):
+    """คืน (created_text, history_df) สำหรับสินค้า — created_text มาจาก
     staff_actions ที่ action='add_product' (ถ้ามี), history_df รวมทั้งการเบิก/
-    ปรับสต็อกคลังกลาง/สาขา (staff_actions ที่ target_id ตรงชื่อสินค้า) และล็อต
-    ส่งสาขา (shipments ที่ items_json มีสินค้านี้อยู่) เรียงจากล่าสุดไปเก่าสุด.
-    ข้อจำกัด: ถ้าสินค้าเคยถูกเปลี่ยนชื่อมาก่อน ประวัติภายใต้ชื่อเดิมจะไม่โผล่ที่นี่
-    (staff_actions เก็บชื่อ ณ ตอนทำรายการจริง ไม่ได้ sync ตอน rename)"""
+    ปรับสต็อกคลังกลาง/สาขา/เปลี่ยนชื่อ (staff_actions) และล็อตส่งสาขา (shipments
+    ที่ items_json มีสินค้านี้อยู่) เรียงจากล่าสุดไปเก่าสุด.
+
+    ตั้งแต่ gas/Code.gs เวอร์ชันที่บันทึก target_id เป็น "รหัสสินค้า" (product_id,
+    คงที่แม้เปลี่ยนชื่อ) แทนชื่อสินค้า (เปลี่ยนได้) — คิวรี่ทั้งสองแบบพร้อมกัน
+    (target_id = product_id หรือ = name) เพื่อให้ประวัติเก่าที่ยังผูกกับชื่อ (ก่อน
+    ปรับ) กับประวัติใหม่ที่ผูกกับรหัส (หลังปรับ) รวมกันมาแสดงครบ. ส่วนล็อตส่งสาขา
+    ยังจับคู่ด้วยชื่อเท่านั้น (shipments.items_json เก็บ snapshot ชื่อ ไม่มีรหัส) —
+    ถ้าเคยเปลี่ยนชื่อ ล็อตเก่าก่อนเปลี่ยนชื่อจะไม่โผล่ในนี้"""
+    target_ids = [t for t in {name, product_id} if t]
     actions_rows = (
         get_supabase().table("staff_actions").select("*")
-        .eq("target_id", name).order("created_at", desc=True).execute().data
+        .in_("target_id", target_ids).order("created_at", desc=True).execute().data
     )
     entries = []
     created_text = ""
@@ -275,7 +282,7 @@ def _product_detail_dialog(name: str):
     m4.metric("ราคา/ซอง", f"฿{_num(row.get('price_pack')):,.0f}")
 
     with st.spinner("กำลังโหลดประวัติ..."):
-        created_text, history_df = load_product_history(name)
+        created_text, history_df = load_product_history(name, str(row.get("id") or ""))
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     if created_text:
@@ -288,7 +295,7 @@ def _product_detail_dialog(name: str):
         st.caption("ยังไม่มีประวัติเข้า-ออกที่บันทึกไว้")
     else:
         st.dataframe(history_df, use_container_width=True, hide_index=True)
-        st.caption("หมายเหตุ: ถ้าสินค้านี้เคยถูกเปลี่ยนชื่อมาก่อน ประวัติภายใต้ชื่อเดิมจะไม่แสดงในนี้")
+        st.caption("หมายเหตุ: ล็อตส่งสาขาที่สร้างไว้ก่อนสินค้านี้เคยเปลี่ยนชื่อ อาจไม่แสดงในนี้ (ผูกกับชื่อ ณ ตอนสร้างล็อต ไม่ใช่รหัสสินค้า)")
 
 
 with tab_browse:

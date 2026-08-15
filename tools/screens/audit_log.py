@@ -32,6 +32,7 @@ ACTION_LABELS = {
     "return_stock": "คืนสต็อกกลับคลังกลาง",
     "add_stock": "ปรับสต็อกคลังกลาง",
     "add_product": "เพิ่มสินค้าใหม่",
+    "rename_product": "เปลี่ยนชื่อสินค้า",
     "update_product": "แก้ไขสินค้า",
     "walkin_sale": "ขายหน้าร้าน",
     "cancel_walkin_sale": "ยกเลิกขายหน้าร้าน",
