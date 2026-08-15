@@ -313,3 +313,27 @@ grant usage, select on all sequences in schema public to service_role;
 -- create index if not exists staff_actions_staff_name_idx on staff_actions (staff_name);
 -- alter table staff_actions enable row level security;
 -- grant select, insert, update, delete on public.staff_actions to service_role;
+
+-- ── Migration (2026-08-15): FK guardrail for stock_branch renames ──────────
+-- Run in the Supabase SQL editor. Adds a real foreign key so Postgres itself
+-- keeps stock_branch.name in sync on rename/delete, as a second, DB-level
+-- guarantee on top of (not a replacement for) rename_product()'s manual
+-- transaction and handleDeleteProduct's manual stock_branch cleanup — both
+-- stay exactly as they are. Verified 2026-08-15: 0 orphan stock_branch rows
+-- exist (every name already matches a catalog row), so this applies cleanly
+-- against live data.
+--
+-- Deliberately NOT applied to withdrawals/stock_returns: those two tables
+-- intentionally keep their rows after a product is deleted (they're the
+-- historical audit trail — handleDeleteProduct never touches them), so a
+-- hard FK there would either block deleting any product that ever had a
+-- withdrawal/return, or force the name to null and lose that history. Not
+-- worth it for those two; the existing patchSupabase_ rename calls in
+-- handleUpdateProduct already keep them correct on rename, which is the
+-- part that actually mattered.
+--
+-- alter table stock_branch
+--   add constraint stock_branch_name_fkey
+--   foreign key (name) references catalog (name)
+--   on update cascade
+--   on delete cascade;
