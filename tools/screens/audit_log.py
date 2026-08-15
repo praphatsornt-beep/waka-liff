@@ -36,6 +36,7 @@ ACTION_LABELS = {
     "update_product": "แก้ไขสินค้า",
     "walkin_sale": "ขายหน้าร้าน",
     "cancel_walkin_sale": "ยกเลิกขายหน้าร้าน",
+    "cancel_walkin_sale_item": "ยกเลิกขายหน้าร้าน (รายสินค้า)",
 }
 
 

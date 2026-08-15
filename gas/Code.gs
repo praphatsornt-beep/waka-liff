@@ -3445,6 +3445,19 @@ function handleCancelWalkinSale(data) {
     }
     _logStaffAction_(staffName, branch, "cancel_walkin_sale", saleId, "฿" + (sale.total || 0) + " — " + itemsText);
 
+    // แยก log อีกชั้นหนึ่งต่อรายการสินค้า (target_id = รหัสสินค้า) — ต่างจาก log
+    // ด้านบนที่ target_id เป็น sale_id (ผูกกับใบขาย ไม่ผูกกับสินค้าตัวใดตัวหนึ่ง)
+    // ทำให้ tools/screens/products.py's ประวัติสินค้าต่อชิ้นดึงมาแสดงได้ด้วย
+    // (เดิมยอดขายหน้าร้านที่ถูกยกเลิกไม่โผล่ในประวัติสินค้าเลย เพราะแถวใน
+    // walkin_sales ถูกลบไปแล้วตอนยกเลิก ไม่มีอะไรให้ items_json สแกนเจอ)
+    var cwsCatRows = items.length > 0 ? _fetchCatalogRows_() : [];
+    items.forEach(function(it) {
+      var cwsRow = _findCatalogRow_(cwsCatRows, it.name);
+      var cwsUnit = it.type === "box" ? "กล่อง" : "ซอง";
+      _logStaffAction_(staffName, branch, "cancel_walkin_sale_item", (cwsRow && cwsRow.id) || it.name,
+        (it.qty || 0) + " " + cwsUnit + " x ฿" + (it.price || 0) + " — ยกเลิกจากการขาย " + saleId);
+    });
+
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch (_) {}

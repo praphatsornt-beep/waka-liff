@@ -22,12 +22,10 @@ GAS_URL  = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8g
 WAKA_S   = "wk26xK9mPqRt"  # shared secret doPost/doGet require via ?_s= (same value as stock.py's WAKA_S)
 ADMIN_CODE = "waka99"  # updateProduct/addProduct still require this to prove admin, same as stock.py
 
-# ประวัติเข้า-ออกสินค้าดึงจาก staff_actions (target_id = ชื่อสินค้า) — ครอบคลุม
-# เฉพาะ action ที่ target_id เป็นชื่อสินค้าจริงๆ (คำสั่งซื้อออนไลน์บันทึก target_id
-# เป็น order_id แทน จึงไม่โผล่ที่นี่ — ดูยอดขายออนไลน์ได้ที่หน้ารายงานแทน. ขาย
-# หน้าร้าน (walk-in) ก็บันทึก target_id เป็น sale_id เหมือนกัน แต่ load_product_history()
-# ด้านล่างดึงมาแสดงด้วยวิธีอื่น — สแกน walkin_sales.items_json หาแถวที่มีสินค้านี้
-# แทน เหมือนที่ทำกับล็อตส่งสาขา (shipments) อยู่แล้ว)
+# label สำหรับ action ที่ target_id ผูกกับสินค้าโดยตรง (ชื่อ/รหัสสินค้า) — ดึงมา
+# แสดงตรงๆ ใน load_product_history() ด้านล่าง ส่วน action ที่ target_id ผูกกับ
+# order_id/sale_id (คำสั่งซื้อออนไลน์, ขายหน้าร้าน) ดูรายละเอียดวิธีดึงมาแสดงที่
+# docstring ของ load_product_history()
 PRODUCT_ACTION_LABELS = {
     "add_product": "สร้างสินค้าใหม่",
     "rename_product": "เปลี่ยนชื่อสินค้า",
@@ -36,6 +34,7 @@ PRODUCT_ACTION_LABELS = {
     "withdraw_central_stock": "เบิกจากคลังกลาง",
     "withdraw_stock": "เบิกจากสต็อกสาขา",
     "return_stock": "คืนจากสาขากลับคลังกลาง",
+    "cancel_walkin_sale_item": "ยกเลิกยอดขายหน้าร้าน",
 }
 
 
@@ -178,13 +177,12 @@ def load_product_history(name: str, product_id: str = ""):
     cancelled_at (ยกเลิกบางรายการผ่าน handlePartialCancelItems, คืนสต็อกแล้ว
     เหมือนกัน) — กันไม่ให้แสดงว่า "ขายแล้ว" ทั้งที่จริงคืนของกลับสต็อกไปแล้ว.
 
-    ยอดขายหน้าร้านที่ถูกยกเลิก (cancel_walkin_sale) ไม่โผล่ — แถวใน walkin_sales
-    ถูกลบทิ้งไปแล้วตอนยกเลิก ไม่มีอะไรให้สแกนเจอ ส่วน staff_actions ของ
-    cancel_walkin_sale เองก็ target_id เป็น sale_id (เหมือน action ขายเดิม) ไม่ใช่
-    ชื่อ/รหัสสินค้า จะดึงมาโยงกับสินค้าตัวใดตัวหนึ่งได้ก็ต้องพาร์สชื่อสินค้าออกจาก
-    ข้อความ detail แบบ heuristic (เสี่ยง false-positive ถ้าชื่อสินค้าซ้อนคำกัน) —
-    ตั้งใจไม่ทำแบบนั้น ถ้าต้องการจริงๆ ควรแก้ gas/Code.gs ให้บันทึก item แยกเป็น
-    structured data แทน (ต้อง deploy ใหม่)"""
+    ยอดขายหน้าร้านที่ถูกยกเลิก: แถวใน walkin_sales ถูกลบทิ้งไปแล้วตอนยกเลิก
+    (nothing left to scan) แต่ handleCancelWalkinSale (gas/Code.gs) log แยก
+    เป็น action="cancel_walkin_sale_item" หนึ่งแถวต่อสินค้าหนึ่งชิ้นในใบขายนั้น
+    โดยตรง (target_id = รหัสสินค้า) จึงถูกดึงมาแสดงผ่าน staff_actions query
+    ก้อนแรกด้านบนอัตโนมัติ ไม่ต้อง query เพิ่ม — ต้อง deploy gas/Code.gs เวอร์ชัน
+    ที่มีการ log นี้ก่อนถึงจะเห็นผล (ยอดยกเลิกที่เกิดก่อน deploy จะไม่มีแถวนี้)"""
     target_ids = [t for t in {name, product_id} if t]
     actions_rows = (
         get_supabase().table("staff_actions").select("*")
