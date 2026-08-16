@@ -566,7 +566,15 @@ let scanner = null, scannerNew = null;
 let userRole = 'staff';
 function _authCode() { return userRole === 'admin' ? (localStorage.getItem('waka_admin_code') || '') : (localStorage.getItem('waka_branch_code') || ''); }
 function gid(id) { return document.getElementById(id); }
-function esc(s) { const d=document.createElement('div');d.textContent=s;return d.innerHTML; }
+// textContent→innerHTML เข้ารหัสแค่ &, <, > (พอสำหรับแสดงใน element content) —
+// แต่ " ไม่ถูกเข้ารหัส ทำให้ไม่ปลอดภัยเมื่อเอาไปฝังใน HTML attribute ที่ครอบด้วย
+// double quote (เช่น onclick="...${esc(JSON.stringify(items))}...") — ถ้าข้อมูล
+// ที่ฝังมี " (JSON.stringify สร้าง " ล้อมทุก key/string เสมออยู่แล้ว) จะทำให้
+// attribute ปิดก่อนเวลาอันควร ทำลาย HTML/onclick ส่วนที่เหลือของการ์ดนั้นแบบ
+// เงียบๆ (กดปุ่มแล้วไม่มีอะไรเกิดขึ้นเลย ไม่มี error ให้เห็น) — เข้ารหัส " ด้วย
+// เพื่อให้ใช้ฝังใน attribute ได้อย่างปลอดภัยเสมอ ไม่กระทบการแสดงผลปกติ (แค่ทำให้
+// " ที่แสดงบนจอยังเป็น " เหมือนเดิม ผ่าน HTML entity)
+function esc(s) { const d=document.createElement('div');d.textContent=s;return d.innerHTML.replace(/"/g,'&quot;'); }
 
 // ── ชื่อพนักงาน: ถามครั้งเดียวตอน login แล้วใช้ซ้ำทุกจุดที่ต้องบันทึกผู้ทำรายการ
 // เก็บใน localStorage คนละคีย์กับ waka_branch/waka_staff_role เพราะ "ใคร" (คน)
