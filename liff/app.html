@@ -576,6 +576,19 @@ function gid(id) { return document.getElementById(id); }
 // " ที่แสดงบนจอยังเป็น " เหมือนเดิม ผ่าน HTML entity)
 function esc(s) { const d=document.createElement('div');d.textContent=s;return d.innerHTML.replace(/"/g,'&quot;'); }
 
+// ── ขั้นตอนแจ้งไลน์ลูกค้าล่าสุด — mirror ของ tools/screens/orders.py's
+// line_notify_stage(): อิง slip_status/fulfillment ตัดสินว่า _linePush()
+// ใน Code.gs ยิงไปถึงขั้นไหนแล้ว (รับออเดอร์/ยืนยันชำระเงิน/พร้อมรับ/ส่งมอบ)
+// ไม่ได้ query log จริง แค่ derive จาก field ที่มีอยู่แล้ว
+function _lineStage(slipStatus, ff) {
+  ff = ff || '';
+  if (['รับแล้ว','สาขายืนยัน','จัดส่งแล้ว'].includes(ff)) return 'ส่งมอบครบ';
+  if (ff === 'รับบางส่วนแล้ว') return 'ส่งมอบบางส่วน';
+  if (['พร้อมรับ','บางส่วน'].includes(ff)) return 'พร้อมรับ';
+  if (slipStatus === 'ยืนยัน') return 'ยืนยันชำระเงิน';
+  return 'รับออเดอร์';
+}
+
 // ── ชื่อพนักงาน: ถามครั้งเดียวตอน login แล้วใช้ซ้ำทุกจุดที่ต้องบันทึกผู้ทำรายการ
 // เก็บใน localStorage คนละคีย์กับ waka_branch/waka_staff_role เพราะ "ใคร" (คน)
 // กับ "auth ว่าเข้าได้" เป็นคนละเรื่องกัน localStorage ใช้ร่วมกันได้ข้ามหน้า
@@ -827,6 +840,7 @@ function renderOrders() {
           <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;color:#4A3728">฿${Number(o.total).toLocaleString()}</div>
           <span class="status ${sc}" style="margin-top:4px;display:inline-block">${esc(o.slip_status)}</span>
           ${ff?`<div style="font-size:10px;color:#9A8878;margin-top:2px">${esc(ff)}</div>`:''}
+          <div style="font-size:10px;color:#9A8878;margin-top:2px">📨 ${esc(_lineStage(o.slip_status, ff))}</div>
         </div>
       </div>
       <div class="od" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #F0EBE3">
@@ -1258,6 +1272,7 @@ function renderBrOrdersList() {
           <div style="font-weight:600;margin-bottom:6px">รายการสินค้า</div>
           ${itemsHtml}
           <div style="margin-top:8px;font-size:12px;color:var(--text2)">สั่งเมื่อ: ${esc(o.timestamp||'')}</div>
+          <div style="margin-top:4px;font-size:12px;color:var(--text2)">📨 แจ้งไลน์ล่าสุด: ${esc(_lineStage('ยืนยัน', ff))}</div>
           ${o.notified_at?`<div style="margin-top:4px;font-size:12px;color:#2d8f4e">📨 แจ้งลูกค้าแล้ว · ${esc(o.notified_at)}</div>`:''}
           ${hasPartialPending?`<button class="btn" style="margin-top:10px;background:#d97706" onclick="event.stopPropagation();showPartialReadyDialog('${o.order_id}',${itemsJson})">${readyBtnLabel}</button>`:''}
           ${(canHandover&&hasReadyItems)||(!items.some(it=>it.ready_at)&&canHandover)?`<button class="btn btn-green" style="margin-top:8px" onclick="event.stopPropagation();showHandoverDialog('${o.order_id}',${itemsJson},'br')">🤝 ส่งมอบสินค้า</button>`:''}
@@ -1296,6 +1311,7 @@ async function searchOrders() {
       <div style="margin:6px 0;padding:8px;background:#f9f8f5;border-radius:8px">${itemsHtml}</div>
       <div style="font-size:14px;font-weight:700;color:#2d8f4e">฿${Number(o.total).toLocaleString()}</div>
       <div style="font-size:12px;color:#888;margin-top:2px">สลิป: ${esc(o.slip_status)}</div>
+      <div style="font-size:12px;color:#888;margin-top:2px">📨 แจ้งไลน์ล่าสุด: ${esc(_lineStage(o.slip_status, ff))}</div>
       ${ff==='รับบางส่วนแล้ว'?'<div style="font-size:12px;color:#d97706;margin-top:4px">📦 ส่งมอบบางส่วนแล้ว รอสินค้าที่เหลือ</div>':''}
       ${o.notified_at?`<div style="font-size:12px;color:#2d8f4e;margin-top:4px">📨 แจ้งลูกค้าแล้ว · ${esc(o.notified_at)}</div>`:''}
       ${hasPartialPending&&o.slip_status==='ยืนยัน'?`<button class="btn btn-sm" style="margin-top:8px;background:#d97706" onclick="showPartialReadyDialog('${o.order_id}',${itemsJson})">${readyBtnLabel}</button>`:''}

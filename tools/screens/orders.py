@@ -324,6 +324,24 @@ def fulfill_kind(s: str) -> str:
     return "success" if s in ("รับแล้ว", "สาขายืนยัน", "จัดส่งแล้ว", "พร้อมรับ") else "pending"
 
 
+def line_notify_stage(slip_status: str, fulfillment: str) -> str:
+    """Which customer-facing LINE message an order has reached, derived from
+    slip_status/fulfillment — mirrors the actual _linePush() call sites in
+    gas/Code.gs (order create, confirmSlip/instant-ready, handoverOrder) so
+    staff can see notification progress without cross-checking those fields
+    themselves."""
+    ff = fulfillment or ""
+    if ff in ("รับแล้ว", "สาขายืนยัน", "จัดส่งแล้ว"):
+        return "ส่งมอบครบ"
+    if ff == "รับบางส่วนแล้ว":
+        return "ส่งมอบบางส่วน"
+    if ff in ("พร้อมรับ", "บางส่วน"):
+        return "พร้อมรับ"
+    if slip_status == "ยืนยัน":
+        return "ยืนยันชำระเงิน"
+    return "รับออเดอร์"
+
+
 def build_confirm_message(order_id: str, items: list, total, branch: str) -> str:
     """Mirrors gas/Code.gs's handleConfirmSlip default LINE message — used to
     pre-fill the editable textarea so admins start from the real template."""
@@ -703,6 +721,7 @@ with tab_cards:
           <span style="padding:1px 8px;border-radius:20px;background:{SURFACE_ALT};color:{TEXT2};font-size:11px">LIFF App</span>
           <span style="padding:1px 8px;border-radius:20px;background:{SURFACE_ALT};color:{TEXT2};font-size:11px">โอนเงิน</span>
           {badge((f'จัดส่ง · {ff_status}' if is_del else f'{ff_icon} {ff_status}'), fulfill_kind(ff_status)) if cur_status == "ยืนยัน" else ''}
+          {badge(f'📨 แจ้งไลน์: {line_notify_stage(cur_status, row.get("fulfillment", ""))}', 'pending')}
           {badge(f'📣 แจ้งแล้ว {notified_at}', 'success') if notified_at else ''}
           <span style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:{TEXT3}">{items_summary}</span>
         </div>
