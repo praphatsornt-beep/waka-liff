@@ -1059,16 +1059,29 @@ function notifyCustomer(userId, order) {
   _linePush(userId, lines.join("\n"));
 }
 
+// เดิมไม่เช็ค response เลย (muteHttpExceptions:true กันไม่ให้ throw แต่ก็ไม่มี
+// ใครอ่าน response code ต่อ) — ถ้า LINE_TOKEN หมดอายุ/ผิด หรือบอทถูกเตะออกจาก
+// กลุ่ม ข้อความจะเงียบหายไปโดยไม่มีร่องรอยอะไรเลยแม้แต่ใน log ต่างจาก
+// pushToSupabase_/patchSupabase_ ที่ log ความล้มเหลวไว้เสมอ ตรวจ+log ให้เหมือน
+// กัน อย่างน้อยเปิด Executions ใน Apps Script แล้วดูย้อนหลังได้ว่าพังเพราะอะไร
 function _linePush(to, text) {
-  UrlFetchApp.fetch("https://api.line.me/v2/bot/message/push", {
-    method: "post",
-    muteHttpExceptions: true,
-    headers: {
-      Authorization:  "Bearer " + LINE_TOKEN,
-      "Content-Type": "application/json",
-    },
-    payload: JSON.stringify({ to, messages: [{ type: "text", text: text }] }),
-  });
+  try {
+    var res = UrlFetchApp.fetch("https://api.line.me/v2/bot/message/push", {
+      method: "post",
+      muteHttpExceptions: true,
+      headers: {
+        Authorization:  "Bearer " + LINE_TOKEN,
+        "Content-Type": "application/json",
+      },
+      payload: JSON.stringify({ to, messages: [{ type: "text", text: text }] }),
+    });
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      Logger.log("_linePush(" + to + ") HTTP " + code + ": " + res.getContentText());
+    }
+  } catch (e) {
+    Logger.log("_linePush(" + to + ") failed: " + e.message);
+  }
 }
 
 // `cfgWs` param kept (but unused) — every call site still passes `null` as
