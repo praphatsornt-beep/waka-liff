@@ -250,51 +250,54 @@ def _withdraw_central_stock_dialog():
     wc_reason = st.selectbox("เหตุผล", WITHDRAW_REASONS, index=WITHDRAW_REASONS.index("เบิกขายออนไลน์"), key="wc_reason_sel")
     is_convert = wc_reason == "แกะกล่องขายเป็นซอง"
     per_box = int(pd.to_numeric(cur_row["packs_per_box"], errors="coerce").fillna(0).iloc[0]) if not cur_row.empty and "packs_per_box" in cur_row.columns else 0
-    if is_convert and per_box <= 0:
-        st.warning('สินค้านี้ยังไม่ได้ตั้งค่า "จำนวนซองต่อกล่อง" — ไปตั้งค่าที่หน้า "สินค้า" → แก้ไขสินค้า ก่อน')
+    wc_id = cur_row.iloc[0]["id"] if not cur_row.empty and "id" in cur_row.columns else None
 
-    with st.form("withdraw_central_stock_form"):
-        if is_convert:
-            # key ผูกกับสินค้า+โหมด โดยตั้งใจ — ไม่งั้น Streamlit จะจำค่าที่กรอกไว้
-            # ค้างจากตอนเลือกสินค้า/โหมดก่อนหน้า (เช่นเบิก 1 กล่องตอนยังไม่ได้ติ๊ก
-            # แปลง) แล้วพอสลับมาสินค้าที่ max_value หดลงมาเป็น 0 ค่าเก่าจะกลาย
-            # เป็น "นอกช่วงที่กำหนด" ทันทีโดยไม่มีใครไปเซ็ตมันเป็น 1 เองเลย
-            wc_qty_box = st.number_input("แกะกี่กล่อง", min_value=0, max_value=max(max_box, 0), value=0, step=1, key=f"wc_qty_box_convert_{wc_name}")
-            if per_box > 0:
-                st.caption(f"1 กล่อง = {per_box} ซอง · จะได้ซองเพิ่ม: {wc_qty_box * per_box}")
-            wc_qty_pack = 0
-            wc_reason_other = ""
+    if is_convert:
+        if per_box <= 0:
+            st.warning('สินค้านี้ยังไม่ได้ตั้งค่า "จำนวนซองต่อกล่อง" — ไปตั้งค่าที่หน้า "สินค้า" → แก้ไขสินค้า ก่อน')
         else:
-            wc1, wc2 = st.columns(2)
-            wc_qty_box = wc1.number_input("เบิกกล่อง", min_value=0, max_value=max(max_box, 0), value=0, step=1, key=f"wc_qty_box_{wc_name}")
-            wc_qty_pack = wc2.number_input("เบิกซอง", min_value=0, max_value=max(max_pack, 0), value=0, step=1, key=f"wc_qty_pack_{wc_name}")
-            wc_reason_other = st.text_input("ระบุเหตุผล (กรณีเลือก \"อื่นๆ\")", placeholder="เช่น คืนของชำรุดให้ผู้ผลิต")
-        wc_submitted = st.form_submit_button("แปลง" if is_convert else "บันทึก")
-        if wc_submitted:
-            if is_convert and per_box <= 0:
-                st.warning('ตั้งค่า "จำนวนซองต่อกล่อง" ให้สินค้านี้ก่อน')
-            elif (wc_qty_box <= 0) if is_convert else (wc_qty_box <= 0 and wc_qty_pack <= 0):
-                st.warning("ใส่จำนวนกล่องที่จะแกะก่อน" if is_convert else "ใส่จำนวนที่จะเบิกอย่างน้อย 1 ช่องก่อน")
-            else:
-                wc_id = cur_row.iloc[0]["id"] if not cur_row.empty and "id" in cur_row.columns else None
-                try:
-                    if is_convert:
+            # อยู่นอก st.form โดยตั้งใจ — widget ใน form ไม่ sync ค่ากลับมาที่ script
+            # จนกว่าจะกด submit ปุ่มเดียว ถ้าเอาไว้ในฟอร์ม พรีวิว "จะได้ซองเพิ่ม"
+            # จะค้างเป็น 0 ตลอดจนกว่าจะกดปุ่มแปลงจริงๆ (บั๊กที่เจอ — เห็น "1 กล่อง
+            # = 20 ซอง แต่จะได้ซองเพิ่ม: 0" ทั้งที่พิมพ์ 1 ไปแล้ว)
+            wc_qty_box = st.number_input("แกะกี่กล่อง", min_value=0, max_value=max(max_box, 0), value=0, step=1, key=f"wc_qty_box_convert_{wc_name}")
+            st.caption(f"1 กล่อง = {per_box} ซอง · จะได้ซองเพิ่ม: {wc_qty_box * per_box}")
+            if st.button("แปลง"):
+                if wc_qty_box <= 0:
+                    st.warning("ใส่จำนวนกล่องที่จะแกะก่อน")
+                else:
+                    try:
                         gas_post({
                             "_action": "convertBoxToPack", "name": wc_name, "id": wc_id or None,
                             "qty_box": wc_qty_box,
                         })
                         _flash(f"แปลง {wc_name} {wc_qty_box} กล่อง → {wc_qty_box * per_box} ซอง แล้ว")
-                    else:
-                        final_reason = wc_reason_other.strip() if wc_reason == "อื่นๆ" and wc_reason_other.strip() else wc_reason
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"บันทึกไม่ได้: {e}")
+    else:
+        with st.form("withdraw_central_stock_form"):
+            wc1, wc2 = st.columns(2)
+            wc_qty_box = wc1.number_input("เบิกกล่อง", min_value=0, max_value=max(max_box, 0), value=0, step=1, key=f"wc_qty_box_{wc_name}")
+            wc_qty_pack = wc2.number_input("เบิกซอง", min_value=0, max_value=max(max_pack, 0), value=0, step=1, key=f"wc_qty_pack_{wc_name}")
+            wc_reason_other = st.text_input("ระบุเหตุผล (กรณีเลือก \"อื่นๆ\")", placeholder="เช่น คืนของชำรุดให้ผู้ผลิต")
+            wc_submitted = st.form_submit_button("บันทึก")
+            if wc_submitted:
+                if wc_qty_box <= 0 and wc_qty_pack <= 0:
+                    st.warning("ใส่จำนวนที่จะเบิกอย่างน้อย 1 ช่องก่อน")
+                else:
+                    final_reason = wc_reason_other.strip() if wc_reason == "อื่นๆ" and wc_reason_other.strip() else wc_reason
+                    try:
                         gas_post({
                             "_action": "withdrawCentralStock", "name": wc_name, "id": wc_id or None,
                             "qty_box": wc_qty_box, "qty_pack": wc_qty_pack, "reason": final_reason,
                         })
                         _flash("เบิกของแล้ว + แจ้งทีมงานแล้ว")
-                    st.cache_data.clear()
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"บันทึกไม่ได้: {e}")
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"บันทึกไม่ได้: {e}")
 
 
 @st.dialog("🚚 สร้างล็อตส่งสาขา", width="large")
@@ -609,40 +612,45 @@ with tab_branch:
         if w_convert and w_per_box <= 0:
             st.warning('สินค้านี้ยังไม่ได้ตั้งค่า "จำนวนซองต่อกล่อง" — ไปตั้งค่าที่หน้า "สินค้า" → แก้ไขสินค้า ก่อน')
 
-        with st.form("withdraw_stock_form"):
-            if w_convert:
-                w_qty = st.number_input("แกะกี่กล่อง", min_value=1, value=1, step=1)
-                if w_per_box > 0:
-                    st.caption(f"1 กล่อง = {w_per_box} ซอง · จะได้ซองเพิ่ม: {w_qty * w_per_box}")
-                w_type, w_reason = "box", ""
-            else:
-                wb3, wb4 = st.columns(2)
-                w_type = wb3.radio("หน่วย", ["box", "pack"], format_func=lambda t: "กล่อง" if t == "box" else "ซอง", horizontal=True)
-                w_qty = wb4.number_input("จำนวน", min_value=1, value=1, step=1)
-                w_reason = st.text_input("เหตุผล", placeholder="เช่น สินค้าเสียหาย, ปรับยอดนับสต็อก")
-            submitted_w = st.form_submit_button("แปลง" if w_convert else "บันทึก")
-            if submitted_w and w_convert and w_per_box <= 0:
-                st.warning('ตั้งค่า "จำนวนซองต่อกล่อง" ให้สินค้านี้ก่อน')
-            elif submitted_w:
-                try:
-                    if w_convert:
+        if w_convert:
+            if w_per_box > 0:
+                # อยู่นอก st.form โดยตั้งใจ — widget ใน form ไม่ sync ค่ากลับมาที่
+                # script จนกว่าจะกด submit ปุ่มเดียว พรีวิว "จะได้ซองเพิ่ม" เลย
+                # ต้องอยู่นอกฟอร์มด้วย ไม่งั้นจะค้างเป็น 0 จนกว่าจะกดปุ่มแปลงจริง
+                # (บั๊กเดียวกับที่เจอในฝั่งคลังกลาง)
+                w_qty = st.number_input("แกะกี่กล่อง", min_value=1, value=1, step=1, key=f"w_qty_convert_{w_name}")
+                st.caption(f"1 กล่อง = {w_per_box} ซอง · จะได้ซองเพิ่ม: {w_qty * w_per_box}")
+                if st.button("แปลง"):
+                    try:
                         gas_post({
                             "_action": "convertBoxToPack", "branch": w_branch, "name": w_name,
                             "id": branch_name_to_id.get(w_name) or None,
                             "qty_box": w_qty,
                         })
                         _flash(f"แปลง {w_name} {w_qty} กล่อง → {w_qty * w_per_box} ซอง ที่สาขา {w_branch} แล้ว")
-                    else:
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"แปลงไม่ได้: {e}")
+        else:
+            with st.form("withdraw_stock_form"):
+                wb3, wb4 = st.columns(2)
+                w_type = wb3.radio("หน่วย", ["box", "pack"], format_func=lambda t: "กล่อง" if t == "box" else "ซอง", horizontal=True)
+                w_qty = wb4.number_input("จำนวน", min_value=1, value=1, step=1, key=f"w_qty_{w_name}")
+                w_reason = st.text_input("เหตุผล", placeholder="เช่น สินค้าเสียหาย, ปรับยอดนับสต็อก")
+                submitted_w = st.form_submit_button("บันทึก")
+                if submitted_w:
+                    try:
                         gas_post({
                             "_action": "withdrawStock", "branch": w_branch, "name": w_name,
                             "id": branch_name_to_id.get(w_name) or None,
                             "type": w_type, "qty": w_qty, "reason": w_reason,
                         })
                         _flash("บันทึกแล้ว")
-                    st.cache_data.clear()
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"บันทึกไม่ได้: {e}")
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"บันทึกไม่ได้: {e}")
 
     with st.expander("📤 คืนสต็อกจากสาขากลับคลังกลาง"):
         names_r = sorted(stock_branch["name"].unique().tolist()) if not stock_branch.empty else []
