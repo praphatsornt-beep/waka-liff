@@ -1245,6 +1245,25 @@ function sendDailyStaffDigest_() {
   messages.slice(0, 5).forEach(function(m) { _linePush(groupId, m); });
 }
 
+// ── ตั้ง trigger รายวันให้ sendDailyStaffDigest_ ผ่านโค้ดแทนหน้า Triggers UI —
+// เผื่อ dropdown "Choose which function to run" ในหน้า Triggers ค้าง/ไม่รีเฟรช
+// รายชื่อฟังก์ชันใหม่ (เจอปัญหานี้จริงตอนตั้งค่าครั้งแรก) เลือกฟังก์ชันนี้จาก
+// ดรอปดาวน์ "Select function" ที่แถบด้านบนของหน้า editor เอง (ไม่ใช่หน้า
+// Triggers) แล้วกด Run ครั้งเดียว — authorize เมื่อถูกถาม แล้วจบ ลบ trigger
+// เดิมของ sendDailyStaffDigest_ ก่อนเสมอ (ถ้ามี) กันสร้างซ้ำถ้ารันมากกว่า 1 ครั้ง
+function _setupDailyDigestTrigger_() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === "sendDailyStaffDigest_") ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger("sendDailyStaffDigest_")
+    .timeBased()
+    .atHour(22)
+    .everyDays(1)
+    .inTimezone("Asia/Bangkok")
+    .create();
+  Logger.log("Daily digest trigger installed: ~22:00 Asia/Bangkok");
+}
+
 function _genOrderId() {
   var now = new Date();
   var pad = function(n) { return String(n).padStart(2, "0"); };
