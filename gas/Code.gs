@@ -1099,6 +1099,151 @@ function _getConfigValue(cfgWs, key) {
   return (v === undefined || v === null || v === "") ? null : String(v);
 }
 
+// ── สรุปประจำวัน: แทนที่การแจ้งไลน์แบบสดๆ ทีละแอคชัน (เดิม 10 จุดกระจายอยู่ทั่ว
+// ไฟล์นี้) ด้วยข้อความสรุปฉบับเดียวต่อวัน ส่งเข้ากลุ่ม staff เดิม — แก้ปัญหา
+// โควต้าข้อความ LINE ฟรี (300/เดือน) ที่การแจ้งสดทุกแอคชันแยกกันเคยใช้เกือบหมด
+// โควต้าไปตั้งแต่กลางเดือน (พบ 291/300 วันที่ 16). ไม่มี HTTP endpoint — เรียก
+// จาก time-based trigger ที่ตั้งเองใน Apps Script editor (Triggers →
+// sendDailyStaffDigest_ → Day timer ~22:00 Asia/Bangkok) เหมือน warmup()
+function sendDailyStaffDigest_() {
+  var groupId = _getConfigValue(null, "group_staff");
+  if (!groupId) { Logger.log("sendDailyStaffDigest_: group_staff not set, skipping"); return; }
+
+  var todayStr = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
+  var isToday = function(tsStr) {
+    if (!tsStr) return false;
+    return Utilities.formatDate(new Date(tsStr), "Asia/Bangkok", "yyyy-MM-dd") === todayStr;
+  };
+  var fmtTime = function(tsStr) { return Utilities.formatDate(new Date(tsStr), "Asia/Bangkok", "HH:mm"); };
+  // ดึงย้อนหลัง 36 ชม.ให้ครอบคลุมทั้งวันไทยแน่นอน (trigger รันราว 22:00 ไทย =
+  // 15:00 UTC) แล้วกรองด้วย isToday() อีกชั้น — pattern เดียวกับ action=dashboard/
+  // report ที่ fetch กว้างแล้วกรองใน JS แทนการคำนวณ UTC boundary ตรงๆ
+  var cutoffIso = new Date(Date.now() - 36 * 3600 * 1000).toISOString();
+
+  // ── staff_actions วันนี้ (แหล่งข้อมูลหลักของสรุปนี้) ──
+  var actionRows = supabaseSelect_("staff_actions", "select=*&created_at=gte." + cutoffIso + "&order=created_at.asc")
+    .filter(function(r) { return isToday(r.created_at); });
+  var byAction = {};
+  actionRows.forEach(function(r) {
+    if (!byAction[r.action]) byAction[r.action] = [];
+    byAction[r.action].push(r);
+  });
+
+  var sections = [];
+
+  // ── ยอดขาย (หน้าร้าน + ออนไลน์) ──
+  var wsRows = supabaseSelect_("walkin_sales", "select=timestamp,branch,total&timestamp=gte." + cutoffIso)
+    .filter(function(r) { return isToday(r.timestamp); });
+  var wsTotal = wsRows.reduce(function(s, r) { return s + (Number(r.total) || 0); }, 0);
+  var onlineRows = supabaseSelect_("orders", "select=timestamp,total&slip_status=eq.ยืนยัน&timestamp=gte." + cutoffIso)
+    .filter(function(r) { return isToday(r.timestamp); });
+  var onlineTotal = onlineRows.reduce(function(s, r) { return s + (Number(r.total) || 0); }, 0);
+  sections.push("💰 ยอดขาย: หน้าร้าน ฿" + wsTotal + " (" + wsRows.length + " บิล) · ออนไลน์ ฿" + onlineTotal + " (" + onlineRows.length + " ออเดอร์)");
+
+  // ── หมวดที่มี detail ดีอยู่แล้วใน staff_actions — แสดงตรงๆ ไม่ต้อง enrich ──
+  [
+    { action: "walkin_sale", title: "🛒 ขายหน้าร้าน" },
+    { action: "cancel_walkin_sale", title: "🗑️ ยกเลิกขายหน้าร้าน" },
+    { action: "withdraw_stock", title: "📤 เบิกสาขา" },
+    { action: "withdraw_central_stock", title: "📤 เบิกคลังกลาง" },
+    { action: "adjust_branch_stock", title: "✏️ ปรับยอดนับสต็อก" },
+    { action: "convert_box_to_pack", title: "🔁 เบิกกล่องแยกเป็นซอง" },
+  ].forEach(function(s) {
+    var rows = byAction[s.action] || [];
+    if (!rows.length) return;
+    var lines = rows.map(function(r) {
+      return "  - " + fmtTime(r.created_at) + " " + (r.branch || "คลังกลาง") + " (" + r.staff_name + "): " + (r.detail || "");
+    });
+    sections.push(s.title + " (" + rows.length + ")\n" + lines.join("\n"));
+  });
+
+  // ── สร้างล็อต/รับล็อต — เสริมรายละเอียดสินค้าจาก shipments.items_json เพราะ
+  // staff_actions ของ 2 แอคชันนี้เก็บ detail เป็น null ──
+  var summarizeShipItems_ = function(items) {
+    return (items || []).map(function(it) {
+      var parts = [];
+      var tb = (it.qty_box || 0) + (it.qty_box_extra || 0);
+      var tp = (it.qty_pack || 0) + (it.qty_pack_extra || 0);
+      if (tb > 0) parts.push("Box " + tb);
+      if (tp > 0) parts.push("Pack " + tp);
+      return it.name + "(" + parts.join(",") + ")";
+    }).join(", ");
+  };
+  var createdRows = byAction["create_shipment"] || [];
+  var receivedRows = byAction["receive_shipment"] || [];
+  if (createdRows.length || receivedRows.length) {
+    var shipIds = createdRows.concat(receivedRows).map(function(r) { return r.target_id; });
+    var shipById = {};
+    supabaseSelect_("shipments", "select=shipment_id,to_branch,items_json&shipment_id=in.(" + shipIds.join(",") + ")")
+      .forEach(function(r) { shipById[r.shipment_id] = r; });
+    if (createdRows.length) {
+      var lines1 = createdRows.map(function(r) {
+        var sh = shipById[r.target_id];
+        return "  - " + fmtTime(r.created_at) + " (" + r.staff_name + ") → สาขา " + (sh ? sh.to_branch : "?") + " [" + r.target_id + "]: " + (sh ? summarizeShipItems_(sh.items_json) : "");
+      });
+      sections.push("📦 สร้างล็อตส่งสาขา (" + createdRows.length + ")\n" + lines1.join("\n"));
+    }
+    if (receivedRows.length) {
+      var lines2 = receivedRows.map(function(r) {
+        var sh = shipById[r.target_id];
+        return "  - " + fmtTime(r.created_at) + " " + (r.branch || "") + " (" + r.staff_name + ") รับล็อต [" + r.target_id + "]: " + (sh ? summarizeShipItems_(sh.items_json) : "");
+      });
+      sections.push("📥 รับล็อต (" + receivedRows.length + ")\n" + lines2.join("\n"));
+    }
+  }
+
+  // ── ส่งมอบออเดอร์ลูกค้า — เสริมชื่อลูกค้าจาก orders เพราะ detail เดิมมีแค่ fulfillment ──
+  var handoverRows = byAction["handover_order"] || [];
+  if (handoverRows.length) {
+    var orderIds = handoverRows.map(function(r) { return r.target_id; });
+    var orderById = {};
+    supabaseSelect_("orders", "select=order_id,real_name,display_name&order_id=in.(" + orderIds.join(",") + ")")
+      .forEach(function(r) { orderById[r.order_id] = r; });
+    var lines3 = handoverRows.map(function(r) {
+      var o = orderById[r.target_id];
+      var custName = o ? (o.real_name || o.display_name || "") : "";
+      return "  - " + fmtTime(r.created_at) + " " + (r.branch || "") + " (" + r.staff_name + ") ส่งมอบ #" + r.target_id + (custName ? " ให้ " + custName : "") + " — " + (r.detail || "");
+    });
+    sections.push("🤝 ส่งมอบออเดอร์ลูกค้า (" + handoverRows.length + ")\n" + lines3.join("\n"));
+  }
+
+  // ── สมัครทัวร์นาเมนต์ — ลูกค้ากดเอง ไม่ผ่าน staff_actions เลย ต้องดึงจาก
+  // tournament_registrations ตรงๆ แทน ──
+  var tourRows = supabaseSelect_("tournament_registrations", "select=timestamp,player_name,real_name,event_id&timestamp=gte." + cutoffIso)
+    .filter(function(r) { return isToday(r.timestamp); });
+  if (tourRows.length) {
+    var lines4 = tourRows.map(function(r) {
+      return "  - " + fmtTime(r.timestamp) + " " + (r.player_name || r.real_name || "") + " (" + r.event_id + ")";
+    });
+    sections.push("🏆 สมัครทัวร์นาเมนต์ (" + tourRows.length + ")\n" + lines4.join("\n"));
+  }
+
+  var header = "📋 สรุปประจำวัน " + Utilities.formatDate(new Date(), "Asia/Bangkok", "dd/MM/yyyy");
+  // sections[0] คือยอดขายเสมอ — ถ้าไม่มีอะไรเพิ่มเลยแปลว่าวันนี้เงียบจริงๆ
+  var body = sections.length > 1 ? sections.join("\n\n") : "วันนี้ไม่มีความเคลื่อนไหว";
+  var fullMsg = header + "\n\n" + body;
+
+  // LINE จำกัดความยาวข้อความเดียว ~5000 ตัวอักษร — วันที่ยุ่งมากตัดส่งเป็นหลาย
+  // ข้อความต่อกันแทนการตัดทิ้ง (ตัดที่ขอบ section เพื่อไม่ให้เนื้อหาขาดกลางคัน)
+  var CHUNK = 4500;
+  var messages = [];
+  if (fullMsg.length <= CHUNK) {
+    messages.push(fullMsg);
+  } else {
+    var parts = fullMsg.split("\n\n");
+    var cur = "";
+    parts.forEach(function(p) {
+      if (cur && (cur + "\n\n" + p).length > CHUNK) {
+        messages.push(cur);
+        cur = p;
+      } else {
+        cur = cur ? cur + "\n\n" + p : p;
+      }
+    });
+    if (cur) messages.push(cur);
+  }
+  messages.slice(0, 5).forEach(function(m) { _linePush(groupId, m); });
+}
 
 function _genOrderId() {
   var now = new Date();
@@ -1202,17 +1347,6 @@ function handleTournamentRegister(data) {
       if (payMethod !== "cash") custMsg += "\n📋 สถานะสลิป: รอตรวจ";
       custMsg += "\n\n🔗 ดูสถานะ + QR:\n" + statusUrl;
       _linePush(data.lineUserId, custMsg);
-    }
-
-    var groupStaff = _getConfigValue(null, "group_staff");
-    if (groupStaff) {
-      var payText = payMethod === "cash" ? "💵 เงินสด" : "📱 " + (data.bank || "โอนเงิน");
-      var staffMsg = "🏆 สมัครแข่ง #" + seqNo + " — " + eventName + "\n"
-        + "ชื่อแข่ง: " + String(data.playerName || "") + " | จริง: " + String(data.realName || "") + "\n"
-        + "โทร: " + String(data.phone || "");
-      if (data.facebook) staffMsg += " | FB: " + data.facebook;
-      staffMsg += "\n" + payText + "\nรหัส: " + regId;
-      _linePush(groupStaff, staffMsg);
     }
 
     return _cors(ContentService.createTextOutput(JSON.stringify({
@@ -2293,7 +2427,6 @@ function handleCreateShipment(data) {
   try {
     var staffName = String(data.staff_name || "").trim();
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
-    var nowDisplay = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
     var shipId = "SH" + Utilities.formatDate(new Date(), "Asia/Bangkok", "yyMMddHHmmss");
 
     // D4: ตรวจ duplicate shipment_id ก่อน insert
@@ -2324,22 +2457,6 @@ function handleCreateShipment(data) {
     writeSupabaseRow_("shipments", shObj, SUPABASE_SHIPMENTS_HEADER, "shipment_id", lock);
     if (shChangedNames.length) _pushCatalogRows_(shCatRows, shChangedNames);
 
-    // LINE แจ้งกลุ่ม staff
-    try {
-      var groupId = _getConfigValue(null, "group_staff");
-      if (groupId) {
-        var itemLines = items.map(function(it) {
-          var parts = [];
-          var tb = (it.qty_box || 0) + (it.qty_box_extra || 0);
-          var tp = (it.qty_pack || 0) + (it.qty_pack_extra || 0);
-          if (tb > 0) parts.push("Box " + tb + (it.qty_box_extra ? " (เผื่อ " + it.qty_box_extra + ")" : ""));
-          if (tp > 0) parts.push("Pack " + tp + (it.qty_pack_extra ? " (เผื่อ " + it.qty_pack_extra + ")" : ""));
-          return "  - " + it.name + ": " + parts.join(", ");
-        }).join("\n");
-        var receiveUrl = "https://waka-liff.vercel.app/warehouse.html?tab=history";
-        _linePush(groupId, "📦 สร้างล็อตส่งสาขา " + (data.to_branch || "") + "\n\n" + shipId + " — " + nowDisplay + "\n\n" + itemLines + "\n\nเมื่อสินค้าถึงสาขาแล้ว กดรับของที่:\n" + receiveUrl);
-      }
-    } catch(_) {}
     _logStaffAction_(staffName, data.to_branch, "create_shipment", shipId, null);
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, shipment_id: shipId })));
@@ -2497,18 +2614,6 @@ function handleReceiveShipment(data) {
     lock.releaseLock();
     pendingNotifications.forEach(function(n) { _linePush(n.uid, n.msg); });
 
-    var groupStaffReceive = _getConfigValue(null, "group_staff");
-    if (groupStaffReceive && staffName) {
-      var receiveItemsText = items.map(function(it) {
-        var parts = [];
-        var tb = (it.qty_box || 0) + (it.qty_box_extra || 0);
-        var tp = (it.qty_pack || 0) + (it.qty_pack_extra || 0);
-        if (tb > 0) parts.push("Box " + tb);
-        if (tp > 0) parts.push("Pack " + tp);
-        return "  - " + it.name + ": " + parts.join(", ");
-      }).join("\n");
-      _linePush(groupStaffReceive, "📥 " + staffName + " รับของจากคลังที่สาขา " + branch + " แล้ว\nล็อต: " + data.shipment_id + "\n\n" + receiveItemsText);
-    }
     _logStaffAction_(staffName, branch, "receive_shipment", data.shipment_id, null);
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now, notified_count: pendingNotifications.length })));
@@ -2616,14 +2721,6 @@ function handleHandoverOrder(data) {
       }
       _linePush(uid, msg);
       order.notified_at = now;
-    }
-
-    var groupStaffHandover = _getConfigValue(null, "group_staff");
-    if (groupStaffHandover && staffName) {
-      var custName = order.real_name || order.display_name || "";
-      _linePush(groupStaffHandover, "🤝 " + staffName + " ส่งมอบออเดอร์ #" + data.order_id + " ที่สาขา " + branch +
-        (custName ? " ให้ " + custName : "") + " แล้ว\n" +
-        handoverNames.map(function(n) { return "- " + n; }).join("\n"));
     }
 
     writeSupabaseOrder_(order, lock);
@@ -3225,12 +3322,6 @@ function handleWithdrawStock(data) {
     if (!wRes.ok) throw new Error("Supabase withdrawals write failed: " + wRes.text);
     lock.releaseLock();
 
-    var groupStaffWithdraw = _getConfigValue(null, "group_staff");
-    if (groupStaffWithdraw && staffName) {
-      var unitLabel = type === "box" ? "กล่อง" : "ซอง";
-      _linePush(groupStaffWithdraw, "📤 " + staffName + " เบิก " + name + " x" + qty + " " + unitLabel + " จากสาขา " + branch +
-        (reason ? "\nเหตุผล: " + reason : ""));
-    }
     _logStaffAction_(staffName, branch, "withdraw_stock", (wCatRow && wCatRow.id) || name, qty + (type === "box" ? " กล่อง" : " ซอง") + (reason ? " — " + reason : ""));
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
@@ -3279,10 +3370,6 @@ function handleAdjustBranchStock(data) {
       (addPack ? (addPack > 0 ? "+" : "") + addPack + " ซอง" : "")).trim();
     var adjLog = adjDetail + (reason ? " — " + reason : "");
 
-    var groupStaffAdjust = _getConfigValue(null, "group_staff");
-    if (groupStaffAdjust && staffName) {
-      _linePush(groupStaffAdjust, "✏️ " + staffName + " ปรับยอดสต็อก " + name + " ที่สาขา " + branch + ": " + adjLog);
-    }
     _logStaffAction_(staffName, branch, "adjust_branch_stock", (catRow && catRow.id) || name, adjLog || null);
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, qty_box: newBox, qty_pack: newPack })));
@@ -3350,11 +3437,6 @@ function handleConvertBoxToPack(data) {
     }
     lock.releaseLock();
 
-    var groupStaffConvert = _getConfigValue(null, "group_staff");
-    if (groupStaffConvert && staffName) {
-      _linePush(groupStaffConvert, "🔁 " + staffName + " แกะ " + name + " " + qtyBox + " กล่อง → " + qtyPack + " ซอง" +
-        (branch ? " ที่สาขา " + branch : " (คลังกลาง)"));
-    }
     _logStaffAction_(staffName, branch || null, "convert_box_to_pack", catRow.id || name,
       qtyBox + " กล่อง → " + qtyPack + " ซอง (1 กล่อง = " + perBox + " ซอง)" + (branch ? " ที่สาขา " + branch : " (คลังกลาง)"));
 
@@ -3407,11 +3489,6 @@ function handleWithdrawCentralStock(data) {
     if (qtyPack > 0) wcParts.push(qtyPack + " ซอง");
     var wcQtyText = wcParts.join(" ");
 
-    var groupStaffWithdrawCentral = _getConfigValue(null, "group_staff");
-    if (groupStaffWithdrawCentral) {
-      _linePush(groupStaffWithdrawCentral, "📤 " + (staffName || "ไม่ระบุชื่อ") + " เบิก " + name + " " + wcQtyText + " จากคลังกลาง" +
-        (reason ? "\nเหตุผล: " + reason : ""));
-    }
     _logStaffAction_(staffName, null, "withdraw_central_stock", row.id || name, wcQtyText + (reason ? " — " + reason : ""));
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
@@ -3560,15 +3637,6 @@ function handleWalkinSale(data) {
 
     lock.releaseLock();
 
-    var groupStaffWalkin = _getConfigValue(null, "group_staff");
-    if (groupStaffWalkin && staffName) {
-      var payLabel = saleObj.payment_method === "cash" ? "💵 เงินสด" : ("📱 โอน" + (saleObj.bank ? " " + saleObj.bank : ""));
-      var walkinItemsText = items.map(function(it) {
-        var u = it.type === "box" ? "กล่อง" : "ซอง";
-        return "  - " + it.name + " (" + u + ") x" + it.qty;
-      }).join("\n");
-      _linePush(groupStaffWalkin, "🛒 " + staffName + " ขายหน้าร้านที่สาขา " + branch + " ฿" + total + " (" + payLabel + ")\n\n" + walkinItemsText);
-    }
     _logStaffAction_(staffName, branch, "walkin_sale", saleId, "฿" + total);
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, sale_id: saleId, total: total })));
@@ -3612,10 +3680,6 @@ function handleCancelWalkinSale(data) {
     lock.releaseLock();
 
     var itemsText = items.map(function(it) { return it.name + " x" + it.qty; }).join(", ");
-    var groupStaffCancelWs = _getConfigValue(null, "group_staff");
-    if (groupStaffCancelWs && staffName) {
-      _linePush(groupStaffCancelWs, "🗑️ " + staffName + " ยกเลิกรายการขายหน้าร้าน " + saleId + " ที่สาขา " + branch + " ฿" + (sale.total || 0) + " (คืนสต็อกแล้ว)\n" + itemsText);
-    }
     _logStaffAction_(staffName, branch, "cancel_walkin_sale", saleId, "฿" + (sale.total || 0) + " — " + itemsText);
 
     // แยก log อีกชั้นหนึ่งต่อรายการสินค้า (target_id = รหัสสินค้า) — ต่างจาก log
