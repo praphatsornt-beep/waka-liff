@@ -550,6 +550,7 @@
 
 <div class="toast" id="toast"></div>
 <div id="partialModal"></div>
+<div id="staffNameModal"></div>
 
 <script>
 const WAKA_S = 'wk26xK9mPqRt';
@@ -565,25 +566,56 @@ function gid(id) { return document.getElementById(id); }
 function esc(s) { const d=document.createElement('div');d.textContent=s;return d.innerHTML; }
 
 // ── ชื่อพนักงาน: ถามครั้งเดียวตอน login แล้วใช้ซ้ำทุกจุดที่ต้องบันทึกผู้ทำรายการ
-// (แทนที่จะ prompt() ทุกครั้งที่กดปุ่ม) — เก็บใน localStorage คนละคีย์กับ
-// waka_branch/waka_staff_role เพราะ "ใคร" (คน) กับ "auth ว่าเข้าได้" เป็นคนละเรื่องกัน
-// localStorage ใช้ร่วมกันได้ข้ามหน้า (warehouse.html) เพราะเป็น origin เดียวกัน
+// เก็บใน localStorage คนละคีย์กับ waka_branch/waka_staff_role เพราะ "ใคร" (คน)
+// กับ "auth ว่าเข้าได้" เป็นคนละเรื่องกัน localStorage ใช้ร่วมกันได้ข้ามหน้า
+// (warehouse.html) เพราะเป็น origin เดียวกัน
+//
+// ใช้ modal ของแอปเอง (_customPrompt, แค่ DOM/CSS) แทน window.prompt() ตรงๆ —
+// prompt()/confirm() ทำงานไม่เสถียรในเบราว์เซอร์ในแอปของ LINE (LIFF WebView),
+// พบว่าบางเครื่อง prompt() คืนค่า null ทันทีแบบเงียบๆ โดยไม่แสดงกล่องข้อความ
+// ให้เห็นเลย ทำให้ปุ่มที่ต้องพิมพ์ชื่อพนักงานก่อน (เช่นส่งมอบสินค้า) กดแล้วเหมือน
+// ไม่มีอะไรเกิดขึ้น เพราะ ensureStaffName() คืนค่าว่างแล้วฟังก์ชันเรียก return
+// เงียบๆ ทันที — ต้องเป็น async/คืนค่าแบบ Promise เพราะรอ user กรอกใน modal ได้
+// ไม่เหมือน prompt() ที่ block เธรดจนกว่าจะปิดกล่อง
+function _customPrompt(title, defaultVal) {
+  return new Promise(resolve => {
+    const el = document.getElementById('staffNameModal');
+    el.innerHTML = `
+      <div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:400;display:flex;align-items:center;justify-content:center;padding:20px">
+        <div style="background:#fff;border-radius:16px;padding:24px;width:100%;max-width:340px">
+          <div style="font-weight:700;font-size:15px;margin-bottom:12px">${esc(title)}</div>
+          <input id="cpInput" type="text" value="${esc(defaultVal || '')}" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:10px;font-family:inherit;font-size:14px;box-sizing:border-box">
+          <div style="display:flex;gap:8px;margin-top:14px">
+            <button id="cpCancel" style="flex:1;padding:12px;border:1px solid #ddd;border-radius:10px;background:#fff;font-family:inherit;font-size:14px;cursor:pointer">ยกเลิก</button>
+            <button id="cpOk" style="flex:2;padding:12px;border:none;border-radius:10px;background:#111740;color:#fff;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer">ตกลง</button>
+          </div>
+        </div>
+      </div>`;
+    const input = document.getElementById('cpInput');
+    input.focus();
+    const close = (val) => { el.innerHTML = ''; resolve(val); };
+    document.getElementById('cpCancel').onclick = () => close(null);
+    document.getElementById('cpOk').onclick = () => close(input.value);
+    input.onkeydown = (e) => { if (e.key === 'Enter') close(input.value); };
+  });
+}
 function ensureStaffName() {
-  let n = localStorage.getItem('waka_staff_name') || '';
-  if (!n) {
-    n = prompt('กรอกชื่อพนักงาน (ระบบจะจำไว้ตลอด session นี้ ไม่ต้องพิมพ์ซ้ำทุกครั้ง):');
-    if (n === null) return '';
-    n = n.trim();
-    if (n) { localStorage.setItem('waka_staff_name', n); renderStaffBadge(); }
-  }
-  return n;
+  const n = localStorage.getItem('waka_staff_name') || '';
+  if (n) return Promise.resolve(n);
+  return _customPrompt('กรอกชื่อพนักงาน (ระบบจะจำไว้ตลอด session นี้ ไม่ต้องพิมพ์ซ้ำทุกครั้ง)').then(v => {
+    if (v === null) return '';
+    const t = v.trim();
+    if (t) { localStorage.setItem('waka_staff_name', t); renderStaffBadge(); }
+    return t;
+  });
 }
 function changeStaffName() {
   const cur = localStorage.getItem('waka_staff_name') || '';
-  const n = prompt('เปลี่ยนชื่อพนักงาน:', cur);
-  if (n === null) return;
-  const t = n.trim();
-  if (t) { localStorage.setItem('waka_staff_name', t); renderStaffBadge(); toast('เปลี่ยนชื่อเป็น ' + t); }
+  _customPrompt('เปลี่ยนชื่อพนักงาน', cur).then(v => {
+    if (v === null) return;
+    const t = v.trim();
+    if (t) { localStorage.setItem('waka_staff_name', t); renderStaffBadge(); toast('เปลี่ยนชื่อเป็น ' + t); }
+  });
 }
 function renderStaffBadge() {
   const n = localStorage.getItem('waka_staff_name') || '';
@@ -762,9 +794,9 @@ function renderOrders() {
 }
 
 async function cancelOrder(orderId, btn) {
-  const staff_name = ensureStaffName();
+  const staff_name = await ensureStaffName();
   if (!staff_name) return;
-  const reason = prompt('เหตุผลการยกเลิก (ว่างได้):') ;
+  const reason = await _customPrompt('เหตุผลการยกเลิก (ว่างได้)');
   if (reason === null) return;
   if (!confirm('ยืนยันยกเลิกออเดอร์ #' + orderId + '?\n\nระบบจะส่ง LINE แจ้งลูกค้าและคืน stock อัตโนมัติ')) return;
   btn.disabled = true; btn.textContent = 'กำลังยกเลิก...';
@@ -808,7 +840,7 @@ async function submitPartialReady(orderId) {
   const checked = [...document.querySelectorAll('#prItemList input[type=checkbox]:checked')];
   if (!checked.length) { alert('เลือกสินค้าอย่างน้อย 1 รายการ'); return; }
   const indices = checked.map(cb => +cb.dataset.idx);
-  const staff_name = ensureStaffName();
+  const staff_name = await ensureStaffName();
   if (!staff_name) return;
   document.getElementById('partialModal').innerHTML = '';
   try {
@@ -856,7 +888,7 @@ async function submitCancelItems(orderId) {
   if (!checked.length) { alert('เลือกรายการที่ต้องการยกเลิก'); return; }
   const indices = checked.map(cb => +cb.dataset.idx);
   const reason = document.getElementById('ciReason').value.trim();
-  const staff_name = ensureStaffName();
+  const staff_name = await ensureStaffName();
   if (!staff_name) return;
   document.getElementById('partialModal').innerHTML = '';
   try {
@@ -961,7 +993,7 @@ async function submitAddStock() {
   const lb=gid('editLimitBox').value,lp=gid('editLimitPack').value;
   const limChanged=(lb!==''||lp!=='');
   if(ab<=0&&ap<=0&&!limChanged)return alert('ใส่จำนวนหรือแก้ limit');
-  const staff_name=ensureStaffName();
+  const staff_name=await ensureStaffName();
   if(!staff_name)return;
   const b=gid('addStockBtn');b.disabled=1;b.textContent='บันทึก...';
   try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'addStock',name:selectedProduct.name,id:selectedProduct.id,category:selectedProduct.category,add_box:ab,add_pack:ap,limit_box:lb===''?null:+lb,limit_pack:lp===''?null:+lp,staff_name:staff_name.trim()})});const d=await r.json();
@@ -1036,9 +1068,9 @@ function openBrView(s) {
   if(s==='orders'){gid('brOrders').style.display='block';loadBrOrders();}
   if(s==='handover')gid('brHandover').style.display='block';
   if(s==='bstock'){gid('brStock').style.display='block';loadBrStock();}
-  if(s==='withdraw'){gid('brWithdraw').style.display='block';gid('wdStaffName').value=ensureStaffName();loadWithdrawProductOptions();loadWithdrawals();}
-  if(s==='walkin'){gid('brWalkin').style.display='block';gid('wsStaffName').value=ensureStaffName();openWalkin();}
-  if(s==='createShipment'){gid('brCreateShipment').style.display='block';gid('shipStaffName').value=ensureStaffName();openCreateShipment();}
+  if(s==='withdraw'){gid('brWithdraw').style.display='block';ensureStaffName().then(n=>gid('wdStaffName').value=n);loadWithdrawProductOptions();loadWithdrawals();}
+  if(s==='walkin'){gid('brWalkin').style.display='block';ensureStaffName().then(n=>gid('wsStaffName').value=n);openWalkin();}
+  if(s==='createShipment'){gid('brCreateShipment').style.display='block';ensureStaffName().then(n=>gid('shipStaffName').value=n);openCreateShipment();}
   if(s==='report'){gid('brReport').style.display='block';openBrReport();}
 }
 function closeBrView() {
@@ -1067,7 +1099,7 @@ async function loadIncoming() {
 
 async function confirmReceive(id,btn) {
   if(btn.disabled)return; btn.disabled=true;
-  const staff_name=ensureStaffName();
+  const staff_name=await ensureStaffName();
   if(!staff_name){btn.disabled=false;return;}
   try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'receiveShipment',shipment_id:id,staff_name:staff_name.trim()})});const d=await r.json();
     if(d.ok||d.already){toast('รับของแล้ว — สต็อกอัปเดต + แจ้งลูกค้าแล้ว');loadIncoming();}
@@ -1200,7 +1232,7 @@ async function searchOrders() {
 
 async function confirmSlip(oid) {
   if(!confirm('ยืนยันสลิปออเดอร์ #'+oid+' + ส่ง LINE แจ้งลูกค้า?'))return;
-  const staff_name=ensureStaffName();
+  const staff_name=await ensureStaffName();
   if(!staff_name)return;
   try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'confirmSlip',order_id:oid,staff_name:staff_name.trim()})});const d=await r.json();
     if(d.ok){toast('ยืนยันสลิป + แจ้งลูกค้าแล้ว');loadDashboard();}else alert(d.error||'ผิดพลาด');
@@ -1240,7 +1272,7 @@ async function submitHandover(orderId, src) {
   const checked = [...document.querySelectorAll('#hoItemList input[type=checkbox]:checked')];
   if (!checked.length) { alert('เลือกสินค้าอย่างน้อย 1 รายการ'); return; }
   const indices = checked.map(cb => +cb.dataset.idx);
-  const staff_name = ensureStaffName();
+  const staff_name = await ensureStaffName();
   if (!staff_name) return;
   document.getElementById('partialModal').innerHTML = '';
   try {
