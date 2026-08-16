@@ -255,15 +255,19 @@ def _withdraw_central_stock_dialog():
 
     with st.form("withdraw_central_stock_form"):
         if is_convert:
-            wc_qty_box = st.number_input("แกะกี่กล่อง", min_value=0, max_value=max(max_box, 0), value=0, step=1)
+            # key ผูกกับสินค้า+โหมด โดยตั้งใจ — ไม่งั้น Streamlit จะจำค่าที่กรอกไว้
+            # ค้างจากตอนเลือกสินค้า/โหมดก่อนหน้า (เช่นเบิก 1 กล่องตอนยังไม่ได้ติ๊ก
+            # แปลง) แล้วพอสลับมาสินค้าที่ max_value หดลงมาเป็น 0 ค่าเก่าจะกลาย
+            # เป็น "นอกช่วงที่กำหนด" ทันทีโดยไม่มีใครไปเซ็ตมันเป็น 1 เองเลย
+            wc_qty_box = st.number_input("แกะกี่กล่อง", min_value=0, max_value=max(max_box, 0), value=0, step=1, key=f"wc_qty_box_convert_{wc_name}")
             if per_box > 0:
                 st.caption(f"1 กล่อง = {per_box} ซอง · จะได้ซองเพิ่ม: {wc_qty_box * per_box}")
             wc_qty_pack = 0
             wc_reason_other = ""
         else:
             wc1, wc2 = st.columns(2)
-            wc_qty_box = wc1.number_input("เบิกกล่อง", min_value=0, max_value=max(max_box, 0), value=0, step=1)
-            wc_qty_pack = wc2.number_input("เบิกซอง", min_value=0, max_value=max(max_pack, 0), value=0, step=1)
+            wc_qty_box = wc1.number_input("เบิกกล่อง", min_value=0, max_value=max(max_box, 0), value=0, step=1, key=f"wc_qty_box_{wc_name}")
+            wc_qty_pack = wc2.number_input("เบิกซอง", min_value=0, max_value=max(max_pack, 0), value=0, step=1, key=f"wc_qty_pack_{wc_name}")
             wc_reason_other = st.text_input("ระบุเหตุผล (กรณีเลือก \"อื่นๆ\")", placeholder="เช่น คืนของชำรุดให้ผู้ผลิต")
         wc_submitted = st.form_submit_button("แปลง" if is_convert else "บันทึก")
         if wc_submitted:
