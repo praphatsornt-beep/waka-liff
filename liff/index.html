@@ -1527,6 +1527,11 @@
       const data = await res.json();
       if (data.success) {
         showSuccess(data, total);
+        // เคลียร์ฟอร์มทันทีหลังสั่งสำเร็จ (ไม่ใช่รอ handleBack ตอนกดย้อนกลับ) —
+        // เดิมถ้าไม่ได้ปิด LIFF จริงๆ (เช่น liff.closeWindow() ไม่ทำงานบางเครื่อง
+        // หรือเปิด LIFF ค้างไว้แล้วสลับกลับมา) ตะกร้า/ชื่อ/เบอร์/ที่อยู่เดิมยังค้าง
+        // อยู่ในฟอร์ม เผลอกดสั่งซ้ำได้ทันทีโดยไม่รู้ตัว
+        resetForm();
       } else {
         alert(data.error || "เกิดข้อผิดพลาด กรุณาลองใหม่");
         if (data.error && (data.error.includes("เหลือเพียง") || data.error.includes("หมดแล้ว"))) {

@@ -1203,6 +1203,25 @@ function handleTournamentRegister(data) {
 function handleApi(params) {
   var action = params.do || "";
 
+  // ── ตรวจ PIN แอดมิน/รหัสสาขาตอน login — เดิม liff/app.html เก็บ ADMIN_CODE/
+  // BRANCH_CODES ทั้งชุดเป็นค่าคงที่ในไฟล์ ใครก็ view-source เห็นรหัสของทุกสาขา
+  // รวมถึง PIN แอดมินได้หมด ทั้งที่แต่ละคนควรรู้แค่รหัสของตัวเอง — ย้ายมาตรวจที่นี่
+  // แทน ส่งกลับแค่ผลของรหัสที่พิมพ์มา (role + สาขาที่ตรงกับรหัสนั้นรหัสเดียว) ไม่ส่ง
+  // ADMIN_CODE/BRANCH_CODES ทั้งชุดออกไปให้ client เลย ต้องยิงผ่าน POST เท่านั้น
+  // (client ฝั่ง checkPin/loginBranch เรียกแบบนี้อยู่แล้ว) กัน PIN หลุดไปอยู่ใน query
+  // string/server log แบบ GET
+  if (action === "verify_code") {
+    var vcCode = String(params.code || "").trim();
+    if (vcCode && vcCode === String(ADMIN_CODE || "").trim()) {
+      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, role: "admin", branch: "ทั้งหมด" })));
+    }
+    var vcBranch = vcCode ? BRANCH_CODES[vcCode] : null;
+    if (vcBranch) {
+      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, role: "staff", branch: vcBranch })));
+    }
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: false })));
+  }
+
   if (action === "search") {
     var q = String(params.q || "").toLowerCase().trim();
     if (!q) return _cors(ContentService.createTextOutput(JSON.stringify({ orders: [] })));

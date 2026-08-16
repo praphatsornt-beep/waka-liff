@@ -555,13 +555,16 @@
 <script>
 const WAKA_S = 'wk26xK9mPqRt';
 const G = 'https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec?_s=' + WAKA_S;
-const PIN_ADMIN = 'waka99';
-const BRANCH_CODES = { 'ts01': 'ต้นสักคอร์เนอร์', 'mt01': 'เมืองทองธานี', 'sn01': 'ศรีนครินทร์' };
+// PIN แอดมิน/รหัสสาขา ไม่เก็บเป็นค่าคงที่ในไฟล์นี้อีกต่อไป (เดิมใครก็ view-source
+// เห็นรหัสของทุกสาขา+แอดมินได้หมด ทั้งที่แต่ละคนควรรู้แค่รหัสของตัวเอง) — ตรวจกับ
+// GAS ผ่าน action=verify_code แทน (ดู checkPin/loginBranch) เก็บเฉพาะรหัสที่ผู้ใช้
+// คนนั้นพิมพ์เองไว้ใน localStorage เพื่อส่งซ้ำในคำขอถัดๆไป (_authCode ด้านล่าง)
+const ALL_BRANCHES = ['ต้นสักคอร์เนอร์','เมืองทองธานี','ศรีนครินทร์'];
 const LIFF_BASE = 'https://liff.line.me/2010457385-UpJLXxJ0';
 let products = [], centralStock = [], branchSummary = {}, selectedProduct = null;
 let scanner = null, scannerNew = null;
 let userRole = 'staff';
-function _authCode() { return userRole === 'admin' ? PIN_ADMIN : (localStorage.getItem('waka_branch_code') || ''); }
+function _authCode() { return userRole === 'admin' ? (localStorage.getItem('waka_admin_code') || '') : (localStorage.getItem('waka_branch_code') || ''); }
 function gid(id) { return document.getElementById(id); }
 function esc(s) { const d=document.createElement('div');d.textContent=s;return d.innerHTML; }
 
@@ -668,9 +671,15 @@ function logout() {
 }
 
 // ── PIN ──
-function checkPin() {
+async function checkPin() {
   const val = gid('pinInput').value.trim();
-  if (val === PIN_ADMIN) {
+  if (!val) return;
+  let d;
+  try {
+    const r = await fetch(G, { method: 'POST', body: JSON.stringify({ action: 'api', do: 'verify_code', code: val }) });
+    d = await r.json();
+  } catch (e) { d = { ok: false }; }
+  if (d.ok && d.role === 'admin') {
     localStorage.setItem('waka_app_auth','admin');
     localStorage.setItem('waka_portal_auth','1');
     localStorage.setItem('waka_staff_role','admin');
@@ -678,20 +687,21 @@ function checkPin() {
     localStorage.setItem('waka_tstaff_auth','1');
     localStorage.setItem('waka_tstaff_role','admin');
     localStorage.setItem('waka_tstaff_branch','ทั้งหมด');
+    localStorage.setItem('waka_admin_code', val);
     gid('pinOverlay').style.display='none'; gid('app').style.display='block';
     applyRole('admin'); ensureStaffName(); renderStaffBadge(); switchTab('branch'); initApp(); _applyDeepLink();
-  } else if (BRANCH_CODES[val]) {
+  } else if (d.ok && d.role === 'staff') {
     localStorage.setItem('waka_app_auth','staff');
     localStorage.setItem('waka_portal_auth','1');
     localStorage.setItem('waka_staff_role','staff');
-    localStorage.setItem('waka_staff_branch', BRANCH_CODES[val]);
+    localStorage.setItem('waka_staff_branch', d.branch);
     localStorage.setItem('waka_tstaff_auth','1');
     localStorage.setItem('waka_tstaff_role','staff');
-    localStorage.setItem('waka_tstaff_branch', BRANCH_CODES[val]);
-    localStorage.setItem('waka_branch', BRANCH_CODES[val]);
+    localStorage.setItem('waka_tstaff_branch', d.branch);
+    localStorage.setItem('waka_branch', d.branch);
     localStorage.setItem('waka_branch_code', val);
     gid('pinOverlay').style.display='none'; gid('app').style.display='block';
-    applyRole('staff'); ensureStaffName(); renderStaffBadge(); autoLoginBranch(BRANCH_CODES[val]); switchTab('branch'); initApp(); _applyDeepLink();
+    applyRole('staff'); ensureStaffName(); renderStaffBadge(); autoLoginBranch(d.branch); switchTab('branch'); initApp(); _applyDeepLink();
   } else { gid('pinError').style.display='block'; setTimeout(()=>gid('pinError').style.display='none',2000); }
 }
 const savedAuth = localStorage.getItem('waka_app_auth') || (localStorage.getItem('waka_portal_auth') === '1' ? localStorage.getItem('waka_staff_role') : null);
@@ -1065,15 +1075,21 @@ function autoLoginBranch(name) {
   gid('branchApp').style.display='block';
   gid('branchTitle').textContent='สาขา'+name;
 }
-function loginBranch() {
+async function loginBranch() {
   const code=gid('branchCodeInput').value.trim();
-  if(BRANCH_CODES[code]){
-    localStorage.setItem('waka_branch',BRANCH_CODES[code]);
-    localStorage.setItem('waka_branch_code',code);
-    autoLoginBranch(BRANCH_CODES[code]);
+  if(!code)return;
+  let d;
+  try {
+    const r = await fetch(G, { method: 'POST', body: JSON.stringify({ action: 'api', do: 'verify_code', code }) });
+    d = await r.json();
+  } catch (e) { d = { ok: false }; }
+  if (d.ok && d.branch) {
+    localStorage.setItem('waka_branch', d.branch);
+    localStorage.setItem('waka_branch_code', code);
+    autoLoginBranch(d.branch);
   } else if(userRole==='admin') {
-    // admin สามารถพิมพ์ชื่อสาขาตรงๆ
-    const match=['ต้นสักคอร์เนอร์','เมืองทองธานี','ศรีนครินทร์'].find(b=>code.includes(b));
+    // admin สามารถพิมพ์ชื่อสาขาตรงๆ (ไม่ต้องมีรหัส)
+    const match=ALL_BRANCHES.find(b=>code.includes(b));
     if(match){localStorage.setItem('waka_branch',match);autoLoginBranch(match);}
     else{gid('branchLoginError').style.display='block';setTimeout(()=>gid('branchLoginError').style.display='none',2000);}
   } else {
@@ -1177,7 +1193,7 @@ async function loadBrOrders() {
       // กับที่เลือกไว้เลย (ตัว dropdown เองก็มีตัวเลือก "ทั้งหมด" แยกต่างหากอยู่
       // แล้ว — จุดอื่นในไฟล์นี้ เช่น openBrView ก็ใช้ b==='ทั้งหมด' เป็นตัวเช็ค
       // "โหมดทุกสาขา" เหมือนกัน จุดนี้เป็นจุดเดียวที่ไม่ได้เช็คตามนั้น)
-      const branches = Object.values(BRANCH_CODES);
+      const branches = ALL_BRANCHES;
       const results = await Promise.all(branches.map(async br => {
         const r = await fetch(G+'&action=api&do=branch_orders&branch='+encodeURIComponent(br)+'&code='+encodeURIComponent(_authCode()));
         const d = await r.json();
@@ -1335,7 +1351,7 @@ async function loadBrStock() {
     let stock;
     let errMsg = '';
     if (b === 'ทั้งหมด') {
-      const branches = Object.values(BRANCH_CODES);
+      const branches = ALL_BRANCHES;
       const results = await Promise.all(branches.map(async br => {
         const r = await fetch(G+'&action=api&do=branch_stock&branch='+encodeURIComponent(br)+'&code='+encodeURIComponent(_authCode()));
         const d = await r.json();
