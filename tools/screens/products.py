@@ -529,9 +529,9 @@ with tab_edit:
             e_limit_box = e7.number_input("จำนวนที่ขายออนไลน์ได้ (กล่อง)", min_value=0.0, value=_num(edit_row.get("limit_box")), step=1.0)
             e_limit_pack = e8.number_input("จำนวนที่ขายออนไลน์ได้ (ซอง)", min_value=0.0, value=_num(edit_row.get("limit_pack")), step=1.0)
             e_packs_per_box = st.number_input(
-                "จำนวนซองต่อกล่อง (ใช้ตอน \"แกะกล่องขายเป็นซอง\" ในฟอร์มเบิกสินค้า)",
+                "จำนวนซองต่อกล่อง (ใช้ตอน \"เบิกกล่องแยกเป็นซอง\" ในฟอร์มเบิกสินค้า)",
                 min_value=0.0, value=_num(edit_row.get("packs_per_box")), step=1.0,
-                help="เว้นว่าง/0 = ยังไม่ได้ตั้งค่า — แกะกล่องขายเป็นซองสินค้านี้ไม่ได้จนกว่าจะตั้งค่านี้",
+                help="เว้นว่าง/0 = ยังไม่ได้ตั้งค่า — เบิกกล่องแยกเป็นซองสินค้านี้ไม่ได้จนกว่าจะตั้งค่านี้",
             )
             e_barcode = st.text_input("บาร์โค้ด", value=str(edit_row.get("barcode") or ""))
             e_image_url = st.text_input("ลิงก์รูปภาพ", value=preview_image_url)
@@ -622,7 +622,7 @@ with tab_add:
         new_limit_box = p9.number_input("จำนวนที่ขายออนไลน์ได้ (กล่อง)", min_value=0, value=0, step=1)
         new_limit_pack = p10.number_input("จำนวนที่ขายออนไลน์ได้ (ซอง)", min_value=0, value=0, step=1)
         new_packs_per_box = st.number_input(
-            "จำนวนซองต่อกล่อง (ใช้ตอน \"แกะกล่องขายเป็นซอง\" ในฟอร์มเบิกสินค้า, ถ้ามี)", min_value=0.0, value=0.0, step=1.0,
+            "จำนวนซองต่อกล่อง (ใช้ตอน \"เบิกกล่องแยกเป็นซอง\" ในฟอร์มเบิกสินค้า, ถ้ามี)", min_value=0.0, value=0.0, step=1.0,
         )
         new_barcode = st.text_input("บาร์โค้ด (ถ้ามี)")
         new_image_url = st.text_input("ลิงก์รูปภาพ", value=uploaded_url, help="อัปโหลดรูปด้านบนแล้วลิงก์จะเติมให้อัตโนมัติ หรือวางลิงก์เองก็ได้")

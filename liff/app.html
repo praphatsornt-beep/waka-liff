@@ -386,7 +386,7 @@
                 <option value="สปอนเซอร์">สปอนเซอร์</option>
                 <option value="ของชำรุด">ของชำรุด</option>
                 <option value="ตัวอย่าง">ตัวอย่าง/โชว์</option>
-                <option value="แกะกล่องขายเป็นซอง">🔁 แกะกล่องขายเป็นซอง</option>
+                <option value="เบิกกล่องแยกเป็นซอง">🔁 เบิกกล่องแยกเป็นซอง</option>
                 <option value="อื่นๆ">อื่นๆ</option>
               </select>
             </div>
@@ -1027,13 +1027,13 @@ async function loadWithdrawProductOptions() {
   gid('wdProduct').innerHTML = '<option value="">-- เลือก --</option>' + list.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
 }
 
-// เหตุผล "แกะกล่องขายเป็นซอง" เปลี่ยนความหมายของฟอร์มเบิกสินค้า: บังคับ
+// เหตุผล "เบิกกล่องแยกเป็นซอง" เปลี่ยนความหมายของฟอร์มเบิกสินค้า: บังคับ
 // ประเภทเป็น Box (แกะจากอย่างอื่นไม่มีความหมาย) + โชว์จำนวนซองที่จะได้แบบ
 // คำนวณอัตโนมัติจาก packs_per_box ที่ตั้งไว้ล่วงหน้าต่อสินค้า (product_list) —
 // submitWithdraw() เช็คค่านี้แล้วยิง action คนละตัว (convertBoxToPack แทน
 // withdrawStock) โดยส่งแค่ qty_box ให้ backend คำนวณจำนวนซองเองอีกที
 function updateWithdrawMode() {
-  const isConvert = gid('wdReason').value === 'แกะกล่องขายเป็นซอง';
+  const isConvert = gid('wdReason').value === 'เบิกกล่องแยกเป็นซอง';
   gid('wdType').disabled = isConvert;
   if (isConvert) gid('wdType').value = 'box';
   const el = gid('wdConvertPreview');
@@ -1528,7 +1528,7 @@ async function submitWithdraw() {
   localStorage.setItem('waka_staff_name',staff_name);
   const _p=products.find(x=>x.name===name);
 
-  if (reason === 'แกะกล่องขายเป็นซอง') {
+  if (reason === 'เบิกกล่องแยกเป็นซอง') {
     const perBox = _p ? (Number(_p.packs_per_box) || 0) : 0;
     if (perBox <= 0) return alert('สินค้านี้ยังไม่ได้ตั้งค่า "จำนวนซองต่อกล่อง"');
     try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'convertBoxToPack',branch,name,id:_p?_p.id:undefined,qty_box:qty,staff_name,code:_authCode()})});const d=await r.json();

@@ -26,7 +26,7 @@ ADMIN_CODE = "waka99"  # withdrawStock now also requires this to prove branch ow
 
 BRANCHES = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์"]
 ADJUST_REASONS = ["", "ซื้อเข้า", "แก้ไขยอดผิด", "อื่นๆ"]
-WITHDRAW_REASONS = ["", "เบิกขายออนไลน์", "ส่งให้สปอนเซอร์", "จัดกิจกรรม", "ชำรุด", "แกะกล่องขายเป็นซอง", "อื่นๆ"]
+WITHDRAW_REASONS = ["", "เบิกขายออนไลน์", "ส่งให้สปอนเซอร์", "จัดกิจกรรม", "ชำรุด", "เบิกกล่องแยกเป็นซอง", "อื่นๆ"]
 
 
 @st.cache_resource
@@ -236,7 +236,7 @@ def _withdraw_central_stock_dialog():
     names = catalog["name"].tolist() if not catalog.empty else []
     # สินค้า/เหตุผล อยู่นอก form โดยตั้งใจ (เหมือน "คืนสต็อกจากสาขากลับคลังกลาง"
     # ด้านล่าง) — widget ใน st.form ไม่ trigger rerun จนกว่าจะกด submit ปุ่มเดียว
-    # เหตุผลต้องอยู่นอกด้วย เพราะเลือก "แกะกล่องขายเป็นซอง" แล้วต้องสลับความหมาย
+    # เหตุผลต้องอยู่นอกด้วย เพราะเลือก "เบิกกล่องแยกเป็นซอง" แล้วต้องสลับความหมาย
     # ของฟอร์มทันที (จากเบิกซองออก → กรอกจำนวนซองที่ได้จากการแกะ)
     wc_name = st.selectbox("สินค้า", names, key="wc_name_sel")
 
@@ -248,7 +248,7 @@ def _withdraw_central_stock_dialog():
     st.caption(f"คงเหลือคลังกลาง: กล่อง {max_box} · ซอง {max_pack}")
 
     wc_reason = st.selectbox("เหตุผล", WITHDRAW_REASONS, index=WITHDRAW_REASONS.index("เบิกขายออนไลน์"), key="wc_reason_sel")
-    is_convert = wc_reason == "แกะกล่องขายเป็นซอง"
+    is_convert = wc_reason == "เบิกกล่องแยกเป็นซอง"
     per_box = int(pd.to_numeric(cur_row["packs_per_box"], errors="coerce").fillna(0).iloc[0]) if not cur_row.empty and "packs_per_box" in cur_row.columns else 0
     wc_id = cur_row.iloc[0]["id"] if not cur_row.empty and "id" in cur_row.columns else None
 
@@ -673,7 +673,7 @@ with tab_branch:
         wb1, wb2 = st.columns(2)
         w_branch = wb1.selectbox("สาขา", BRANCHES, key="w_branch_sel")
         w_name = wb2.selectbox("สินค้า", names_b, key="w_name_sel")
-        w_convert = st.checkbox("🔁 แกะกล่องขายเป็นซอง (แทนที่จะเบิกออกจากระบบจริง)", key="w_convert_chk")
+        w_convert = st.checkbox("🔁 เบิกกล่องแยกเป็นซอง (แทนที่จะเบิกออกจากระบบจริง)", key="w_convert_chk")
         w_per_box = int(pd.to_numeric(name_to_pb.get(w_name), errors="coerce")) if pd.notna(pd.to_numeric(name_to_pb.get(w_name), errors="coerce")) else 0
         if w_convert and w_per_box <= 0:
             st.warning('สินค้านี้ยังไม่ได้ตั้งค่า "จำนวนซองต่อกล่อง" — ไปตั้งค่าที่หน้า "สินค้า" → แก้ไขสินค้า ก่อน')
