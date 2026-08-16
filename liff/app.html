@@ -705,7 +705,15 @@ async function checkPin() {
   } else { gid('pinError').style.display='block'; setTimeout(()=>gid('pinError').style.display='none',2000); }
 }
 const savedAuth = localStorage.getItem('waka_app_auth') || (localStorage.getItem('waka_portal_auth') === '1' ? localStorage.getItem('waka_staff_role') : null);
-if (savedAuth) {
+// เซสชันแอดมินที่ล็อกอินไว้ตั้งแต่ก่อน verify_code deploy รอบนี้จะไม่มี
+// waka_admin_code เก็บไว้เลย (เดิม _authCode() อ่านจากค่าคงที่ PIN_ADMIN ในไฟล์
+// ตรงๆ ไม่เคยต้องเก็บอะไร) — ถ้าปล่อยให้ restore session แบบนี้ _authCode() จะ
+// คืนค่าว่าง ทำให้ action ที่ผูกกับสาขา (branch_orders, handoverOrder, ฯลฯ) ที่
+// เช็คผ่าน _branchAuthorized ฝั่ง GAS ล้มเหลวเงียบๆ ทุกจุด — บังคับให้แอดมิน
+// กลุ่มนี้ล็อกอินใหม่รอบเดียว (ไม่กระทบ staff เพราะ waka_branch_code ถูกเก็บมา
+// ตั้งแต่เดิมอยู่แล้ว ไม่เคยเปลี่ยน)
+const savedAuthValid = savedAuth && !(savedAuth === 'admin' && !localStorage.getItem('waka_admin_code'));
+if (savedAuthValid) {
   gid('pinOverlay').style.display='none'; gid('app').style.display='block'; applyRole(savedAuth);
   ensureStaffName(); renderStaffBadge();
   const sb=localStorage.getItem('waka_branch') || localStorage.getItem('waka_staff_branch');

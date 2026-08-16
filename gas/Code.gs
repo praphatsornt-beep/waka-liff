@@ -381,6 +381,11 @@ function doGet(e) {
       return handleCustomerConfirm(e.parameter.order || "", e);
     }
     if (action === "api") {
+      // verify_code รับรหัส PIN/สาขา — บังคับ POST เท่านั้น กัน PIN หลุดไปอยู่
+      // ใน query string (server access log, browser history) ถ้ามีคนยิงผ่าน GET
+      if (doParam === "verify_code") {
+        return _cors(ContentService.createTextOutput(JSON.stringify({ ok: false, error: "POST only" })));
+      }
       return handleApi(e.parameter);
     }
 
