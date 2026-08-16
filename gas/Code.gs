@@ -1574,6 +1574,7 @@ function handleApi(params) {
         limit_box: (r.limit_box === "" || r.limit_box === undefined || r.limit_box === null) ? -1 : Number(r.limit_box),
         limit_pack: (r.limit_pack === "" || r.limit_pack === undefined || r.limit_pack === null) ? -1 : Number(r.limit_pack),
         stock_box: Number(r.qty_box) || 0, stock_pack: Number(r.qty_pack) || 0,
+        packs_per_box: Number(r.packs_per_box) || 0,
       };
     });
     return _cors(ContentService.createTextOutput(JSON.stringify({ products: products })));
