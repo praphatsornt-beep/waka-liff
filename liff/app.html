@@ -1134,8 +1134,13 @@ async function loadBrOrders() {
   const b=gid('branchSelect').value;if(!b){gid('brOrdersList').innerHTML='<div class="empty">เลือกสาขาก่อน</div>';return;}
   gid('brOrdersList').innerHTML='<div class="empty">กำลังโหลด...</div>';
   try{
-    if (userRole === 'admin') {
-      // แอดมินเห็นออเดอร์ทุกสาขารวมกัน — ไม่ล็อกแค่สาขาที่เลือกอยู่
+    if (userRole === 'admin' && b === 'ทั้งหมด') {
+      // แอดมินเลือก "ทั้งหมด" เท่านั้นถึงรวมออเดอร์ทุกสาขา — เดิมเช็คแค่
+      // userRole==='admin' เฉยๆ ทำให้ admin เลือกสาขาใดสาขาหนึ่งจาก dropdown
+      // ไปแล้ว (เช่น "เมืองทองธานี") แต่ยังเห็นออเดอร์ทุกสาขาปนกันอยู่ดี ไม่ตรง
+      // กับที่เลือกไว้เลย (ตัว dropdown เองก็มีตัวเลือก "ทั้งหมด" แยกต่างหากอยู่
+      // แล้ว — จุดอื่นในไฟล์นี้ เช่น openBrView ก็ใช้ b==='ทั้งหมด' เป็นตัวเช็ค
+      // "โหมดทุกสาขา" เหมือนกัน จุดนี้เป็นจุดเดียวที่ไม่ได้เช็คตามนั้น)
       const branches = Object.values(BRANCH_CODES);
       const results = await Promise.all(branches.map(async br => {
         const r = await fetch(G+'&action=api&do=branch_orders&branch='+encodeURIComponent(br)+'&code='+encodeURIComponent(_authCode()));
