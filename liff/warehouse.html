@@ -285,6 +285,10 @@
 
   <!-- Tab: สต็อก -->
   <div id="tab-stock" style="display:none">
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <span id="stockUpdatedAt" style="font-size:12px;color:#888"></span>
+      <button class="btn" style="width:auto;min-width:unset;padding:6px 14px;font-size:13px" onclick="loadStock()">🔄 รีเฟรช</button>
+    </div>
     <div class="card">
       <h3>📊 สรุปสินค้าทั้งหมด</h3>
       <div id="allProductsContent"><div class="empty">กำลังโหลด...</div></div>
@@ -364,13 +368,22 @@ function checkPin() {
 document.getElementById('pinInput').addEventListener('keydown', e => { if (e.key === 'Enter') checkPin(); });
 
 // ── Tabs ──
+let stockAutoRefreshTimer = null;
 function switchTab(tab, el) {
   document.querySelectorAll('[id^="tab-"]').forEach(e => e.style.display = 'none');
   document.getElementById('tab-' + tab).style.display = 'block';
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   (el || event.target).classList.add('active');
   if (tab === 'history') loadHistory();
-  if (tab === 'stock') loadStock();
+  // เดิม loadStock() ดึงข้อมูลแค่ตอนสลับเข้าแท็บนี้เท่านั้น — ถ้าเปิดค้างไว้แล้วมี
+  // คนอื่น (สาขา/เครื่องอื่น) แก้สต็อกระหว่างนั้น ตัวเลขจะไม่ขยับจนกว่าจะสลับแท็บ
+  // ออกแล้วกลับเข้ามาใหม่ ตั้ง interval รีเฟรชเองทุก 30 วิระหว่างค้างอยู่แท็บนี้
+  // แทน แล้วเคลียร์ทิ้งทันทีที่สลับออก กันยิง request เปล่าๆ ตอนไม่ได้อยู่หน้านี้
+  if (stockAutoRefreshTimer) { clearInterval(stockAutoRefreshTimer); stockAutoRefreshTimer = null; }
+  if (tab === 'stock') {
+    loadStock();
+    stockAutoRefreshTimer = setInterval(loadStock, 30000);
+  }
 }
 
 // ── Load all ──
@@ -746,6 +759,9 @@ async function loadStock() {
       }
       bEl.innerHTML = html;
     }
+
+    const stamp = document.getElementById('stockUpdatedAt');
+    if (stamp) stamp.textContent = 'อัปเดตล่าสุด ' + new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   } catch (err) {
     cEl.innerHTML = '<div class="empty">โหลดไม่ได้</div>';
     bEl.innerHTML = '<div class="empty">โหลดไม่ได้</div>';
