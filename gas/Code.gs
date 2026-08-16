@@ -2502,7 +2502,7 @@ function handleReceiveShipment(data) {
     }
     _logStaffAction_(staffName, branch, "receive_shipment", data.shipment_id, null);
 
-    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now })));
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now, notified_count: pendingNotifications.length })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));

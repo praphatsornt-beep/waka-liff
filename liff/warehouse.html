@@ -655,7 +655,8 @@ async function receiveShipment(shipmentId) {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     if (data.already) alert('ล็อตนี้รับแล้ว');
-    else alert('รับของสำเร็จ! แจ้งลูกค้าแล้ว');
+    else if (data.notified_count > 0) alert('รับของสำเร็จ! ส่งไลน์แจ้งพร้อมรับลูกค้า ' + data.notified_count + ' ออเดอร์แล้ว');
+    else alert('รับของสำเร็จ! ไม่มีออเดอร์ที่ของครบพอส่งมอบตอนนี้ (ยังไม่ส่งไลน์แจ้งใคร)');
     loadHistory();
   } catch (err) {
     alert('เกิดข้อผิดพลาด: ' + err.message);
