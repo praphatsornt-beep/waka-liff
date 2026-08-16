@@ -779,15 +779,7 @@ function doPost(e) {
           } catch(_) {}
         }
 
-        if (slipStatus === "ยืนยัน") {
-          var finMsg = "✅ ออเดอร์ยืนยันแล้ว #" + orderId
-            + "\nลูกค้า: " + (data.displayName || "") + (data.realName ? " (" + data.realName + ")" : "")
-            + "\nยอด: " + data.total + " บาท"
-            + "\n\n" + itemsSummary;
-          if (slipDate) finMsg += "\n\n📅 วันที่โอน: " + slipDate;
-          if (transferAgo) finMsg += "\n⏱️ " + transferAgo;
-          _linePush(financeId, finMsg);
-        } else {
+        if (slipStatus !== "ยืนยัน") {
           var problemLabel = {
             "ยอดไม่ตรง": "💰 ยอดเงินไม่ตรง",
             "บัญชีไม่ตรง": "🏦 บัญชีไม่ตรง",
@@ -811,11 +803,7 @@ function doPost(e) {
           _linePush(financeId, finMsg2);
         }
       }
-      if (data.lineUserId) notifyCustomer(data.lineUserId, { orderId: orderId, items: data.items, displayName: data.displayName, branch: data.branch, address: data.address, total: data.total, slipStatus: slipStatus });
-      if (instantReady && data.lineUserId) {
-        var readyTrackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + orderId;
-        _linePush(data.lineUserId, "สินค้าพร้อมรับที่สาขา" + data.branch + " แล้ว!\n\nออเดอร์: #" + orderId + "\n\nดูสถานะ:\n" + readyTrackUrl);
-      }
+      if (data.lineUserId) notifyCustomer(data.lineUserId, { orderId: orderId, items: data.items, displayName: data.displayName, branch: data.branch, address: data.address, total: data.total, slipStatus: slipStatus, instantReady: instantReady });
     } catch(_) {}
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ success: true, orderId: orderId, slipStatus: slipStatus })));
@@ -1056,7 +1044,7 @@ function notifyCustomer(userId, order) {
   }).join("\n");
   var isDelivery = order.branch === "จัดส่ง";
   var lines = [
-    "รับออเดอร์แล้ว #" + order.orderId,
+    "WAKA ขอบคุณสำหรับคำสั่งซื้อเลขที่ #" + order.orderId,
     "",
     items,
     "",
@@ -1073,8 +1061,19 @@ function notifyCustomer(userId, order) {
     lines.push("⚠️ ตรวจพบสลิปนี้เคยถูกใช้แล้ว");
     lines.push("หากคุณสั่งซื้อซ้ำ ทีมงานจะยึดออเดอร์แรกและยกเลิกออเดอร์นี้ให้อัตโนมัติ");
     lines.push("หากมีข้อสงสัยกรุณาติดต่อทีมงาน 🙏");
+  } else if (order.instantReady) {
+    // สลิปผ่านอัตโนมัติ + สต็อกสาขาพอส่งมอบอยู่แล้วตอนสั่ง — รวมแจ้ง "รับออเดอร์
+    // แล้ว" กับ "พร้อมรับแล้ว" เป็นข้อความเดียว แทนที่จะยิง 2 ข้อความติดกัน (เดิม
+    // ลูกค้าได้ "รับออเดอร์แล้ว...ทีมงานจะตรวจสอบ" ตามด้วย "พร้อมรับแล้ว" ทันที
+    // ซึ่งขัดแย้งกันเอง เพราะจริงๆ ตรวจ+พร้อมรับเสร็จในตาเดียวกันไปแล้ว)
+    var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + order.orderId;
+    lines.push("สินค้าพร้อมรับที่สาขา" + order.branch + " แล้ว!");
+    lines.push("");
+    lines.push("ดูสถานะ:\n" + trackUrl);
   } else {
     lines.push("ทีมงานจะตรวจสอบและแจ้งกลับทาง LINE ครับ");
+    lines.push("");
+    lines.push("เช็คสถานะได้ที่:\n" + "https://waka-liff.vercel.app/confirm.html?order=" + order.orderId);
   }
   _linePush(userId, lines.join("\n"));
 }
@@ -1305,7 +1304,7 @@ function handleApi(params) {
     } else if (newStatus === "ready") {
       order.fulfillment = "พร้อมรับ";
       order.fulfilled_at = now;
-      if (uid) _linePush(uid, "สินค้าพร้อมรับที่สาขา" + branch + " แล้ว!\n\nออเดอร์: #" + orderId + "\n\nดูสถานะ:\n" + trackUrl);
+      if (uid) _linePush(uid, "สินค้าพร้อมรับที่สาขา" + branch + " แล้ว!\n\nออเดอร์: #" + orderId + "\n\nดูสถานะ:\n" + trackUrl + "\n\nสามารถแจ้งเลขที่ออเดอร์ เพื่อรับสินค้าที่สาขาได้เลยครับ");
     } else if (newStatus === "handover") {
       // ยกเลิกขั้นตอน "ลูกค้ากดยืนยันรับของ" — พนักงานกดส่งมอบ/จัดส่งถือว่า
       // order จบทันที ไม่ต้องรอลูกค้ากดยืนยันอีกขั้น (ตามคำขอเจ้าของร้าน)
@@ -1707,7 +1706,7 @@ function handleApi(params) {
       var cancelMsg;
       if (cancelReason === "duplicate") {
         cancelMsg = "❌ ออเดอร์ #" + orderId + " ถูกยกเลิก\n\n" +
-          "ทีมงาน WAKA ได้รับออเดอร์แรกของคุณเรียบร้อยแล้วค่ะ\n" +
+          "ทีมงาน WAKA ได้รับออเดอร์แรกของคุณเรียบร้อยแล้วครับ\n" +
           "ออเดอร์นี้จึงขอยกเลิกเพื่อให้สิทธิ์ลูกค้าท่านอื่น\n" +
           "(สินค้ามีจำกัด)\n\n" +
           "หากมีข้อสงสัยกรุณาติดต่อทีมงาน 🙏";
@@ -2473,7 +2472,7 @@ function handleReceiveShipment(data) {
       var oid = String(ord.order_id || "");
       if (uid) {
         var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + oid;
-        pendingNotifications.push({ uid: uid, msg: "สินค้าพร้อมรับที่สาขา" + branch + " แล้ว!\n\nออเดอร์: #" + oid + "\n\nดูสถานะ:\n" + trackUrl });
+        pendingNotifications.push({ uid: uid, msg: "สินค้าพร้อมรับที่สาขา" + branch + " แล้ว!\n\nออเดอร์: #" + oid + "\n\nดูสถานะ:\n" + trackUrl + "\n\nสามารถแจ้งเลขที่ออเดอร์ เพื่อรับสินค้าที่สาขาได้เลยครับ" });
       }
     }
 
@@ -2596,7 +2595,7 @@ function handleHandoverOrder(data) {
         msg = "📦 ส่งมอบสินค้าบางส่วนแล้ว\nออเดอร์: #" + data.order_id + "\n\n✅ รับแล้ว:\n" +
           handoverNames.map(function(n) { return "- " + n; }).join("\n") +
           "\n\n⏳ รอสินค้า:\n" + pendingItems.map(function(it) { return "- " + it.name + " x" + it.qty; }).join("\n") +
-          "\n\nสินค้าที่เหลือจะแจ้งให้ทราบเมื่อพร้อม";
+          "\n\nหากคุณยังไม่ได้รับสินค้า กรุณาติดต่อแอดมินโดยด่วน";
       }
       _linePush(uid, msg);
       order.notified_at = now;
@@ -2674,7 +2673,7 @@ function handlePartialReady(data) {
       var readyItems = items.filter(function(it) { return (!!it.ready_at || !!it.handed_at) && !it.cancelled_at; });
       var pendingItems = items.filter(function(it) { return !it.ready_at && !it.handed_at && !it.cancelled_at; });
       var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + data.order_id;
-      var msg = "📦 สินค้า" + (allReady ? "พร้อมรับแล้ว!" : "บางส่วนพร้อมรับแล้ว!") + "\nออเดอร์: #" + data.order_id + "\n";
+      var msg = "📦 สินค้าบางรายการพร้อมรับแล้ว!\n\nออเดอร์: #" + data.order_id + "\n";
       msg += "\n✅ พร้อมรับ:\n" + readyItems.map(function(it) {
         return "- " + it.name + " x" + it.qty + (it.type === "box" ? " กล่อง" : " ซอง");
       }).join("\n");
@@ -2683,7 +2682,7 @@ function handlePartialReady(data) {
           return "- " + it.name + " x" + it.qty + (it.type === "box" ? " กล่อง" : " ซอง");
         }).join("\n");
       }
-      msg += "\n\nกรุณามารับที่สาขา" + branch + " ได้เลยครับ\n" + trackUrl;
+      msg += "\n\nสามารถแจ้งรับสินค้าพร้อมรับที่สาขา" + branch + " ได้เลยครับ และสินค้าอื่นๆ จะรีบแจ้งให้ทราบ เมื่อสินค้ามาถึงครับ\n" + trackUrl;
       _linePush(uid, msg);
       order.notified_at = now;
     }
@@ -2836,7 +2835,7 @@ function handleConfirmSlip(data) {
           return "  - " + it.name + " (" + unit + ") x" + it.qty;
         }).join("\n");
         var isDelivery = branch === "จัดส่ง";
-        message = "ยืนยันการชำระเงินแล้ว ✅\n\nออเดอร์: #" + orderId + "\n\n" + itemsText + "\n\nยอดรวม: " + total + " บาท\n" + (isDelivery ? "จัดส่งพัสดุ" : "รับที่สาขา: " + branch) + "\n\n" + (instantReady ? "สินค้าพร้อมรับที่สาขาแล้ว ไปรับได้เลยครับ 🎉" : "ทีมงานจะแจ้งเมื่อสินค้าพร้อมรับครับ");
+        message = "WAKA ยืนยันการชำระเงินแล้ว ✅\n\nออเดอร์: #" + orderId + "\n\n" + itemsText + "\n\nยอดรวม: " + total + " บาท\n" + (isDelivery ? "จัดส่งพัสดุ" : "รับที่สาขา: " + branch) + "\n\n" + (instantReady ? "สินค้าพร้อมรับที่สาขาแล้ว🎉" : "ทีมงานจะแจ้งเมื่อสินค้าพร้อมรับครับ");
       }
       _linePush(uid, message);
       if (instantReady && data.custom_message) {
@@ -2880,8 +2879,8 @@ function handleRejectSlip(data) {
     var uid = order.line_user_id || "";
     if (uid && uid !== "dev_user") {
       var reasonLine = reason ? "\nเหตุผล: " + reason : "";
-      var msg = "🙏 แอดมินขออนุญาตยกเลิกออเดอร์ #" + orderId + " หากมีข้อสงสัยหรือต้องการสอบถามเพิ่มเติม ติดต่อแอดมินได้เลยนะคะ" + reasonLine +
-        "\n\nขออภัยลูกค้าด้วยนะคะ ขอบคุณค่ะ 💛";
+      var msg = "🙏 แอดมินขออนุญาตยกเลิกออเดอร์ #" + orderId + " หากมีข้อสงสัยหรือต้องการสอบถามเพิ่มเติม ติดต่อแอดมินได้เลยครับ" + reasonLine +
+        "\n\nขออภัยลูกค้าด้วยนะครับ ขอบคุณครับ 💛";
       _linePush(uid, msg);
     }
 
