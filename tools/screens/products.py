@@ -528,6 +528,11 @@ with tab_edit:
             e7, e8 = st.columns(2)
             e_limit_box = e7.number_input("จำนวนที่ขายออนไลน์ได้ (กล่อง)", min_value=0.0, value=_num(edit_row.get("limit_box")), step=1.0)
             e_limit_pack = e8.number_input("จำนวนที่ขายออนไลน์ได้ (ซอง)", min_value=0.0, value=_num(edit_row.get("limit_pack")), step=1.0)
+            e_packs_per_box = st.number_input(
+                "จำนวนซองต่อกล่อง (ใช้ตอนแปลงกล่อง→ซองในหน้าสต็อก)",
+                min_value=0.0, value=_num(edit_row.get("packs_per_box")), step=1.0,
+                help="เว้นว่าง/0 = ยังไม่ได้ตั้งค่า — จะแปลงกล่องเป็นซองในหน้าสต็อกไม่ได้จนกว่าจะตั้งค่านี้",
+            )
             e_barcode = st.text_input("บาร์โค้ด", value=str(edit_row.get("barcode") or ""))
             e_image_url = st.text_input("ลิงก์รูปภาพ", value=preview_image_url)
             e_notice = st.text_area("ข้อความแจ้งเตือนในสินค้า (notice)", value=str(edit_row.get("notice") or ""))
@@ -540,6 +545,7 @@ with tab_edit:
                         "cost_box": e_cost_box, "cost_pack": e_cost_pack,
                         "price_box": e_price_box, "price_pack": e_price_pack,
                         "limit_box": e_limit_box, "limit_pack": e_limit_pack,
+                        "packs_per_box": e_packs_per_box,
                         "barcode": e_barcode.strip(), "slug": e_slug.strip(), "image_url": e_image_url.strip(),
                         "notice": e_notice.strip(),
                     }
@@ -615,6 +621,9 @@ with tab_add:
         p9, p10 = st.columns(2)
         new_limit_box = p9.number_input("จำนวนที่ขายออนไลน์ได้ (กล่อง)", min_value=0, value=0, step=1)
         new_limit_pack = p10.number_input("จำนวนที่ขายออนไลน์ได้ (ซอง)", min_value=0, value=0, step=1)
+        new_packs_per_box = st.number_input(
+            "จำนวนซองต่อกล่อง (ใช้ตอนแปลงกล่อง→ซองในหน้าสต็อก, ถ้ามี)", min_value=0.0, value=0.0, step=1.0,
+        )
         new_barcode = st.text_input("บาร์โค้ด (ถ้ามี)")
         new_image_url = st.text_input("ลิงก์รูปภาพ", value=uploaded_url, help="อัปโหลดรูปด้านบนแล้วลิงก์จะเติมให้อัตโนมัติ หรือวางลิงก์เองก็ได้")
         submitted_p = st.form_submit_button("เพิ่มสินค้า")
@@ -632,6 +641,7 @@ with tab_add:
                         "price_box": new_price_box, "price_pack": new_price_pack,
                         "initial_box": new_initial_box, "initial_pack": new_initial_pack,
                         "limit_box": new_limit_box, "limit_pack": new_limit_pack,
+                        "packs_per_box": new_packs_per_box,
                         "barcode": new_barcode.strip(), "slug": new_slug.strip(),
                         "image_url": new_image_url.strip(),
                     })

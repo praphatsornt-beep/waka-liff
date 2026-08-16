@@ -272,6 +272,45 @@ def _withdraw_central_stock_dialog():
                     st.error(f"บันทึกไม่ได้: {e}")
 
 
+@st.dialog("🔁 แปลงกล่อง→ซอง (คลังกลาง)")
+def _convert_central_dialog():
+    names = catalog["name"].tolist() if not catalog.empty else []
+    name_to_id = dict(zip(catalog["name"], catalog.get("id", ""))) if not catalog.empty else {}
+    cv_name = st.selectbox("สินค้า", names, key="cv_central_name_sel")
+
+    cur_row = pd.DataFrame()
+    if not catalog.empty:
+        cur_row = catalog[catalog["name"] == cv_name]
+    max_box = int(pd.to_numeric(cur_row["qty_box"], errors="coerce").fillna(0).iloc[0]) if not cur_row.empty else 0
+    per_box = pd.to_numeric(cur_row["packs_per_box"], errors="coerce").fillna(0).iloc[0] if not cur_row.empty and "packs_per_box" in cur_row.columns else 0
+    per_box = int(per_box)
+    st.caption(f"คงเหลือคลังกลาง: กล่อง {max_box}")
+
+    if per_box <= 0:
+        st.warning('สินค้านี้ยังไม่ได้ตั้งค่า "จำนวนซองต่อกล่อง" — ไปตั้งค่าที่หน้า "สินค้า" → แก้ไขสินค้า ก่อน')
+        return
+
+    st.caption(f"1 กล่อง = {per_box} ซอง")
+    with st.form("convert_central_form"):
+        cv_qty_box = st.number_input("แปลงกี่กล่อง", min_value=0, max_value=max(max_box, 0), value=0, step=1)
+        st.caption(f"จะได้ซองเพิ่ม: {cv_qty_box * per_box}")
+        cv_submitted = st.form_submit_button("แปลง")
+        if cv_submitted:
+            if cv_qty_box <= 0:
+                st.warning("ใส่จำนวนกล่องที่จะแปลงก่อน")
+            else:
+                try:
+                    gas_post({
+                        "_action": "convertBoxToPack", "name": cv_name, "id": name_to_id.get(cv_name) or None,
+                        "qty_box": cv_qty_box,
+                    })
+                    _flash(f"แปลง {cv_name} {cv_qty_box} กล่อง → {cv_qty_box * per_box} ซอง แล้ว")
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"แปลงไม่ได้: {e}")
+
+
 @st.dialog("🚚 สร้างล็อตส่งสาขา", width="large")
 def _create_shipment_dialog():
     ship_branch = st.selectbox("สาขาปลายทาง", BRANCHES, key="ship_branch_sel")
@@ -383,7 +422,7 @@ def _create_shipment_dialog():
 
 
 with tab_central:
-    ac1, ac2, ac3 = st.columns(3)
+    ac1, ac2, ac3, ac4 = st.columns(4)
     with ac1:
         if st.button("➕ เพิ่ม/ลด สต็อกคลังกลาง", use_container_width=True):
             _adjust_central_stock_dialog()
@@ -393,6 +432,10 @@ with tab_central:
             _withdraw_central_stock_dialog()
 
     with ac3:
+        if st.button("🔁 แปลงกล่อง→ซอง", use_container_width=True):
+            _convert_central_dialog()
+
+    with ac4:
         if st.button("🚚 สร้างล็อตส่งสาขา", use_container_width=True):
             # Force a fresh demand snapshot every time the dialog is opened —
             # otherwise reopening it for the same branch (e.g. right after
@@ -593,6 +636,44 @@ with tab_branch:
                     st.rerun()
                 except Exception as e:
                     st.error(f"บันทึกไม่ได้: {e}")
+
+    with st.expander("🔁 แปลงกล่อง→ซอง (สาขา)"):
+        names_cv = sorted(stock_branch["name"].unique().tolist()) if not stock_branch.empty else []
+        name_to_pb = dict(zip(catalog["name"], catalog.get("packs_per_box", pd.Series(dtype=float)))) if not catalog.empty else {}
+
+        cvb1, cvb2 = st.columns(2)
+        cv_branch = cvb1.selectbox("สาขา", BRANCHES, key="cv_branch_sel")
+        cv_name = cvb2.selectbox("สินค้า", names_cv, key="cv_branch_name_sel")
+
+        cur_row = pd.DataFrame()
+        if not stock_branch.empty:
+            cur_row = stock_branch[(stock_branch["branch"] == cv_branch) & (stock_branch["name"] == cv_name)]
+        cv_max_box = int(pd.to_numeric(cur_row["qty_box"], errors="coerce").fillna(0).iloc[0]) if not cur_row.empty else 0
+        cv_per_box = int(pd.to_numeric(name_to_pb.get(cv_name), errors="coerce")) if pd.notna(pd.to_numeric(name_to_pb.get(cv_name), errors="coerce")) else 0
+        st.caption(f"คงเหลือที่สาขา: กล่อง {cv_max_box}")
+
+        if cv_per_box <= 0:
+            st.warning('สินค้านี้ยังไม่ได้ตั้งค่า "จำนวนซองต่อกล่อง" — ไปตั้งค่าที่หน้า "สินค้า" → แก้ไขสินค้า ก่อน')
+        else:
+            st.caption(f"1 กล่อง = {cv_per_box} ซอง")
+            with st.form("convert_branch_form"):
+                cv_qty_box_b = st.number_input("แปลงกี่กล่อง", min_value=0, max_value=max(cv_max_box, 0), value=0, step=1)
+                st.caption(f"จะได้ซองเพิ่ม: {cv_qty_box_b * cv_per_box}")
+                cv_submitted_b = st.form_submit_button("แปลง")
+                if cv_submitted_b:
+                    if cv_qty_box_b <= 0:
+                        st.warning("ใส่จำนวนกล่องที่จะแปลงก่อน")
+                    else:
+                        try:
+                            gas_post({
+                                "_action": "convertBoxToPack", "branch": cv_branch, "name": cv_name,
+                                "id": branch_name_to_id.get(cv_name) or None, "qty_box": cv_qty_box_b,
+                            })
+                            _flash(f"แปลง {cv_name} {cv_qty_box_b} กล่อง → {cv_qty_box_b * cv_per_box} ซอง ที่สาขา {cv_branch} แล้ว")
+                            st.cache_data.clear()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"แปลงไม่ได้: {e}")
 
     with st.expander("📤 คืนสต็อกจากสาขากลับคลังกลาง"):
         names_r = sorted(stock_branch["name"].unique().tolist()) if not stock_branch.empty else []
