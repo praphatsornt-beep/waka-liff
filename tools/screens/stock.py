@@ -552,6 +552,8 @@ with tab_central:
                 st.error(f"บันทึกไม่ได้: {e}")
 
 with tab_branch:
+    branch_name_to_id = dict(zip(catalog["name"], catalog.get("id", ""))) if not catalog.empty else {}
+
     if stock_branch.empty:
         st.caption("ยังไม่มีข้อมูลสต็อกสาขา")
     else:
@@ -575,28 +577,92 @@ with tab_branch:
         if sb_cat_sel != "ทุกหมวดหมู่":
             sb_show = sb_show[sb_show["name"].map(name_to_cat) == sb_cat_sel]
 
-        def _fmt_cell(box, pack):
-            box, pack = _safe_int(box), _safe_int(pack)
-            return "—" if box == 0 and pack == 0 else f"{box} / {pack}"
-
-        pivot = {}
-        for _, r in sb_show.iterrows():
-            pivot.setdefault(r.get("name", ""), {})[r.get("branch", "")] = _fmt_cell(r.get("qty_box"), r.get("qty_pack"))
-
-        show_branches = BRANCHES if sb_branch_sel == "ทุกสาขา" else [sb_branch_sel]
-        pivot_df = pd.DataFrame([
-            {"สินค้า": name, **{b: cells.get(b, "—") for b in show_branches}}
-            for name, cells in sorted(pivot.items())
-            if sb_branch_sel == "ทุกสาขา" or cells.get(sb_branch_sel, "—") != "—"
-        ]).set_index("สินค้า")
-
         st.caption("กล่อง / ซอง ต่อสาขา")
-        if pivot_df.empty:
-            st.caption("ไม่มีสินค้าตรงตัวกรองนี้")
-        else:
-            st.table(pivot_df)
 
-    branch_name_to_id = dict(zip(catalog["name"], catalog.get("id", ""))) if not catalog.empty else {}
+        if sb_branch_sel == "ทุกสาขา":
+            def _fmt_cell(box, pack):
+                box, pack = _safe_int(box), _safe_int(pack)
+                return "—" if box == 0 and pack == 0 else f"{box} / {pack}"
+
+            pivot = {}
+            for _, r in sb_show.iterrows():
+                pivot.setdefault(r.get("name", ""), {})[r.get("branch", "")] = _fmt_cell(r.get("qty_box"), r.get("qty_pack"))
+
+            pivot_df = pd.DataFrame([
+                {"สินค้า": name, **{b: cells.get(b, "—") for b in BRANCHES}}
+                for name, cells in sorted(pivot.items())
+            ]).set_index("สินค้า")
+
+            if pivot_df.empty:
+                st.caption("ไม่มีสินค้าตรงตัวกรองนี้")
+            else:
+                st.table(pivot_df)
+            st.caption('เลือกสาขาใดสาขาหนึ่ง (ไม่ใช่ "ทุกสาขา") เพื่อแก้ไขจำนวนในตารางได้โดยตรง')
+        else:
+            # แก้ไขได้ตรงในตารางเฉพาะตอนเลือกสาขาเดียว — โหมด "ทุกสาขา" เป็นข้อความ
+            # รวม "กล่อง / ซอง" ของหลายสาขาไว้ในช่องเดียว ไม่ใช่ตัวเลขที่แก้ตรงๆ ได้
+            branch_raw = {}
+            for _, r in sb_show[sb_show["branch"] == sb_branch_sel].iterrows():
+                branch_raw[r.get("name", "")] = {"กล่อง": _safe_int(r.get("qty_box")), "ซอง": _safe_int(r.get("qty_pack"))}
+            edit_base = pd.DataFrame([
+                {"สินค้า": name, **vals} for name, vals in sorted(branch_raw.items())
+            ])
+
+            if edit_base.empty:
+                st.caption("ไม่มีสินค้าตรงตัวกรองนี้")
+            else:
+                # freeze base ไว้คงที่ตลอด "เซสชันแก้ไข" หนึ่งรอบต่อ branch/cat_sel —
+                # เหตุผลเดียวกับ snapshot ของตาราง "จัดการสต็อกคลังกลาง" ด้านบน:
+                # data_editor จำ edit ตามตำแหน่งแถว ถ้า base เปลี่ยนลำดับระหว่างที่
+                # ยังแก้ไม่เสร็จ (cache หมดอายุ ฯลฯ) edit จะไปเข้าแถวผิดตัวเงียบๆ
+                snap_key = f"_branch_stock_snapshot_{sb_branch_sel}_{sb_cat_sel}"
+                if snap_key not in st.session_state:
+                    st.session_state[snap_key] = edit_base
+                edit_base = st.session_state[snap_key]
+
+                cap_col, save_col, refresh_col = st.columns([5, 1, 1])
+                with cap_col:
+                    st.caption("แก้ไขจำนวนกล่อง/ซองในตารางได้เลย แล้วกดบันทึก — เลขที่แก้เป็นยอดใหม่ทั้งหมด ไม่ใช่จำนวนที่เพิ่ม")
+                save_slot = save_col.empty()
+                with refresh_col:
+                    if st.button("🔄 รีเฟรช", key=f"refresh_branch_stock_btn_{sb_branch_sel}_{sb_cat_sel}", use_container_width=True):
+                        st.session_state.pop(snap_key, None)
+                        st.cache_data.clear()
+                        st.rerun()
+                edited = st.data_editor(
+                    edit_base,
+                    use_container_width=True,
+                    hide_index=True,
+                    height=int((len(edit_base) + 1) * 35 + 3),
+                    disabled=["สินค้า"],
+                    column_config={
+                        "สินค้า": st.column_config.TextColumn(width="large"),
+                        "กล่อง": st.column_config.NumberColumn("กล่อง", min_value=0, step=1, width="small"),
+                        "ซอง": st.column_config.NumberColumn("ซอง", min_value=0, step=1, width="small"),
+                    },
+                    key=f"branch_stock_editor_{sb_branch_sel}_{sb_cat_sel}",
+                )
+
+                if save_slot.button("บันทึก", key=f"save_branch_stock_btn_{sb_branch_sel}_{sb_cat_sel}", use_container_width=True):
+                    try:
+                        for idx in edit_base.index:
+                            orig_row = edit_base.loc[idx]
+                            new_row = edited.loc[idx]
+                            prod_name = orig_row["สินค้า"]
+                            delta_box = _safe_int(new_row["กล่อง"]) - _safe_int(orig_row["กล่อง"])
+                            delta_pack = _safe_int(new_row["ซอง"]) - _safe_int(orig_row["ซอง"])
+                            if delta_box != 0 or delta_pack != 0:
+                                gas_post({
+                                    "_action": "adjustBranchStock", "branch": sb_branch_sel, "name": prod_name,
+                                    "id": branch_name_to_id.get(prod_name) or None,
+                                    "add_box": delta_box, "add_pack": delta_pack,
+                                })
+                        _flash("บันทึกแล้ว")
+                        st.session_state.pop(snap_key, None)
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"บันทึกไม่ได้: {e}")
 
     with st.expander("➖ เบิก / ปรับสต็อกสาขา"):
         names_b = sorted(stock_branch["name"].unique().tolist()) if not stock_branch.empty else []
