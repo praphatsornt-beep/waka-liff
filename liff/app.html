@@ -599,6 +599,29 @@ function _customPrompt(title, defaultVal) {
     input.onkeydown = (e) => { if (e.key === 'Enter') close(input.value); };
   });
 }
+
+// เหมือน _customPrompt แต่แทน window.confirm() — ตามคอมเมนต์ด้านบน confirm()
+// ก็ไม่เสถียรใน LIFF WebView เหมือนกับ prompt() แต่รอบที่แล้วแก้เฉพาะ prompt()
+// จุดที่ยังใช้ confirm() ตรงๆ (ยกเลิกออเดอร์/ยืนยันสลิป/ยกเลิกขายหน้าร้าน) จึงมี
+// ความเสี่ยงจะเงียบแบบเดียวกับปุ่มส่งมอบที่เพิ่งแก้ไป
+function _customConfirm(msg) {
+  return new Promise(resolve => {
+    const el = document.getElementById('staffNameModal');
+    el.innerHTML = `
+      <div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:400;display:flex;align-items:center;justify-content:center;padding:20px">
+        <div style="background:#fff;border-radius:16px;padding:24px;width:100%;max-width:340px">
+          <div style="font-size:14px;line-height:1.5;white-space:pre-wrap;margin-bottom:16px">${esc(msg)}</div>
+          <div style="display:flex;gap:8px">
+            <button id="ccNo" style="flex:1;padding:12px;border:1px solid #ddd;border-radius:10px;background:#fff;font-family:inherit;font-size:14px;cursor:pointer">ยกเลิก</button>
+            <button id="ccYes" style="flex:2;padding:12px;border:none;border-radius:10px;background:#111740;color:#fff;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer">ยืนยัน</button>
+          </div>
+        </div>
+      </div>`;
+    const close = (val) => { el.innerHTML = ''; resolve(val); };
+    document.getElementById('ccNo').onclick = () => close(false);
+    document.getElementById('ccYes').onclick = () => close(true);
+  });
+}
 function ensureStaffName() {
   const n = localStorage.getItem('waka_staff_name') || '';
   if (n) return Promise.resolve(n);
@@ -798,7 +821,7 @@ async function cancelOrder(orderId, btn) {
   if (!staff_name) return;
   const reason = await _customPrompt('เหตุผลการยกเลิก (ว่างได้)');
   if (reason === null) return;
-  if (!confirm('ยืนยันยกเลิกออเดอร์ #' + orderId + '?\n\nระบบจะส่ง LINE แจ้งลูกค้าและคืน stock อัตโนมัติ')) return;
+  if (!await _customConfirm('ยืนยันยกเลิกออเดอร์ #' + orderId + '?\n\nระบบจะส่ง LINE แจ้งลูกค้าและคืน stock อัตโนมัติ')) return;
   btn.disabled = true; btn.textContent = 'กำลังยกเลิก...';
   try {
     const r = await fetch(G + '&action=api&do=cancel_order&order=' + encodeURIComponent(orderId) + '&reason=' + encodeURIComponent(reason || '') + '&staff_name=' + encodeURIComponent(staff_name.trim()));
@@ -1236,7 +1259,7 @@ async function searchOrders() {
 }
 
 async function confirmSlip(oid) {
-  if(!confirm('ยืนยันสลิปออเดอร์ #'+oid+' + ส่ง LINE แจ้งลูกค้า?'))return;
+  if(!await _customConfirm('ยืนยันสลิปออเดอร์ #'+oid+' + ส่ง LINE แจ้งลูกค้า?'))return;
   const staff_name=await ensureStaffName();
   if(!staff_name)return;
   try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'confirmSlip',order_id:oid,staff_name:staff_name.trim()})});const d=await r.json();
@@ -1677,7 +1700,7 @@ async function loadWalkinHistory() {
 }
 
 async function wsCancelSale(saleId, btn) {
-  if (!confirm('ยกเลิกรายการขาย ' + saleId + '? ระบบจะคืนสต็อกให้อัตโนมัติ')) return;
+  if (!await _customConfirm('ยกเลิกรายการขาย ' + saleId + '? ระบบจะคืนสต็อกให้อัตโนมัติ')) return;
   const staff_name = gid('wsStaffName').value.trim() || localStorage.getItem('waka_staff_name') || '';
   btn.disabled = true;
   try {
