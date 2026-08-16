@@ -323,12 +323,7 @@
             <div class="br-menu-card" onclick="openBrView('withdraw')">
               <div style="font-size:40px">📤</div>
               <div class="br-menu-title">เบิกสินค้า</div>
-              <div class="br-menu-desc">เบิกสำหรับกิจกรรม</div>
-            </div>
-            <div class="br-menu-card" onclick="openBrView('convert')">
-              <div style="font-size:40px">🔁</div>
-              <div class="br-menu-title">แปลงกล่อง→ซอง</div>
-              <div class="br-menu-desc">แกะกล่องขายเป็นซอง</div>
+              <div class="br-menu-desc">เบิกกิจกรรม/แกะกล่องขายซอง</div>
             </div>
             <div class="br-menu-card" onclick="openBrView('walkin')">
               <div style="font-size:40px">🛒</div>
@@ -381,18 +376,23 @@
             </div>
             <div class="form-row">
               <div class="form-group"><label>ประเภท</label>
-                <select id="wdType" class="branch-sel" style="margin:0"><option value="box">Box (กล่อง)</option><option value="pack">Pack (ซอง)</option></select>
+                <select id="wdType" class="branch-sel" style="margin:0" onchange="updateWithdrawMode()"><option value="box">Box (กล่อง)</option><option value="pack">Pack (ซอง)</option></select>
               </div>
               <div class="form-group"><label>จำนวน</label><input type="number" id="wdQty" min="1" value="1" inputmode="numeric"></div>
             </div>
             <div class="form-group"><label>เหตุผล</label>
-              <select id="wdReason" class="branch-sel" style="margin:0">
+              <select id="wdReason" class="branch-sel" style="margin:0" onchange="updateWithdrawMode()">
                 <option value="จัดกิจกรรม">จัดกิจกรรม</option>
                 <option value="สปอนเซอร์">สปอนเซอร์</option>
                 <option value="ของชำรุด">ของชำรุด</option>
                 <option value="ตัวอย่าง">ตัวอย่าง/โชว์</option>
+                <option value="แกะกล่องขายเป็นซอง">🔁 แกะกล่องขายเป็นซอง</option>
                 <option value="อื่นๆ">อื่นๆ</option>
               </select>
+            </div>
+            <div class="form-group" id="wdPackResultGroup" style="display:none">
+              <label>จะได้กี่ซอง (แต่ละกล่องไม่เท่ากัน ให้กรอกตามจริง)</label>
+              <input type="number" id="wdPackResult" min="1" inputmode="numeric">
             </div>
             <div class="form-group"><label>ชื่อพนักงาน</label><input type="text" id="wdStaffName" placeholder="ชื่อพนักงานที่เบิก"></div>
             <button class="btn btn-orange" onclick="submitWithdraw()">📤 เบิกสินค้า</button>
@@ -400,19 +400,6 @@
           <div class="card">
             <h3>ประวัติเบิก</h3>
             <div id="wdHistory"><div class="empty">ยังไม่มีรายการ</div></div>
-          </div>
-        </div>
-
-        <!-- แปลงกล่อง→ซอง sub-view -->
-        <div id="brConvert" style="display:none">
-          <div class="card">
-            <h3>🔁 แปลงกล่อง→ซอง</h3>
-            <div class="form-group"><label>สินค้า</label>
-              <select id="cvProduct" class="branch-sel" style="margin:0" onchange="updateConvertPreview()"><option value="">-- เลือก --</option></select>
-            </div>
-            <div class="form-group"><label>แปลงกี่กล่อง</label><input type="number" id="cvQtyBox" min="1" value="1" inputmode="numeric" oninput="updateConvertPreview()"></div>
-            <div id="cvPreview" style="font-size:13px;color:var(--text2);margin:4px 0 8px"></div>
-            <button class="btn btn-orange" onclick="submitConvert()">🔁 แปลง</button>
           </div>
         </div>
 
@@ -1043,41 +1030,15 @@ async function loadWithdrawProductOptions() {
   gid('wdProduct').innerHTML = '<option value="">-- เลือก --</option>' + list.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
 }
 
-// ── แปลงกล่อง→ซอง (สาขา) ──
-async function loadConvertProductOptions() {
-  const [, inStock] = await Promise.all([
-    products.length ? Promise.resolve() : loadProducts(),
-    _branchInStockNames(),
-  ]);
-  const list = inStock ? products.filter(p=>inStock.has(p.name)) : products;
-  gid('cvProduct').innerHTML = '<option value="">-- เลือก --</option>' + list.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
-  updateConvertPreview();
-}
-function updateConvertPreview() {
-  const name = gid('cvProduct').value;
-  const el = gid('cvPreview');
-  if (!name) { el.textContent = ''; return; }
-  const p = products.find(x => x.name === name);
-  const perBox = p ? (Number(p.packs_per_box) || 0) : 0;
-  if (perBox <= 0) {
-    el.innerHTML = '⚠️ สินค้านี้ยังไม่ได้ตั้งค่า "จำนวนซองต่อกล่อง" — ไปตั้งค่าที่หน้าจัดการสินค้าก่อน';
-    return;
-  }
-  const qtyBox = Math.max(0, +gid('cvQtyBox').value || 0);
-  el.textContent = `1 กล่อง = ${perBox} ซอง · จะได้ซองเพิ่ม: ${qtyBox * perBox}`;
-}
-async function submitConvert() {
-  const branch=gid('branchSelect').value;if(!branch)return alert('เลือกสาขาก่อน');
-  if(branch==='ทั้งหมด')return alert('โหมด "ทุกสาขา" แปลงกล่องไม่ได้ กรุณาเปลี่ยนไปเลือกสาขาที่ต้องการก่อน');
-  const name=gid('cvProduct').value;if(!name)return alert('เลือกสินค้า');
-  const qtyBox=+gid('cvQtyBox').value||0;if(qtyBox<=0)return alert('ใส่จำนวนกล่องที่จะแปลง');
-  const _p=products.find(x=>x.name===name);
-  if(!_p||(Number(_p.packs_per_box)||0)<=0)return alert('สินค้านี้ยังไม่ได้ตั้งค่า "จำนวนซองต่อกล่อง"');
-  const staff_name=await ensureStaffName();if(!staff_name)return;
-  try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'convertBoxToPack',branch,name,id:_p.id||undefined,qty_box:qtyBox,staff_name:staff_name.trim(),code:_authCode()})});const d=await r.json();
-    if(d.ok){toast('แปลง '+name+' '+qtyBox+' กล่อง → '+d.packs_added+' ซอง แล้ว');gid('cvQtyBox').value=1;updateConvertPreview();loadBrStock();}
-    else alert(d.error||'ผิดพลาด');
-  }catch(e){alert('แปลงไม่ได้');}
+// เหตุผล "แกะกล่องขายเป็นซอง" เปลี่ยนความหมายของฟอร์มเบิกสินค้า: บังคับ
+// ประเภทเป็น Box (แกะจากอย่างอื่นไม่มีความหมาย) + โชว์ช่องกรอกจำนวนซองที่ได้
+// (ไม่ใช้อัตราส่วนคงที่ เพราะแต่ละกล่องได้ไม่เท่ากัน) — submitWithdraw() เช็ค
+// ค่านี้แล้วยิง action คนละตัว (convertBoxToPack แทน withdrawStock)
+function updateWithdrawMode() {
+  const isConvert = gid('wdReason').value === 'แกะกล่องขายเป็นซอง';
+  gid('wdPackResultGroup').style.display = isConvert ? 'block' : 'none';
+  gid('wdType').disabled = isConvert;
+  if (isConvert) gid('wdType').value = 'box';
 }
 
 function toggleScan() {
@@ -1189,16 +1150,15 @@ function logoutBranch() {
 
 function openBrView(s) {
   if(!gid('branchSelect').value){alert('เลือกสาขาก่อน');return;}
-  if(gid('branchSelect').value==='ทั้งหมด' && ['withdraw','walkin','convert'].includes(s)){alert('โหมด "ทุกสาขา" ใช้เบิก/ขายหน้าร้าน/แปลงกล่องไม่ได้ กรุณาเปลี่ยนไปเลือกสาขาที่ต้องการก่อน');return;}
+  if(gid('branchSelect').value==='ทั้งหมด' && ['withdraw','walkin'].includes(s)){alert('โหมด "ทุกสาขา" ใช้เบิก/ขายหน้าร้านไม่ได้ กรุณาเปลี่ยนไปเลือกสาขาที่ต้องการก่อน');return;}
   gid('brMenu').style.display='none';
   gid('brSubView').style.display='block';
-  ['brIncoming','brOrders','brHandover','brStock','brWithdraw','brConvert','brWalkin','brCreateShipment','brReport'].forEach(id=>gid(id).style.display='none');
+  ['brIncoming','brOrders','brHandover','brStock','brWithdraw','brWalkin','brCreateShipment','brReport'].forEach(id=>gid(id).style.display='none');
   if(s==='incoming'){gid('brIncoming').style.display='block';loadIncoming();}
   if(s==='orders'){gid('brOrders').style.display='block';loadBrOrders();}
   if(s==='handover')gid('brHandover').style.display='block';
   if(s==='bstock'){gid('brStock').style.display='block';loadBrStock();}
-  if(s==='withdraw'){gid('brWithdraw').style.display='block';ensureStaffName().then(n=>gid('wdStaffName').value=n);loadWithdrawProductOptions();loadWithdrawals();}
-  if(s==='convert'){gid('brConvert').style.display='block';loadConvertProductOptions();}
+  if(s==='withdraw'){gid('brWithdraw').style.display='block';ensureStaffName().then(n=>gid('wdStaffName').value=n);loadWithdrawProductOptions();loadWithdrawals();updateWithdrawMode();}
   if(s==='walkin'){gid('brWalkin').style.display='block';ensureStaffName().then(n=>gid('wsStaffName').value=n);openWalkin();}
   if(s==='createShipment'){gid('brCreateShipment').style.display='block';ensureStaffName().then(n=>gid('shipStaffName').value=n);openCreateShipment();}
   if(s==='report'){gid('brReport').style.display='block';openBrReport();}
@@ -1560,6 +1520,17 @@ async function submitWithdraw() {
   const staff_name=gid('wdStaffName').value.trim();if(!staff_name)return alert('กรอกชื่อพนักงาน');
   localStorage.setItem('waka_staff_name',staff_name);
   const _p=products.find(x=>x.name===name);
+
+  if (reason === 'แกะกล่องขายเป็นซอง') {
+    const packResult = +gid('wdPackResult').value || 0;
+    if (packResult <= 0) return alert('ใส่จำนวนซองที่ได้');
+    try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'convertBoxToPack',branch,name,id:_p?_p.id:undefined,qty_box:qty,qty_pack:packResult,staff_name,code:_authCode()})});const d=await r.json();
+      if(d.ok){toast('แปลง '+name+' '+qty+' กล่อง → '+packResult+' ซอง แล้ว');gid('wdQty').value=1;gid('wdPackResult').value='';loadBrStock();}
+      else alert(d.error||'ผิดพลาด');
+    }catch(e){alert('แปลงไม่ได้');}
+    return;
+  }
+
   try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'withdrawStock',branch,name,id:_p?_p.id:undefined,type,qty,reason,staff_name,code:_authCode()})});const d=await r.json();
     if(d.ok){toast('เบิก '+name+' x'+qty);gid('wdQty').value=1;loadBrStock();loadWithdrawals();}
     else alert(d.error||'ผิดพลาด');
