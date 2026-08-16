@@ -496,6 +496,10 @@ function doPost(e) {
       return handleWithdrawStock(data);
     }
 
+    if (data._action === "adjustBranchStock") {
+      return handleAdjustBranchStock(data);
+    }
+
     if (data._action === "withdrawCentralStock") {
       return handleWithdrawCentralStock(data);
     }
@@ -3230,6 +3234,58 @@ function handleWithdrawStock(data) {
     _logStaffAction_(staffName, branch, "withdraw_stock", (wCatRow && wCatRow.id) || name, qty + (type === "box" ? " กล่อง" : " ซอง") + (reason ? " — " + reason : ""));
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+  } catch (err) {
+    try { lock.releaseLock(); } catch(_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+// ── ปรับยอดนับสต็อกสาขาโดยตรง (นับจริงไม่ตรงกับระบบ) ──────────────────────
+// ต่างจาก handleWithdrawStock ตรงที่ปรับได้ทั้งขึ้น/ลง (ไม่ได้แปลว่าของ "เบิก
+// ออกไปจริง" เสมอไป — อาจเป็นแก้ยอดนับผิด/นับเจอของเพิ่ม) เหมือน handleAddStock
+// ฝั่งคลังกลาง แต่สโคปเป็นรายสาขา (stock_branch) ไม่ใช่ catalog
+// data: { branch, name, id, add_box, add_pack, reason, staff_name, code }
+function handleAdjustBranchStock(data) {
+  var branch = String(data.branch || "").trim();
+  var staffName = String(data.staff_name || "").trim();
+  var addBox = Number(data.add_box) || 0;
+  var addPack = Number(data.add_pack) || 0;
+  if (!branch || (addBox === 0 && addPack === 0)) {
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ข้อมูลไม่ครบ (branch, จำนวนที่จะปรับ)" })));
+  }
+  if (!_branchAuthorized(data.code, branch)) {
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+  }
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var catRow = _resolveProductRow_(data.name, data.id);
+    var name = catRow ? catRow.name : String(data.name || "").trim();
+
+    var bsRow = _findStockBranchRow_(_fetchStockBranchRows_(branch), name, branch);
+    if (!bsRow) {
+      bsRow = { name: name, category: (catRow && catRow.category) || "", branch: branch, qty_box: 0, qty_pack: 0 };
+    }
+    var newBox = Math.max(0, (Number(bsRow.qty_box) || 0) + addBox);
+    var newPack = Math.max(0, (Number(bsRow.qty_pack) || 0) + addPack);
+    bsRow.qty_box = newBox;
+    bsRow.qty_pack = newPack;
+    _writeStockBranchRow_(bsRow);
+    lock.releaseLock();
+
+    var reason = String(data.reason || "").trim();
+    var adjDetail = ((addBox ? (addBox > 0 ? "+" : "") + addBox + " กล่อง " : "") +
+      (addPack ? (addPack > 0 ? "+" : "") + addPack + " ซอง" : "")).trim();
+    var adjLog = adjDetail + (reason ? " — " + reason : "");
+
+    var groupStaffAdjust = _getConfigValue(null, "group_staff");
+    if (groupStaffAdjust && staffName) {
+      _linePush(groupStaffAdjust, "✏️ " + staffName + " ปรับยอดสต็อก " + name + " ที่สาขา " + branch + ": " + adjLog);
+    }
+    _logStaffAction_(staffName, branch, "adjust_branch_stock", (catRow && catRow.id) || name, adjLog || null);
+
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, qty_box: newBox, qty_pack: newPack })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));

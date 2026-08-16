@@ -652,6 +652,46 @@ with tab_branch:
                     except Exception as e:
                         st.error(f"บันทึกไม่ได้: {e}")
 
+    with st.expander("✏️ ปรับยอดนับสต็อกสาขา (นับจริงไม่ตรงกับระบบ)"):
+        names_a = sorted(stock_branch["name"].unique().tolist()) if not stock_branch.empty else []
+        ab1, ab2 = st.columns(2)
+        a_branch = ab1.selectbox("สาขา", BRANCHES, key="a_branch_sel")
+        a_name = ab2.selectbox("สินค้า", names_a, key="a_name_sel")
+
+        a_cur = pd.DataFrame()
+        if not stock_branch.empty:
+            a_cur = stock_branch[(stock_branch["branch"] == a_branch) & (stock_branch["name"] == a_name)]
+        a_cur_box = int(pd.to_numeric(a_cur["qty_box"], errors="coerce").fillna(0).iloc[0]) if not a_cur.empty else 0
+        a_cur_pack = int(pd.to_numeric(a_cur["qty_pack"], errors="coerce").fillna(0).iloc[0]) if not a_cur.empty else 0
+        st.caption(f"ยอดในระบบตอนนี้: กล่อง {a_cur_box} · ซอง {a_cur_pack}")
+
+        # อยู่นอก st.form ทั้งหมดโดยตั้งใจ (เหมือนจุดอื่นในไฟล์นี้) — พรีวิว
+        # "ยอดหลังปรับ" ต้องอัปเดตทันทีตามที่พิมพ์ ถ้าอยู่ใน form จะค้างค่าเก่า
+        # จนกว่าจะกด submit (บั๊กเดียวกับที่เจอในฟอร์มแปลงกล่อง→ซองด้านบน)
+        ab3, ab4 = st.columns(2)
+        a_add_box = ab3.number_input("กล่อง (+/-)", value=0, step=1, key=f"a_add_box_{a_branch}_{a_name}")
+        a_add_pack = ab4.number_input("ซอง (+/-)", value=0, step=1, key=f"a_add_pack_{a_branch}_{a_name}")
+        st.caption(f"ยอดหลังปรับ: กล่อง {max(a_cur_box + a_add_box, 0)} · ซอง {max(a_cur_pack + a_add_pack, 0)}")
+        a_reason = st.selectbox("เหตุผล", ADJUST_REASONS, key="a_reason_sel")
+        if st.button("บันทึกยอดปรับ"):
+            if a_add_box == 0 and a_add_pack == 0:
+                st.warning("ใส่จำนวนที่จะปรับก่อน")
+            else:
+                try:
+                    payload = {
+                        "_action": "adjustBranchStock", "branch": a_branch, "name": a_name,
+                        "id": branch_name_to_id.get(a_name) or None,
+                        "add_box": a_add_box, "add_pack": a_add_pack,
+                    }
+                    if a_reason:
+                        payload["reason"] = a_reason
+                    gas_post(payload)
+                    _flash("ปรับยอดสต็อกสาขาแล้ว")
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"บันทึกไม่ได้: {e}")
+
     with st.expander("📤 คืนสต็อกจากสาขากลับคลังกลาง"):
         names_r = sorted(stock_branch["name"].unique().tolist()) if not stock_branch.empty else []
 
