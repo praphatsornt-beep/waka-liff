@@ -3294,6 +3294,11 @@ function handleConvertBoxToPack(data) {
     }
     lock.releaseLock();
 
+    var groupStaffConvert = _getConfigValue(null, "group_staff");
+    if (groupStaffConvert && staffName) {
+      _linePush(groupStaffConvert, "🔁 " + staffName + " แกะ " + name + " " + qtyBox + " กล่อง → " + qtyPack + " ซอง" +
+        (branch ? " ที่สาขา " + branch : " (คลังกลาง)"));
+    }
     _logStaffAction_(staffName, branch || null, "convert_box_to_pack", catRow.id || name,
       qtyBox + " กล่อง → " + qtyPack + " ซอง (1 กล่อง = " + perBox + " ซอง)" + (branch ? " ที่สาขา " + branch : " (คลังกลาง)"));
 
