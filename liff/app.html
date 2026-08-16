@@ -824,7 +824,12 @@ async function cancelOrder(orderId, btn) {
   if (!await _customConfirm('ยืนยันยกเลิกออเดอร์ #' + orderId + '?\n\nระบบจะส่ง LINE แจ้งลูกค้าและคืน stock อัตโนมัติ')) return;
   btn.disabled = true; btn.textContent = 'กำลังยกเลิก...';
   try {
-    const r = await fetch(G + '&action=api&do=cancel_order&order=' + encodeURIComponent(orderId) + '&reason=' + encodeURIComponent(reason || '') + '&staff_name=' + encodeURIComponent(staff_name.trim()));
+    // POST แทน GET เดิม — cancel_order เปลี่ยนสถานะจริง (คืนสต็อก, ส่ง LINE
+    // แจ้งลูกค้า) ไม่ควรทำผ่าน GET เพราะเสี่ยงถูก prefetch/แคชลิงก์แล้วทริกเกอร์
+    // โดยไม่มีใครกดปุ่มจริง — ยิงผ่าน action=api เหมือน GET เดิม แค่เปลี่ยน
+    // เป็น POST body แทน query string (doPost ส่ง data.action==="api" เข้า
+    // handleApi() ตัวเดียวกับที่ doGet ใช้อยู่แล้ว ไม่ต้องแก้ GAS)
+    const r = await fetch(G, { method: 'POST', body: JSON.stringify({ action: 'api', do: 'cancel_order', order: orderId, reason: reason || '', staff_name: staff_name.trim() }) });
     const d = await r.json();
     if (d.ok) { toast('ยกเลิกแล้ว ✅ แจ้งลูกค้าทาง LINE แล้ว'); loadDashboard(); }
     else { alert(d.error || 'ผิดพลาด'); btn.disabled = false; btn.textContent = '❌ ยกเลิกออเดอร์'; }
@@ -1145,6 +1150,13 @@ function onBranchChange() {
 let _brOrdersAll = [];
 let _brOrdersTab = 'pending';
 const _brOrdersDoneStatuses = ['รับแล้ว','สาขายืนยัน','ยกเลิก'];
+// นับ request เพื่อกัน race condition: โหมด "ทั้งหมด" ยิง 3 request พร้อมกัน
+// (Promise.all) ช้ากว่าการดูสาขาเดียว (1 request) — ถ้า admin ดู "ทั้งหมด"
+// แล้วรีบสลับไปสาขาใดสาขาหนึ่งก่อนที่ request แรกจะเสร็จ ผลลัพธ์ของ "ทั้งหมด"
+// (ช้ากว่า) อาจ resolve ทีหลังแล้วมาทับ _brOrdersAll ของสาขาที่เพิ่งเลือกแบบ
+// เงียบๆ — หัวข้อบนจอ (branchTitle) จะถูกต้องอยู่ แต่รายการออเดอร์เป็นของ
+// สาขาอื่นที่ค้างมาจากการดู "ทั้งหมด" ก่อนหน้า
+let _brOrdersReqId = 0;
 
 function setBrOrdersTab(tab) {
   _brOrdersTab = tab;
@@ -1155,6 +1167,7 @@ function setBrOrdersTab(tab) {
 
 async function loadBrOrders() {
   const b=gid('branchSelect').value;if(!b){gid('brOrdersList').innerHTML='<div class="empty">เลือกสาขาก่อน</div>';return;}
+  const reqId = ++_brOrdersReqId;
   gid('brOrdersList').innerHTML='<div class="empty">กำลังโหลด...</div>';
   try{
     if (userRole === 'admin' && b === 'ทั้งหมด') {
@@ -1170,14 +1183,16 @@ async function loadBrOrders() {
         const d = await r.json();
         return (d.orders || []).map(o => Object.assign({}, o, { branch: br }));
       }));
+      if (reqId !== _brOrdersReqId) return; // มีการเรียก loadBrOrders() ใหม่แซงไปแล้ว ทิ้งผลลัพธ์นี้
       _brOrdersAll = results.flat().sort((a, b2) => (b2.timestamp || '').localeCompare(a.timestamp || ''));
     } else {
       const r=await fetch(G+'&action=api&do=branch_orders&branch='+encodeURIComponent(b)+'&code='+encodeURIComponent(_authCode()));
       const d=await r.json();
+      if (reqId !== _brOrdersReqId) return; // มีการเรียก loadBrOrders() ใหม่แซงไปแล้ว ทิ้งผลลัพธ์นี้
       _brOrdersAll = d.orders || [];
     }
     renderBrOrdersList();
-  }catch(e){gid('brOrdersList').innerHTML='<div class="empty">โหลดไม่ได้</div>';}
+  }catch(e){ if (reqId === _brOrdersReqId) gid('brOrdersList').innerHTML='<div class="empty">โหลดไม่ได้</div>'; }
 }
 
 function renderBrOrdersList() {
