@@ -249,11 +249,16 @@ def _withdraw_central_stock_dialog():
 
     wc_reason = st.selectbox("เหตุผล", WITHDRAW_REASONS, index=WITHDRAW_REASONS.index("เบิกขายออนไลน์"), key="wc_reason_sel")
     is_convert = wc_reason == "แกะกล่องขายเป็นซอง"
+    per_box = int(pd.to_numeric(cur_row["packs_per_box"], errors="coerce").fillna(0).iloc[0]) if not cur_row.empty and "packs_per_box" in cur_row.columns else 0
+    if is_convert and per_box <= 0:
+        st.warning('สินค้านี้ยังไม่ได้ตั้งค่า "จำนวนซองต่อกล่อง" — ไปตั้งค่าที่หน้า "สินค้า" → แก้ไขสินค้า ก่อน')
 
     with st.form("withdraw_central_stock_form"):
         if is_convert:
             wc_qty_box = st.number_input("แกะกี่กล่อง", min_value=0, max_value=max(max_box, 0), value=0, step=1)
-            wc_qty_pack = st.number_input("จะได้กี่ซอง (แต่ละกล่องไม่เท่ากัน ให้กรอกตามจริง)", min_value=0, value=0, step=1)
+            if per_box > 0:
+                st.caption(f"1 กล่อง = {per_box} ซอง · จะได้ซองเพิ่ม: {wc_qty_box * per_box}")
+            wc_qty_pack = 0
             wc_reason_other = ""
         else:
             wc1, wc2 = st.columns(2)
@@ -262,18 +267,19 @@ def _withdraw_central_stock_dialog():
             wc_reason_other = st.text_input("ระบุเหตุผล (กรณีเลือก \"อื่นๆ\")", placeholder="เช่น คืนของชำรุดให้ผู้ผลิต")
         wc_submitted = st.form_submit_button("แปลง" if is_convert else "บันทึก")
         if wc_submitted:
-            invalid = (wc_qty_box <= 0 or wc_qty_pack <= 0) if is_convert else (wc_qty_box <= 0 and wc_qty_pack <= 0)
-            if invalid:
-                st.warning("ใส่จำนวนกล่องที่แกะและจำนวนซองที่ได้ก่อน" if is_convert else "ใส่จำนวนที่จะเบิกอย่างน้อย 1 ช่องก่อน")
+            if is_convert and per_box <= 0:
+                st.warning('ตั้งค่า "จำนวนซองต่อกล่อง" ให้สินค้านี้ก่อน')
+            elif (wc_qty_box <= 0) if is_convert else (wc_qty_box <= 0 and wc_qty_pack <= 0):
+                st.warning("ใส่จำนวนกล่องที่จะแกะก่อน" if is_convert else "ใส่จำนวนที่จะเบิกอย่างน้อย 1 ช่องก่อน")
             else:
                 wc_id = cur_row.iloc[0]["id"] if not cur_row.empty and "id" in cur_row.columns else None
                 try:
                     if is_convert:
                         gas_post({
                             "_action": "convertBoxToPack", "name": wc_name, "id": wc_id or None,
-                            "qty_box": wc_qty_box, "qty_pack": wc_qty_pack,
+                            "qty_box": wc_qty_box,
                         })
-                        _flash(f"แปลง {wc_name} {wc_qty_box} กล่อง → {wc_qty_pack} ซอง แล้ว")
+                        _flash(f"แปลง {wc_name} {wc_qty_box} กล่อง → {wc_qty_box * per_box} ซอง แล้ว")
                     else:
                         final_reason = wc_reason_other.strip() if wc_reason == "อื่นๆ" and wc_reason_other.strip() else wc_reason
                         gas_post({
@@ -587,33 +593,41 @@ with tab_branch:
 
     with st.expander("➖ เบิก / ปรับสต็อกสาขา"):
         names_b = sorted(stock_branch["name"].unique().tolist()) if not stock_branch.empty else []
-        # อยู่นอก form โดยตั้งใจ — ต้องสลับหน้าตาฟอร์มทันทีที่ติ๊ก (จากเบิกออกจริง
-        # เป็นแกะกล่อง+กรอกจำนวนซองที่ได้) ซึ่ง widget ใน st.form ไม่ trigger
-        # rerun จนกว่าจะกด submit
+        name_to_pb = dict(zip(catalog["name"], catalog.get("packs_per_box", pd.Series(dtype=float)))) if not catalog.empty else {}
+        # สินค้า/checkbox อยู่นอก form โดยตั้งใจ — ต้องโชว์อัตราส่วนซอง/กล่องของ
+        # สินค้าที่เลือกและสลับหน้าตาฟอร์มทันทีที่ติ๊ก ซึ่ง widget ใน st.form
+        # ไม่ trigger rerun จนกว่าจะกด submit ปุ่มเดียว
+        wb1, wb2 = st.columns(2)
+        w_branch = wb1.selectbox("สาขา", BRANCHES, key="w_branch_sel")
+        w_name = wb2.selectbox("สินค้า", names_b, key="w_name_sel")
         w_convert = st.checkbox("🔁 แกะกล่องขายเป็นซอง (แทนที่จะเบิกออกจากระบบจริง)", key="w_convert_chk")
+        w_per_box = int(pd.to_numeric(name_to_pb.get(w_name), errors="coerce")) if pd.notna(pd.to_numeric(name_to_pb.get(w_name), errors="coerce")) else 0
+        if w_convert and w_per_box <= 0:
+            st.warning('สินค้านี้ยังไม่ได้ตั้งค่า "จำนวนซองต่อกล่อง" — ไปตั้งค่าที่หน้า "สินค้า" → แก้ไขสินค้า ก่อน')
+
         with st.form("withdraw_stock_form"):
-            wb1, wb2 = st.columns(2)
-            w_branch = wb1.selectbox("สาขา", BRANCHES)
-            w_name = wb2.selectbox("สินค้า", names_b)
-            wb3, wb4 = st.columns(2)
             if w_convert:
-                w_qty = wb3.number_input("แกะกี่กล่อง", min_value=1, value=1, step=1)
-                w_pack_result = wb4.number_input("จะได้กี่ซอง (แต่ละกล่องไม่เท่ากัน กรอกตามจริง)", min_value=1, value=1, step=1)
+                w_qty = st.number_input("แกะกี่กล่อง", min_value=1, value=1, step=1)
+                if w_per_box > 0:
+                    st.caption(f"1 กล่อง = {w_per_box} ซอง · จะได้ซองเพิ่ม: {w_qty * w_per_box}")
                 w_type, w_reason = "box", ""
             else:
+                wb3, wb4 = st.columns(2)
                 w_type = wb3.radio("หน่วย", ["box", "pack"], format_func=lambda t: "กล่อง" if t == "box" else "ซอง", horizontal=True)
                 w_qty = wb4.number_input("จำนวน", min_value=1, value=1, step=1)
                 w_reason = st.text_input("เหตุผล", placeholder="เช่น สินค้าเสียหาย, ปรับยอดนับสต็อก")
             submitted_w = st.form_submit_button("แปลง" if w_convert else "บันทึก")
-            if submitted_w:
+            if submitted_w and w_convert and w_per_box <= 0:
+                st.warning('ตั้งค่า "จำนวนซองต่อกล่อง" ให้สินค้านี้ก่อน')
+            elif submitted_w:
                 try:
                     if w_convert:
                         gas_post({
                             "_action": "convertBoxToPack", "branch": w_branch, "name": w_name,
                             "id": branch_name_to_id.get(w_name) or None,
-                            "qty_box": w_qty, "qty_pack": w_pack_result,
+                            "qty_box": w_qty,
                         })
-                        _flash(f"แปลง {w_name} {w_qty} กล่อง → {w_pack_result} ซอง ที่สาขา {w_branch} แล้ว")
+                        _flash(f"แปลง {w_name} {w_qty} กล่อง → {w_qty * w_per_box} ซอง ที่สาขา {w_branch} แล้ว")
                     else:
                         gas_post({
                             "_action": "withdrawStock", "branch": w_branch, "name": w_name,

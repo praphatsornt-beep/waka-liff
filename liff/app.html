@@ -372,13 +372,13 @@
           <div class="card">
             <h3>เบิกสินค้า</h3>
             <div class="form-group"><label>สินค้า</label>
-              <select id="wdProduct" class="branch-sel" style="margin:0"><option value="">-- เลือก --</option></select>
+              <select id="wdProduct" class="branch-sel" style="margin:0" onchange="updateWithdrawMode()"><option value="">-- เลือก --</option></select>
             </div>
             <div class="form-row">
               <div class="form-group"><label>ประเภท</label>
                 <select id="wdType" class="branch-sel" style="margin:0" onchange="updateWithdrawMode()"><option value="box">Box (กล่อง)</option><option value="pack">Pack (ซอง)</option></select>
               </div>
-              <div class="form-group"><label>จำนวน</label><input type="number" id="wdQty" min="1" value="1" inputmode="numeric"></div>
+              <div class="form-group"><label>จำนวน</label><input type="number" id="wdQty" min="1" value="1" inputmode="numeric" oninput="updateWithdrawMode()"></div>
             </div>
             <div class="form-group"><label>เหตุผล</label>
               <select id="wdReason" class="branch-sel" style="margin:0" onchange="updateWithdrawMode()">
@@ -390,10 +390,7 @@
                 <option value="อื่นๆ">อื่นๆ</option>
               </select>
             </div>
-            <div class="form-group" id="wdPackResultGroup" style="display:none">
-              <label>จะได้กี่ซอง (แต่ละกล่องไม่เท่ากัน ให้กรอกตามจริง)</label>
-              <input type="number" id="wdPackResult" min="1" inputmode="numeric">
-            </div>
+            <div id="wdConvertPreview" style="display:none;font-size:13px;color:var(--text2);margin:4px 0 8px"></div>
             <div class="form-group"><label>ชื่อพนักงาน</label><input type="text" id="wdStaffName" placeholder="ชื่อพนักงานที่เบิก"></div>
             <button class="btn btn-orange" onclick="submitWithdraw()">📤 เบิกสินค้า</button>
           </div>
@@ -1031,14 +1028,24 @@ async function loadWithdrawProductOptions() {
 }
 
 // เหตุผล "แกะกล่องขายเป็นซอง" เปลี่ยนความหมายของฟอร์มเบิกสินค้า: บังคับ
-// ประเภทเป็น Box (แกะจากอย่างอื่นไม่มีความหมาย) + โชว์ช่องกรอกจำนวนซองที่ได้
-// (ไม่ใช้อัตราส่วนคงที่ เพราะแต่ละกล่องได้ไม่เท่ากัน) — submitWithdraw() เช็ค
-// ค่านี้แล้วยิง action คนละตัว (convertBoxToPack แทน withdrawStock)
+// ประเภทเป็น Box (แกะจากอย่างอื่นไม่มีความหมาย) + โชว์จำนวนซองที่จะได้แบบ
+// คำนวณอัตโนมัติจาก packs_per_box ที่ตั้งไว้ล่วงหน้าต่อสินค้า (product_list) —
+// submitWithdraw() เช็คค่านี้แล้วยิง action คนละตัว (convertBoxToPack แทน
+// withdrawStock) โดยส่งแค่ qty_box ให้ backend คำนวณจำนวนซองเองอีกที
 function updateWithdrawMode() {
   const isConvert = gid('wdReason').value === 'แกะกล่องขายเป็นซอง';
-  gid('wdPackResultGroup').style.display = isConvert ? 'block' : 'none';
   gid('wdType').disabled = isConvert;
   if (isConvert) gid('wdType').value = 'box';
+  const el = gid('wdConvertPreview');
+  if (!isConvert) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  const name = gid('wdProduct').value;
+  const p = products.find(x => x.name === name);
+  const perBox = p ? (Number(p.packs_per_box) || 0) : 0;
+  if (!name) { el.textContent = 'เลือกสินค้าก่อน'; return; }
+  if (perBox <= 0) { el.innerHTML = '⚠️ สินค้านี้ยังไม่ได้ตั้งค่า "จำนวนซองต่อกล่อง" — ไปตั้งค่าที่หน้าจัดการสินค้าก่อน'; return; }
+  const qtyBox = Math.max(0, +gid('wdQty').value || 0);
+  el.textContent = `1 กล่อง = ${perBox} ซอง · จะได้ซองเพิ่ม: ${qtyBox * perBox}`;
 }
 
 function toggleScan() {
@@ -1522,10 +1529,10 @@ async function submitWithdraw() {
   const _p=products.find(x=>x.name===name);
 
   if (reason === 'แกะกล่องขายเป็นซอง') {
-    const packResult = +gid('wdPackResult').value || 0;
-    if (packResult <= 0) return alert('ใส่จำนวนซองที่ได้');
-    try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'convertBoxToPack',branch,name,id:_p?_p.id:undefined,qty_box:qty,qty_pack:packResult,staff_name,code:_authCode()})});const d=await r.json();
-      if(d.ok){toast('แปลง '+name+' '+qty+' กล่อง → '+packResult+' ซอง แล้ว');gid('wdQty').value=1;gid('wdPackResult').value='';loadBrStock();}
+    const perBox = _p ? (Number(_p.packs_per_box) || 0) : 0;
+    if (perBox <= 0) return alert('สินค้านี้ยังไม่ได้ตั้งค่า "จำนวนซองต่อกล่อง"');
+    try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'convertBoxToPack',branch,name,id:_p?_p.id:undefined,qty_box:qty,staff_name,code:_authCode()})});const d=await r.json();
+      if(d.ok){toast('แปลง '+name+' '+qty+' กล่อง → '+d.packs_added+' ซอง แล้ว');gid('wdQty').value=1;updateWithdrawMode();loadBrStock();}
       else alert(d.error||'ผิดพลาด');
     }catch(e){alert('แปลงไม่ได้');}
     return;

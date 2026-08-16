@@ -333,7 +333,7 @@ var SUPABASE_TOURNAMENT_REG_HEADER = [
 var SUPABASE_CATALOG_HEADER = [
   "name", "category", "slug", "cost_box", "cost_p", "price_box", "price_pack",
   "qty_box", "qty_pack", "limit_box", "limit_pack", "active", "image_url", "barcode", "notice",
-  "id",
+  "id", "packs_per_box",
 ];
 var SUPABASE_CONFIG_HEADER = ["key", "value"];
 var SUPABASE_STOCK_BRANCH_HEADER = ["name", "category", "branch", "qty_box", "qty_pack"];
@@ -1574,6 +1574,7 @@ function handleApi(params) {
         limit_box: (r.limit_box === "" || r.limit_box === undefined || r.limit_box === null) ? -1 : Number(r.limit_box),
         limit_pack: (r.limit_pack === "" || r.limit_pack === undefined || r.limit_pack === null) ? -1 : Number(r.limit_pack),
         stock_box: Number(r.qty_box) || 0, stock_pack: Number(r.qty_pack) || 0,
+        packs_per_box: Number(r.packs_per_box) || 0,
       };
     });
     return _cors(ContentService.createTextOutput(JSON.stringify({ products: products })));
@@ -3038,6 +3039,7 @@ function handleAddProduct(data) {
       qty_box: Number(data.initial_box) || 0, qty_pack: Number(data.initial_pack) || 0,
       limit_box: limBox, limit_pack: limPack, active: "TRUE",
       image_url: data.image_url || "", barcode: data.barcode || "", notice: "",
+      packs_per_box: (data.packs_per_box === "" || data.packs_per_box === undefined || data.packs_per_box === null) ? null : Number(data.packs_per_box),
     };
     CacheService.getScriptCache().remove("catalog_config");
     writeSupabaseRow_("catalog", newRow, SUPABASE_CATALOG_HEADER, "name", lock);
@@ -3102,6 +3104,7 @@ function handleUpdateProduct(data) {
     if (data.price_pack !== undefined) { logNumField("price_pack", "ราคา/ซอง", Number(data.price_pack) || 0); row.price_pack = Number(data.price_pack) || 0; }
     if (data.limit_box !== undefined) row.limit_box = data.limit_box === "" ? null : Number(data.limit_box);
     if (data.limit_pack !== undefined) row.limit_pack = data.limit_pack === "" ? null : Number(data.limit_pack);
+    if (data.packs_per_box !== undefined) row.packs_per_box = data.packs_per_box === "" ? null : Number(data.packs_per_box);
     if (data.active !== undefined) {
       var newActive = data.active ? "TRUE" : "FALSE";
       if (String(row.active).toUpperCase() !== newActive) changeLog.push("สถานะ: " + (data.active ? "เปิดขาย" : "ปิดขาย"));
@@ -3234,16 +3237,15 @@ function handleWithdrawStock(data) {
 }
 
 // ── แปลงกล่อง → ซอง: แกะกล่องขายเป็นซองแทน ──────────────────────────────────
-// จำนวนซองที่ได้ต่อกล่องไม่คงที่ (แต่ละกล่องไม่เท่ากัน) — รับ qty_pack ที่ผู้ใช้
-// กรอกเองตอนแกะจริงแต่ละครั้ง แทนอัตราส่วนคงที่ ไม่ต้องตั้งค่าอะไรล่วงหน้า
-// data: { name, id, branch (ว่าง/ไม่ส่ง = คลังกลาง), qty_box, qty_pack, staff_name, code }
+// อาศัย catalog.packs_per_box (ตั้งค่าต่อสินค้าที่หน้าแก้ไขสินค้า) เป็นอัตราส่วน
+// คงที่ — คำนวณจำนวนซองที่ได้อัตโนมัติจาก qty_box x อัตราส่วนนี้ ไม่ต้องกรอกเอง
+// data: { name, id, branch (ว่าง/ไม่ส่ง = คลังกลาง), qty_box, staff_name, code }
 function handleConvertBoxToPack(data) {
   var branch = String(data.branch || "").trim();
   var qtyBox = Number(data.qty_box) || 0;
-  var qtyPack = Number(data.qty_pack) || 0;
   var staffName = String(data.staff_name || "").trim();
-  if (qtyBox <= 0 || qtyPack <= 0) {
-    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ใส่จำนวนกล่องที่แกะและจำนวนซองที่ได้" })));
+  if (qtyBox <= 0) {
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ใส่จำนวนกล่องที่จะแปลง" })));
   }
   if (branch && !_branchAuthorized(data.code, branch)) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
@@ -3257,6 +3259,12 @@ function handleConvertBoxToPack(data) {
       lock.releaseLock();
       return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบสินค้า: " + data.name })));
     }
+    var perBox = Number(catRow.packs_per_box) || 0;
+    if (perBox <= 0) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "สินค้านี้ยังไม่ได้ตั้งค่า \"จำนวนซองต่อกล่อง\" — ตั้งค่าที่หน้าแก้ไขสินค้าก่อน" })));
+    }
+    var qtyPack = qtyBox * perBox;
     var name = catRow.name;
 
     if (branch) {
@@ -3287,9 +3295,9 @@ function handleConvertBoxToPack(data) {
     lock.releaseLock();
 
     _logStaffAction_(staffName, branch || null, "convert_box_to_pack", catRow.id || name,
-      qtyBox + " กล่อง → " + qtyPack + " ซอง" + (branch ? " ที่สาขา " + branch : " (คลังกลาง)"));
+      qtyBox + " กล่อง → " + qtyPack + " ซอง (1 กล่อง = " + perBox + " ซอง)" + (branch ? " ที่สาขา " + branch : " (คลังกลาง)"));
 
-    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, packs_added: qtyPack })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));

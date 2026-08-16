@@ -337,3 +337,10 @@ grant usage, select on all sequences in schema public to service_role;
 --   foreign key (name) references catalog (name)
 --   on update cascade
 --   on delete cascade;
+
+-- ── Migration (2026-08-16): box→pack conversion ratio ──────────────────────
+-- Run in the Supabase SQL editor. Additive, nullable — existing products
+-- default to NULL (not set) until an admin fills it in via "✏️ แก้ไขสินค้า"
+-- (จำนวนซองต่อกล่อง). gas/Code.gs's handleConvertBoxToPack refuses to
+-- convert stock for a product until this is set, so no backfill needed.
+-- alter table catalog add column if not exists packs_per_box numeric;
