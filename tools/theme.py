@@ -306,6 +306,23 @@ ul[data-testid*="VirtualDropdown"] li[role="option"] {{
   [data-testid="stExpandSidebarButton"] {{
     display: revert !important;
   }}
+
+  /* iOS Safari auto-zooms the whole page in the instant a focused form
+     field's font-size is under 16px — every tap on the search/date/number
+     box on an iPhone yanked the viewport in and stayed zoomed until the
+     user manually pinched back out (live report: dashboard "ใช้งานไม่สะดวก"
+     on iOS specifically — this doesn't reproduce in desktop-Chromium
+     testing, which doesn't apply that zoom heuristic at all). The 13px
+     rule above is kept for desktop's tighter look; this overrides it back
+     up to 16px only on native form controls, only below the mobile
+     breakpoint. The BaseWeb select/option-list text stays at 13px since
+     those aren't real <input>/<select> elements and don't trigger the
+     zoom. */
+  div.stTextInput input, div.stDateInput input,
+  [data-testid="stNumberInput"] input,
+  [data-testid="stTextArea"] textarea {{
+    font-size: 16px !important;
+  }}
 }}
 </style>
 """
