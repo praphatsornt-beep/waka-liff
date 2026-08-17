@@ -172,6 +172,7 @@ if not catalog.empty:
     ]
 
 stock_value = 0.0
+stock_cost = 0.0
 if not catalog.empty:
     stock_value = (
         pd.to_numeric(catalog.get("price_box", 0), errors="coerce").fillna(0)
@@ -179,8 +180,14 @@ if not catalog.empty:
         + pd.to_numeric(catalog.get("price_pack", 0), errors="coerce").fillna(0)
         * pd.to_numeric(catalog.get("qty_pack", 0), errors="coerce").fillna(0)
     ).sum()
+    stock_cost = (
+        pd.to_numeric(catalog.get("cost_box", 0), errors="coerce").fillna(0)
+        * pd.to_numeric(catalog.get("qty_box", 0), errors="coerce").fillna(0)
+        + pd.to_numeric(catalog.get("cost_p", 0), errors="coerce").fillna(0)
+        * pd.to_numeric(catalog.get("qty_pack", 0), errors="coerce").fillna(0)
+    ).sum()
 
-k1, k2, k3, k4 = st.columns(4)
+k1, k2, k3, k4, k5 = st.columns(5)
 with k1:
     st.markdown(kpi_card("สินค้าทั้งหมด", len(catalog)), unsafe_allow_html=True)
 with k2:
@@ -193,6 +200,8 @@ with k3:
     st.markdown(kpi_card("สต็อกสาขารวม (กล่อง)", f"{total_branch_box:,}"), unsafe_allow_html=True)
 with k4:
     st.markdown(kpi_card("มูลค่าสต็อกคลังกลาง (฿)", f"฿{stock_value:,.0f}"), unsafe_allow_html=True)
+with k5:
+    st.markdown(kpi_card("ทุนคลังกลาง (฿)", f"฿{stock_cost:,.0f}"), unsafe_allow_html=True)
 
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
