@@ -284,6 +284,29 @@ ul[data-testid*="VirtualDropdown"] li[role="option"] {{
 }}
 
 [data-testid="stDataFrame"] {{ border-radius: 10px; overflow: hidden; }}
+
+/* Mobile: the persistent 96px icon-rail above and the fixed 2rem side
+   padding are sized for desktop, where the sidebar sits in normal document
+   flow and pushes content over. Below ~640px Streamlit renders the sidebar
+   as a fixed overlay instead, so forcing it visible here doesn't push
+   content — it sits on top of and clips the left edge of the page (staff
+   report: stock screen KPI cards/menu labels unreadable, text cut off on
+   the left on phones). Let the collapsed sidebar fully hide on mobile
+   (tap the standard toggle to open it as a drawer when needed) and shrink
+   the block-container's padding so the reclaimed width actually gets used. */
+@media (max-width: 640px) {{
+  [data-testid="stMain"] .block-container {{
+    padding-left: 0.9rem !important;
+    padding-right: 0.9rem !important;
+  }}
+  [data-testid="stSidebar"][aria-expanded="false"] {{
+    display: none !important;
+  }}
+  [data-testid="stHeaderLogo"],
+  [data-testid="stExpandSidebarButton"] {{
+    display: revert !important;
+  }}
+}}
 </style>
 """
 
