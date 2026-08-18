@@ -385,3 +385,11 @@ grant usage, select on all sequences in schema public to service_role;
 -- create index if not exists purchases_timestamp_idx on purchases ("timestamp" desc);
 -- alter table purchases enable row level security;
 -- grant select, insert, update, delete on public.purchases to service_role;
+-- The original `grant usage, select on all sequences in schema public` above
+-- (line ~261) only covered sequences that existed at the time it ran — a
+-- brand-new bigserial table's sequence is never auto-covered by it, unlike
+-- staff_actions' `generated always as identity` id (identity columns don't
+-- need a separate sequence grant the way serial/bigserial does). Confirmed
+-- live 2026-08-18: recordPurchase failed with "permission denied for
+-- sequence purchases_id_seq" until this ran.
+-- grant usage, select on sequence purchases_id_seq to service_role;
