@@ -149,6 +149,32 @@ def load_pending_branch_demand() -> dict:
     return demand
 
 
+@st.cache_data(ttl=60)
+def load_sold_qty() -> dict:
+    """จำนวนที่ขายไปแล้วทั้งหมด (ทุกช่วงเวลา ไม่กรองวันที่ — หน้านี้ไม่มีตัวกรอง
+    วันที่แบบหน้ารายงาน) ต่อสินค้า รวมทั้งออเดอร์ออนไลน์ที่ยืนยันสลิปแล้ว (orders)
+    และขายหน้าร้าน (walkin_sales) — คืน {name: {"box": n, "pack": n}}"""
+    sold: dict = {}
+
+    def _add(name, type_, qty):
+        if not name:
+            return
+        d = sold.setdefault(name, {"box": 0, "pack": 0})
+        d["box" if type_ == "box" else "pack"] += qty
+
+    orders_rows = get_supabase().table("orders").select("items_json").eq("slip_status", "ยืนยัน").execute().data
+    for r in orders_rows:
+        for i in parse_items(r.get("items_json")):
+            _add(i.get("name", ""), i.get("type"), i.get("qty", 1) or 1)
+
+    walkin_rows = get_supabase().table("walkin_sales").select("items_json").execute().data
+    for r in walkin_rows:
+        for i in parse_items(r.get("items_json")):
+            _add(i.get("name", ""), i.get("type"), i.get("qty", 1) or 1)
+
+    return sold
+
+
 def _safe_int(v, default: int = 0) -> int:
     """int(pd.to_numeric(v, errors='coerce') or 0) crashes on a genuine NaN —
     NaN is truthy in Python, so `or 0` never kicks in and int(nan) raises
@@ -717,12 +743,19 @@ with tab_central:
             return ""
 
         show["แจ้งเตือน"] = show.apply(_low_stock, axis=1)
+        sold_map = load_sold_qty()
+        show["ขายแล้ว (กล่อง)"] = catalog_show["name"].map(lambda n: sold_map.get(n, {}).get("box", 0))
+        show["ขายแล้ว (ซอง)"] = catalog_show["name"].map(lambda n: sold_map.get(n, {}).get("pack", 0))
         show = show.rename(columns={
             "id": "รหัสสินค้า", "name": "สินค้า", "slug": "Slug", "category": "หมวดหมู่", "qty_box": "กล่อง", "qty_pack": "ซอง",
             "limit_box": "ขายออนไลน์ได้ (กล่อง)", "limit_pack": "ขายออนไลน์ได้ (ซอง)",
         })
         show = show.sort_values("รหัสสินค้า", kind="stable")
-        show = show[["รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "กล่อง", "ซอง", "ขายออนไลน์ได้ (กล่อง)", "ขายออนไลน์ได้ (ซอง)", "แจ้งเตือน"]]
+        show = show[[
+            "รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "กล่อง", "ซอง",
+            "ขายแล้ว (กล่อง)", "ขายแล้ว (ซอง)",
+            "ขายออนไลน์ได้ (กล่อง)", "ขายออนไลน์ได้ (ซอง)", "แจ้งเตือน",
+        ]]
 
         # data_editor เก็บ edit ไว้ตาม "ตำแหน่งแถว" ไม่ใช่ชื่อสินค้า — ถ้า show ที่
         # build ใหม่จาก catalog สดทุก rerun เปลี่ยนลำดับแถวระหว่างที่ยังแก้ไม่เสร็จ
@@ -742,7 +775,8 @@ with tab_central:
         with cap_col:
             st.caption(
                 "แก้ไข กล่อง / ซอง / ขายออนไลน์ได้ ในตารางได้เลย แล้วกดบันทึก — เลขกล่อง/ซองที่แก้เป็นยอดสต็อกใหม่ทั้งหมด "
-                "ไม่ใช่จำนวนที่เพิ่ม, ขายออนไลน์ได้ = จำนวนที่ลูกค้ายังสั่งออนไลน์ได้ ลดลงทุกครั้งที่มีออเดอร์ (0 = ปิดขายออนไลน์)"
+                "ไม่ใช่จำนวนที่เพิ่ม, ขายออนไลน์ได้ = จำนวนที่ลูกค้ายังสั่งออนไลน์ได้ ลดลงทุกครั้งที่มีออเดอร์ (0 = ปิดขายออนไลน์), "
+                "ขายแล้ว = ยอดขายสะสมทั้งหมด (ออนไลน์ + หน้าร้าน) ดูอย่างเดียวแก้ไม่ได้"
             )
         # ปุ่มบันทึกอยู่ที่ตำแหน่งนี้ (ข้างๆ ก่อนรีเฟรช) แต่ต้องรอผลจาก data_editor
         # ด้านล่างก่อนถึงจะรู้ว่ามีอะไรถูกแก้บ้าง — สร้าง placeholder ไว้ก่อน
@@ -760,7 +794,7 @@ with tab_central:
             use_container_width=True,
             hide_index=True,
             height=int((len(show) + 1) * 35 + 3),
-            disabled=["รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "แจ้งเตือน"],
+            disabled=["รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "ขายแล้ว (กล่อง)", "ขายแล้ว (ซอง)", "แจ้งเตือน"],
             column_config={
                 "รหัสสินค้า": st.column_config.TextColumn("CODE", width="small"),
                 "สินค้า": st.column_config.TextColumn(width="large"),
@@ -768,6 +802,8 @@ with tab_central:
                 "หมวดหมู่": st.column_config.TextColumn(width="small"),
                 "กล่อง": st.column_config.NumberColumn("กล่อง", min_value=0, step=1, width="small"),
                 "ซอง": st.column_config.NumberColumn("ซอง", min_value=0, step=1, width="small"),
+                "ขายแล้ว (กล่อง)": st.column_config.NumberColumn(width="small", help="ขายไปแล้วทั้งหมด (ออนไลน์ + หน้าร้าน) — ดูไม่แก้ไข"),
+                "ขายแล้ว (ซอง)": st.column_config.NumberColumn(width="small", help="ขายไปแล้วทั้งหมด (ออนไลน์ + หน้าร้าน) — ดูไม่แก้ไข"),
                 "ขายออนไลน์ได้ (กล่อง)": st.column_config.NumberColumn(width="small"),
                 "ขายออนไลน์ได้ (ซอง)": st.column_config.NumberColumn(width="small"),
                 "แจ้งเตือน": st.column_config.TextColumn(width="small"),
