@@ -220,6 +220,12 @@ def _adjust_central_stock_dialog():
         add_box = c1.number_input("กล่อง (+/-)", value=0, step=1)
         add_pack = c2.number_input("ซอง (+/-)", value=0, step=1)
         reason = st.selectbox("เหตุผล", ADJUST_REASONS)
+        with st.expander("บันทึกข้อมูลการซื้อ (ถ้ามี) — ผู้ขาย/เลขที่เอกสาร/ต้นทุน"):
+            supplier = st.text_input("ผู้ขาย/ร้านค้า")
+            doc_no = st.text_input("เลขที่เอกสาร/ใบกำกับภาษี")
+            cc1, cc2 = st.columns(2)
+            cost_box_paid = cc1.number_input("ทุน/กล่องที่จ่าย (บาท)", min_value=0.0, value=0.0, step=1.0)
+            cost_pack_paid = cc2.number_input("ทุน/ซองที่จ่าย (บาท)", min_value=0.0, value=0.0, step=1.0)
         submitted = st.form_submit_button("บันทึก")
         if submitted:
             if add_box == 0 and add_pack == 0:
@@ -232,6 +238,14 @@ def _adjust_central_stock_dialog():
                     }
                     if reason:
                         payload["reason"] = reason
+                    if supplier.strip():
+                        payload["supplier"] = supplier.strip()
+                    if doc_no.strip():
+                        payload["doc_no"] = doc_no.strip()
+                    if cost_box_paid:
+                        payload["cost_box_paid"] = cost_box_paid
+                    if cost_pack_paid:
+                        payload["cost_pack_paid"] = cost_pack_paid
                     gas_post(payload)
                     _flash("ปรับสต็อกแล้ว")
                     st.cache_data.clear()
