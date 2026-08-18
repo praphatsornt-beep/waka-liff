@@ -485,7 +485,6 @@ def _receive_stock_dialog():
 
     items_payload = []
     running_total = 0.0
-    new_product_payload = None
 
     if mode == "สินค้าที่มีอยู่แล้ว":
         all_names = catalog["name"].tolist() if not catalog.empty else []
@@ -510,62 +509,65 @@ def _receive_stock_dialog():
                     "qty_box": qb, "qty_pack": qp, "cost_box": cb, "cost_pack": cp,
                 })
     else:
-        st.markdown("**รูปสินค้า**")
-        img_file = st.file_uploader("เลือกรูปสินค้า", type=["jpg", "jpeg", "png", "webp"], key="rs_new_img")
-        if img_file is not None:
-            st.image(img_file, width=160)
-            if st.button("📤 อัปโหลดรูปนี้", key="rs_upload_img_btn"):
-                try:
-                    b64 = base64.b64encode(img_file.getvalue()).decode("ascii")
-                    res = gas_post({
-                        "_action": "uploadProductImage",
-                        "base64": b64,
-                        "mimeType": img_file.type or "image/jpeg",
-                        "filename": img_file.name,
-                    })
-                    st.session_state["rs_new_product_image_url"] = res.get("url", "")
-                    st.success("อัปโหลดรูปแล้ว — ลิงก์เติมในช่องด้านล่างให้แล้ว")
-                except Exception as e:
-                    st.error(f"อัปโหลดรูปไม่ได้: {e}")
-        uploaded_url = st.session_state.get("rs_new_product_image_url", "")
+        new_count = st.number_input("จำนวนสินค้าใหม่ในใบนี้", min_value=1, value=1, step=1, key="rs_new_count")
+        st.caption("จำนวนที่ซื้อเข้าจะยังไม่เข้าคลัง — ระบบจะสร้างสินค้าไว้ก่อน แล้วต้องกด \"รับของเข้าคลัง\" ทีหลังเหมือนสินค้าที่มีอยู่แล้ว")
+        new_products = []
+        for i in range(int(new_count)):
+            with st.expander(f"สินค้าใหม่ #{i + 1}", expanded=True):
+                img_file = st.file_uploader("รูปสินค้า", type=["jpg", "jpeg", "png", "webp"], key=f"rs_new_img_{i}")
+                if img_file is not None:
+                    st.image(img_file, width=160)
+                    if st.button("📤 อัปโหลดรูปนี้", key=f"rs_upload_img_btn_{i}"):
+                        try:
+                            b64 = base64.b64encode(img_file.getvalue()).decode("ascii")
+                            res = gas_post({
+                                "_action": "uploadProductImage",
+                                "base64": b64,
+                                "mimeType": img_file.type or "image/jpeg",
+                                "filename": img_file.name,
+                            })
+                            st.session_state[f"rs_new_image_url_{i}"] = res.get("url", "")
+                            st.success("อัปโหลดรูปแล้ว — ลิงก์เติมในช่องด้านล่างให้แล้ว")
+                        except Exception as e:
+                            st.error(f"อัปโหลดรูปไม่ได้: {e}")
+                uploaded_url = st.session_state.get(f"rs_new_image_url_{i}", "")
 
-        new_name = st.text_input("ชื่อสินค้า", key="rs_new_name")
-        n1, n2 = st.columns(2)
-        new_category = n1.selectbox("หมวดหมู่", [""] + ALL_CATEGORIES, format_func=lambda c: c or "(ไม่ระบุ)", key="rs_new_category")
-        new_slug = n2.text_input("Slug (สำหรับลิงก์สั่งของโดยตรง, ถ้ามี)", key="rs_new_slug")
-        n3, n4 = st.columns(2)
-        new_cost_box = n3.number_input("ต้นทุน/กล่อง", min_value=0.0, value=0.0, step=1.0, key="rs_new_cost_box")
-        new_cost_pack = n4.number_input("ต้นทุน/ซอง", min_value=0.0, value=0.0, step=1.0, key="rs_new_cost_pack")
-        n5, n6 = st.columns(2)
-        new_price_box = n5.number_input("ราคาขาย/กล่อง", min_value=0.0, value=0.0, step=1.0, key="rs_new_price_box")
-        new_price_pack = n6.number_input("ราคาขาย/ซอง", min_value=0.0, value=0.0, step=1.0, key="rs_new_price_pack")
-        n7, n8 = st.columns(2)
-        new_qty_box = n7.number_input("จำนวนที่ซื้อเข้า (กล่อง)", min_value=0, value=0, step=1, key="rs_new_qty_box")
-        new_qty_pack = n8.number_input("จำนวนที่ซื้อเข้า (ซอง)", min_value=0, value=0, step=1, key="rs_new_qty_pack")
-        st.caption("จำนวนนี้จะยังไม่เข้าคลัง — ระบบจะสร้างสินค้าไว้ก่อน แล้วต้องกด \"รับของเข้าคลัง\" ทีหลังเหมือนสินค้าที่มีอยู่แล้ว")
-        n9, n10 = st.columns(2)
-        new_limit_box = n9.number_input("จำนวนที่ขายออนไลน์ได้ (กล่อง)", min_value=0, value=0, step=1, key="rs_new_limit_box")
-        new_limit_pack = n10.number_input("จำนวนที่ขายออนไลน์ได้ (ซอง)", min_value=0, value=0, step=1, key="rs_new_limit_pack")
-        new_packs_per_box = st.number_input(
-            "จำนวนซองต่อกล่อง (ใช้ตอน \"เบิกกล่องแยกเป็นซอง\" ในฟอร์มเบิกสินค้า, ถ้ามี)",
-            min_value=0.0, value=0.0, step=1.0, key="rs_new_packs_per_box",
-        )
-        new_barcode = st.text_input("บาร์โค้ด (ถ้ามี)", key="rs_new_barcode")
-        new_image_url = st.text_input(
-            "ลิงก์รูปภาพ", value=uploaded_url,
-            help="อัปโหลดรูปด้านบนแล้วลิงก์จะเติมให้อัตโนมัติ หรือวางลิงก์เองก็ได้", key="rs_new_image_url",
-        )
+                new_name = st.text_input("ชื่อสินค้า", key=f"rs_new_name_{i}")
+                n1, n2 = st.columns(2)
+                new_category = n1.selectbox("หมวดหมู่", [""] + ALL_CATEGORIES, format_func=lambda c: c or "(ไม่ระบุ)", key=f"rs_new_category_{i}")
+                new_slug = n2.text_input("Slug (สำหรับลิงก์สั่งของโดยตรง, ถ้ามี)", key=f"rs_new_slug_{i}")
+                n3, n4 = st.columns(2)
+                new_cost_box = n3.number_input("ต้นทุน/กล่อง", min_value=0.0, value=0.0, step=1.0, key=f"rs_new_cost_box_{i}")
+                new_cost_pack = n4.number_input("ต้นทุน/ซอง", min_value=0.0, value=0.0, step=1.0, key=f"rs_new_cost_pack_{i}")
+                n5, n6 = st.columns(2)
+                new_price_box = n5.number_input("ราคาขาย/กล่อง", min_value=0.0, value=0.0, step=1.0, key=f"rs_new_price_box_{i}")
+                new_price_pack = n6.number_input("ราคาขาย/ซอง", min_value=0.0, value=0.0, step=1.0, key=f"rs_new_price_pack_{i}")
+                n7, n8 = st.columns(2)
+                new_qty_box = n7.number_input("จำนวนที่ซื้อเข้า (กล่อง)", min_value=0, value=0, step=1, key=f"rs_new_qty_box_{i}")
+                new_qty_pack = n8.number_input("จำนวนที่ซื้อเข้า (ซอง)", min_value=0, value=0, step=1, key=f"rs_new_qty_pack_{i}")
+                n9, n10 = st.columns(2)
+                new_limit_box = n9.number_input("จำนวนที่ขายออนไลน์ได้ (กล่อง)", min_value=0, value=0, step=1, key=f"rs_new_limit_box_{i}")
+                new_limit_pack = n10.number_input("จำนวนที่ขายออนไลน์ได้ (ซอง)", min_value=0, value=0, step=1, key=f"rs_new_limit_pack_{i}")
+                new_packs_per_box = st.number_input(
+                    "จำนวนซองต่อกล่อง (ใช้ตอน \"เบิกกล่องแยกเป็นซอง\" ในฟอร์มเบิกสินค้า, ถ้ามี)",
+                    min_value=0.0, value=0.0, step=1.0, key=f"rs_new_packs_per_box_{i}",
+                )
+                new_barcode = st.text_input("บาร์โค้ด (ถ้ามี)", key=f"rs_new_barcode_{i}")
+                new_image_url = st.text_input(
+                    "ลิงก์รูปภาพ", value=uploaded_url,
+                    help="อัปโหลดรูปด้านบนแล้วลิงก์จะเติมให้อัตโนมัติ หรือวางลิงก์เองก็ได้", key=f"rs_new_image_url_input_{i}",
+                )
 
-        running_total = new_qty_box * new_cost_box + new_qty_pack * new_cost_pack
-        new_product_payload = {
-            "name": new_name.strip(), "category": new_category.strip(), "slug": new_slug.strip(),
-            "cost_box": new_cost_box, "cost_pack": new_cost_pack,
-            "price_box": new_price_box, "price_pack": new_price_pack,
-            "qty_box": new_qty_box, "qty_pack": new_qty_pack,
-            "limit_box": new_limit_box, "limit_pack": new_limit_pack,
-            "packs_per_box": new_packs_per_box,
-            "barcode": new_barcode.strip(), "image_url": new_image_url.strip(),
-        }
+                running_total += new_qty_box * new_cost_box + new_qty_pack * new_cost_pack
+                new_products.append({
+                    "name": new_name.strip(), "category": new_category.strip(), "slug": new_slug.strip(),
+                    "cost_box": new_cost_box, "cost_pack": new_cost_pack,
+                    "price_box": new_price_box, "price_pack": new_price_pack,
+                    "qty_box": new_qty_box, "qty_pack": new_qty_pack,
+                    "limit_box": new_limit_box, "limit_pack": new_limit_pack,
+                    "packs_per_box": new_packs_per_box,
+                    "barcode": new_barcode.strip(), "image_url": new_image_url.strip(),
+                })
 
     st.markdown(f"**ยอดรวมประมาณการ: ฿{running_total:,.0f}**")
 
@@ -597,51 +599,71 @@ def _receive_stock_dialog():
             except Exception as e:
                 st.error(f"บันทึกไม่ได้: {e}")
         else:
-            if not new_product_payload["name"]:
-                st.warning("กรอกชื่อสินค้าก่อน")
+            if not new_products:
+                st.warning("เพิ่มสินค้าอย่างน้อย 1 รายการก่อน")
                 return
-            if not catalog.empty and new_product_payload["name"] in catalog["name"].values:
-                st.error("มีสินค้าชื่อนี้อยู่แล้ว — ถ้าจะซื้อสินค้านี้เข้าคลัง ใช้โหมด \"สินค้าที่มีอยู่แล้ว\" แทน")
-                return
-            if new_product_payload["qty_box"] <= 0 and new_product_payload["qty_pack"] <= 0:
-                st.warning("ใส่จำนวนที่ซื้อเข้าอย่างน้อย 1 ช่องก่อน")
-                return
+            names_seen = set()
+            for p in new_products:
+                if not p["name"]:
+                    st.warning("กรอกชื่อสินค้าให้ครบทุกรายการก่อน")
+                    return
+                if not catalog.empty and p["name"] in catalog["name"].values:
+                    st.error(f"มีสินค้าชื่อ \"{p['name']}\" อยู่แล้ว — ถ้าจะซื้อสินค้านี้เข้าคลัง ใช้โหมด \"สินค้าที่มีอยู่แล้ว\" แทน")
+                    return
+                if p["name"] in names_seen:
+                    st.error(f"ชื่อสินค้า \"{p['name']}\" ซ้ำกันในใบเดียวกัน — ตั้งชื่อให้ไม่ซ้ำ")
+                    return
+                names_seen.add(p["name"])
+                if p["qty_box"] <= 0 and p["qty_pack"] <= 0:
+                    st.warning(f"ใส่จำนวนที่ซื้อเข้าของ \"{p['name']}\" อย่างน้อย 1 ช่องก่อน")
+                    return
+
+            created_items = []
+            created_names = []
             try:
-                res1 = gas_post({
-                    "_action": "addProduct",
-                    "name": new_product_payload["name"], "category": new_product_payload["category"],
-                    "slug": new_product_payload["slug"],
-                    "cost_box": new_product_payload["cost_box"], "cost_pack": new_product_payload["cost_pack"],
-                    "price_box": new_product_payload["price_box"], "price_pack": new_product_payload["price_pack"],
-                    "initial_box": 0, "initial_pack": 0,
-                    "limit_box": new_product_payload["limit_box"], "limit_pack": new_product_payload["limit_pack"],
-                    "packs_per_box": new_product_payload["packs_per_box"],
-                    "barcode": new_product_payload["barcode"], "image_url": new_product_payload["image_url"],
-                })
+                for p in new_products:
+                    res = gas_post({
+                        "_action": "addProduct",
+                        "name": p["name"], "category": p["category"], "slug": p["slug"],
+                        "cost_box": p["cost_box"], "cost_pack": p["cost_pack"],
+                        "price_box": p["price_box"], "price_pack": p["price_pack"],
+                        "initial_box": 0, "initial_pack": 0,
+                        "limit_box": p["limit_box"], "limit_pack": p["limit_pack"],
+                        "packs_per_box": p["packs_per_box"],
+                        "barcode": p["barcode"], "image_url": p["image_url"],
+                    })
+                    created_names.append(res.get("name") or p["name"])
+                    created_items.append({
+                        "name": res.get("name") or p["name"], "id": res.get("id"),
+                        "qty_box": p["qty_box"], "qty_pack": p["qty_pack"],
+                        "cost_box": p["cost_box"], "cost_pack": p["cost_pack"],
+                    })
             except Exception as e:
-                st.error(f"สร้างสินค้าไม่ได้: {e}")
+                done_text = ("สร้างสำเร็จแล้ว: " + ", ".join(created_names) + " — ") if created_names else ""
+                st.error(
+                    done_text + f"สร้างสินค้าไม่สำเร็จ: {e} — "
+                    "สินค้าที่สร้างสำเร็จแล้วสามารถบันทึกรับเข้าคลังได้จากโหมด \"สินค้าที่มีอยู่แล้ว\" ส่วนที่เหลือลองสร้างใหม่อีกครั้ง"
+                )
                 return
+
             try:
                 payload = {
                     "_action": "recordPurchase",
                     "supplier": supplier.strip(), "doc_no": doc_no.strip(), "notes": notes.strip(),
-                    "items": [{
-                        "name": res1.get("name") or new_product_payload["name"], "id": res1.get("id"),
-                        "qty_box": new_product_payload["qty_box"], "qty_pack": new_product_payload["qty_pack"],
-                        "cost_box": new_product_payload["cost_box"], "cost_pack": new_product_payload["cost_pack"],
-                    }],
+                    "items": created_items,
                 }
                 if not paid_in_full:
                     payload["amount_paid"] = deposit
                 gas_post(payload)
-                _flash(f"สร้างสินค้า \"{new_product_payload['name']}\" และบันทึกรับเข้าคลังแล้ว")
-                st.session_state.pop("rs_new_product_image_url", None)
+                _flash(f"สร้างสินค้า {', '.join(created_names)} และบันทึกรับเข้าคลังแล้ว")
+                for i in range(int(new_count)):
+                    st.session_state.pop(f"rs_new_image_url_{i}", None)
                 st.cache_data.clear()
                 st.rerun()
             except Exception as e:
                 st.error(
-                    f"สร้างสินค้า \"{new_product_payload['name']}\" แล้ว แต่บันทึกรายการซื้อไม่สำเร็จ: {e} — "
-                    "ลองกด \"บันทึกรับสินค้าเข้าคลัง\" อีกครั้งโดยเลือกสินค้านี้จากโหมด \"สินค้าที่มีอยู่แล้ว\" แทน"
+                    f"สร้างสินค้า {', '.join(created_names)} แล้ว แต่บันทึกรายการซื้อไม่สำเร็จ: {e} — "
+                    "ลองกด \"บันทึกรับสินค้าเข้าคลัง\" อีกครั้งโดยเลือกสินค้าเหล่านี้จากโหมด \"สินค้าที่มีอยู่แล้ว\" แทน"
                 )
 
 
