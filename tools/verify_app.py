@@ -492,6 +492,7 @@ home_pg = st.Page(home, title="หน้าแรก", icon="🏠", url_path="",
 orders_pg = st.Page("screens/orders.py", title="ออเดอร์", icon="🛒", url_path="orders")
 tournament_pg = st.Page("screens/tournament.py", title="ทัวร์นาเมนต์", icon="🏆", url_path="tournament")
 stock_pg = st.Page("screens/stock.py", title="คลังสินค้าและสาขา", icon="📦", url_path="stock")
+purchases_pg = st.Page("screens/purchases.py", title="ซื้อสินค้าเข้า", icon="🧾", url_path="purchases")
 products_pg = st.Page("screens/products.py", title="สินค้าและหมวดหมู่", icon="🗂️", url_path="products")
 walkin_pg = st.Page("screens/walkin.py", title="หน้าร้าน", icon="🛒", url_path="walkin")
 report_pg = st.Page("screens/report.py", title="รายงาน", icon="📊", url_path="report")
@@ -499,7 +500,7 @@ audit_log_pg = st.Page("screens/audit_log.py", title="ประวัติก�
 settings_pg = st.Page("screens/settings.py", title="ตั้งค่า", icon="⚙️", url_path="settings")
 
 pg = st.navigation({"เมนูหลัก": [
-    home_pg, orders_pg, walkin_pg, stock_pg, products_pg,
+    home_pg, orders_pg, walkin_pg, stock_pg, purchases_pg, products_pg,
     report_pg, audit_log_pg, tournament_pg, settings_pg,
 ]})
 

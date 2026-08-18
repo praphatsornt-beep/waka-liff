@@ -355,6 +355,8 @@ var SUPABASE_SHIPMENTS_HEADER = ["shipment_id", "timestamp", "to_branch", "statu
 var SUPABASE_WITHDRAWALS_HEADER = ["timestamp", "branch", "name", "type", "qty", "reason"];
 var SUPABASE_STOCK_RETURNS_HEADER = ["timestamp", "branch", "name", "qty_box", "qty_pack"];
 var SUPABASE_WALKIN_SALES_HEADER = ["sale_id", "timestamp", "branch", "items_json", "total", "payment_method", "bank", "staff_name"];
+// No "id" here — surrogate key (bigserial), same reasoning as shipments.
+var SUPABASE_PURCHASES_HEADER = ["purchase_id", "timestamp", "supplier", "doc_no", "items_json", "total_cost", "amount_paid", "staff_name", "notes"];
 
 const BRANCHES = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์"];
 
@@ -479,6 +481,14 @@ function doPost(e) {
 
     if (data._action === "addStock") {
       return handleAddStock(data);
+    }
+
+    if (data._action === "recordPurchase") {
+      return handleRecordPurchase(data);
+    }
+
+    if (data._action === "recordPurchasePayment") {
+      return handleRecordPurchasePayment(data);
     }
 
     if (data._action === "addProduct") {
@@ -3006,6 +3016,138 @@ function handleAddStock(data) {
     // (fallback เป็นชื่อถ้าแถวไม่มี id ด้วยเหตุผลใดก็ตาม)
     _logStaffAction_(staffName, null, "add_stock", row.id || data.name, addStockDetail || null);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+  } catch (err) {
+    try { lock.releaseLock(); } catch(_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+function _genPurchaseId() {
+  var now = new Date();
+  var pad = function(n) { return String(n).padStart(2, "0"); };
+  var yy = String(now.getFullYear()).slice(-2);
+  var prefix = "PO" + yy + pad(now.getMonth() + 1) + pad(now.getDate());
+  var propKey = "purchase_seq_" + prefix;
+  var seq = parseInt(PROPS.getProperty(propKey) || "0", 10) + 1;
+  PROPS.setProperty(propKey, String(seq));
+  return prefix + String(seq).padStart(3, "0");
+}
+
+// ── บันทึกการซื้อสินค้าเข้า (คลังกลาง) — หลายรายการต่อครั้ง พร้อมผู้ขาย/เอกสาร/
+// ยอดจ่ายจริง (รองรับมัดจำ — amount_paid น้อยกว่า total_cost ได้) ──────────────
+// ต่างจาก handleAddStock ตรงที่นี่คือ "รายการซื้อ" แบบมีโครงสร้าง เก็บลงตาราง
+// purchases แยกต่างหาก (ใช้ทำรายงานซื้อเข้ารายวัน/รายเดือนได้) — handleAddStock
+// (ปุ่ม "เพิ่ม/ลด สต็อกคลังกลาง" เดิม) ยังอยู่เหมือนเดิมสำหรับแก้ยอดนับผิด/ปรับสต็อก
+// เร็วๆ ที่ไม่ใช่การซื้อจริง
+// data: { supplier, doc_no, notes, amount_paid, staff_name,
+//         items: [{ name, id, qty_box, qty_pack, cost_box, cost_pack }] }
+// cost_box/cost_pack ที่เว้นว่างไว้ = ใช้ต้นทุนปัจจุบันของสินค้านั้น (ไม่บังคับ
+// กรอกใหม่ทุกครั้งถ้าราคาซื้อไม่เปลี่ยน) — แต่ถ้ากรอกมา จะอัปเดต catalog.cost_box/
+// cost_p ให้เป็นราคาล่าสุดด้วยเช่นกัน (เหมือน handleAddStock)
+function handleRecordPurchase(data) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    var staffName = String(data.staff_name || "").trim();
+    var supplier = String(data.supplier || "").trim();
+    var docNo = String(data.doc_no || "").trim();
+    var notes = String(data.notes || "").trim();
+    var items = Array.isArray(data.items) ? data.items : [];
+    if (items.length === 0) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่มีรายการสินค้า" })));
+    }
+
+    var catRows = _fetchCatalogRows_();
+    _resolveItemsAgainstCatalog_(items, catRows);
+
+    var purchaseItems = [];
+    var changedNames = [];
+    var totalCost = 0;
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      var qtyBox = Number(it.qty_box) || 0;
+      var qtyPack = Number(it.qty_pack) || 0;
+      if (qtyBox <= 0 && qtyPack <= 0) continue;
+      var row = _findCatalogRow_(catRows, it.name);
+      if (!row) {
+        lock.releaseLock();
+        return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบสินค้า: " + it.name })));
+      }
+      var costBox = (it.cost_box === undefined || it.cost_box === "" || it.cost_box === null) ? (Number(row.cost_box) || 0) : Number(it.cost_box);
+      var costPack = (it.cost_pack === undefined || it.cost_pack === "" || it.cost_pack === null) ? (Number(row.cost_p) || 0) : Number(it.cost_pack);
+      var subtotal = qtyBox * costBox + qtyPack * costPack;
+
+      row.qty_box = (Number(row.qty_box) || 0) + qtyBox;
+      row.qty_pack = (Number(row.qty_pack) || 0) + qtyPack;
+      if (it.cost_box !== undefined && it.cost_box !== "" && it.cost_box !== null) row.cost_box = costBox;
+      if (it.cost_pack !== undefined && it.cost_pack !== "" && it.cost_pack !== null) row.cost_p = costPack;
+      changedNames.push(row.name);
+
+      purchaseItems.push({ name: row.name, id: row.id || null, qty_box: qtyBox, qty_pack: qtyPack, cost_box: costBox, cost_pack: costPack, subtotal: subtotal });
+      totalCost += subtotal;
+    }
+    if (purchaseItems.length === 0) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่มีรายการที่ใส่จำนวนไว้" })));
+    }
+
+    CacheService.getScriptCache().remove("catalog_config");
+    _pushCatalogRows_(catRows, changedNames);
+
+    var purchaseId = _genPurchaseId();
+    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
+    // ไม่ระบุ amount_paid มา = ถือว่าจ่ายเต็มจำนวน (กรณีปกติส่วนใหญ่) — ใส่มาเฉพาะ
+    // ตอนจ่ายมัดจำ/ยังไม่จ่ายเลย
+    var amountPaid = (data.amount_paid === undefined || data.amount_paid === "" || data.amount_paid === null)
+      ? totalCost
+      : Math.max(0, Math.min(Number(data.amount_paid) || 0, totalCost));
+
+    var purchaseObj = {
+      purchase_id: purchaseId, timestamp: now, supplier: supplier || null, doc_no: docNo || null,
+      items_json: purchaseItems, total_cost: totalCost, amount_paid: amountPaid,
+      staff_name: staffName || null, notes: notes || null,
+    };
+    writeSupabaseRow_("purchases", purchaseObj, SUPABASE_PURCHASES_HEADER, "purchase_id", lock);
+
+    var payNote = amountPaid < totalCost ? (" (จ่ายแล้ว ฿" + amountPaid + " จาก ฿" + totalCost + ")") : "";
+    _logStaffAction_(staffName, null, "record_purchase", purchaseId, "ผู้ขาย: " + (supplier || "-") + " | ยอดรวม: ฿" + totalCost + payNote);
+
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, purchase_id: purchaseId, total_cost: totalCost, amount_paid: amountPaid })));
+  } catch (err) {
+    try { lock.releaseLock(); } catch(_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+// ── บันทึกจ่ายเงินเพิ่มสำหรับรายการซื้อที่มัดจำ/ค้างไว้ ──────────────────────
+// data: { purchase_id, add_amount, staff_name }
+function handleRecordPurchasePayment(data) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var purchaseId = String(data.purchase_id || "").trim();
+    var addAmount = Number(data.add_amount) || 0;
+    var staffName = String(data.staff_name || "").trim();
+    if (!purchaseId || addAmount <= 0) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ข้อมูลไม่ครบ (purchase_id, add_amount)" })));
+    }
+    var rows = supabaseSelect_("purchases", "select=id,total_cost,amount_paid&purchase_id=eq." + encodeURIComponent(purchaseId) + "&limit=1");
+    var row = rows[0];
+    if (!row) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบรายการซื้อ: " + purchaseId })));
+    }
+    var totalCost = Number(row.total_cost) || 0;
+    var newPaid = Math.min(totalCost, (Number(row.amount_paid) || 0) + addAmount);
+    var patchRes = patchSupabase_("purchases", "id=eq." + row.id, { amount_paid: newPaid });
+    if (!patchRes.ok) throw new Error("Supabase purchases payment update failed: " + patchRes.text);
+    lock.releaseLock();
+
+    _logStaffAction_(staffName, null, "purchase_payment", purchaseId, "จ่ายเพิ่ม ฿" + addAmount + " (รวมจ่ายแล้ว ฿" + newPaid + " จาก ฿" + totalCost + ")");
+
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, amount_paid: newPaid })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));

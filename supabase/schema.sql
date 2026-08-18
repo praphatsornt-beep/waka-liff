@@ -344,3 +344,33 @@ grant usage, select on all sequences in schema public to service_role;
 -- (จำนวนซองต่อกล่อง). gas/Code.gs's handleConvertBoxToPack refuses to
 -- convert stock for a product until this is set, so no backfill needed.
 -- alter table catalog add column if not exists packs_per_box numeric;
+
+-- ── Migration (2026-08-18): purchases (ซื้อสินค้าเข้า) ──────────────────────
+-- Run in the Supabase SQL editor. New table — separate from the "เพิ่ม/ลด
+-- สต็อกคลังกลาง" quick-adjust dialog's plain-text staff_actions log (still
+-- kept as-is for non-purchase corrections like recounts). This table backs
+-- the dedicated "ซื้อสินค้าเข้า" menu: structured supplier/invoice/cost per
+-- line item, queryable for daily/monthly purchase-cost reports, and able to
+-- track partial payment (มัดจำ) since not every order is paid in full up
+-- front — amount_paid can be less than total_cost, topped up later via a
+-- follow-up payment record; ยอดค้างชำระ = total_cost - amount_paid, derived
+-- at read time rather than stored, so it can never drift out of sync.
+--
+-- id is a surrogate key (bigserial), same reasoning as shipments — nothing
+-- about a purchase is naturally unique enough to be a primary key.
+--
+-- create table if not exists purchases (
+--   id           bigserial primary key,
+--   purchase_id  text,
+--   timestamp    timestamptz,
+--   supplier     text,
+--   doc_no       text,
+--   items_json   jsonb,
+--   total_cost   numeric,
+--   amount_paid  numeric,
+--   staff_name   text,
+--   notes        text
+-- );
+-- create index if not exists purchases_timestamp_idx on purchases ("timestamp" desc);
+-- alter table purchases enable row level security;
+-- grant select, insert, update, delete on public.purchases to service_role;
