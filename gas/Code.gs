@@ -2977,8 +2977,9 @@ function handleNotifyTournamentPlayers(data) {
   }
 }
 
-// ── เพิ่มสต็อกสินค้าเดิม ──
-// data: { name, add_box, add_pack, staff_name }
+// ── เพิ่ม/ลด สต็อกสินค้าเดิม (ปรับยอดนับ/แก้ยอดผิด) ──
+// ไม่ใช่ที่สำหรับบันทึกการซื้อ — ดู handleRecordPurchase/handleReceivePurchase
+// data: { name, add_box, add_pack, reason, staff_name }
 function handleAddStock(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
@@ -2994,27 +2995,11 @@ function handleAddStock(data) {
     if (data.add_pack) row.qty_pack = (Number(row.qty_pack) || 0) + Number(data.add_pack);
     if (data.limit_box !== undefined && data.limit_box !== null) row.limit_box = Number(data.limit_box);
     if (data.limit_pack !== undefined && data.limit_pack !== null) row.limit_pack = Number(data.limit_pack);
-    // ผู้ขาย/เลขที่เอกสาร/ต้นทุนที่จ่ายจริง — เก็บเป็น record ที่สุดใน staff_actions
-    // เท่านั้น (ไม่มีตารางแยก, ตาม "แบบง่ายสุด" ที่ตกลงกันไว้) ส่วนต้นทุน ถ้ากรอกมา
-    // ถือว่าเป็นราคาล่าสุดจริง เลยอัปเดต cost_box/cost_p ให้ด้วยเลย แทนที่จะต้องไป
-    // แก้ที่หน้าสินค้าซ้ำอีกที — คนละจุดกัน เสี่ยงลืมอัปเดต
-    var supplier = String(data.supplier || "").trim();
-    var docNo = String(data.doc_no || "").trim();
-    var costBoxPaid = data.cost_box_paid ? Number(data.cost_box_paid) : 0;
-    var costPackPaid = data.cost_pack_paid ? Number(data.cost_pack_paid) : 0;
-    if (costBoxPaid) row.cost_box = costBoxPaid;
-    if (costPackPaid) row.cost_p = costPackPaid;
     CacheService.getScriptCache().remove("catalog_config");
     writeSupabaseRow_("catalog", row, SUPABASE_CATALOG_HEADER, "name", lock);
     var addStockDetail = (data.add_box ? (Number(data.add_box) > 0 ? "+" : "") + data.add_box + " กล่อง " : "") +
       (data.add_pack ? (Number(data.add_pack) > 0 ? "+" : "") + data.add_pack + " ซอง" : "");
     if (reason) addStockDetail = (addStockDetail || "").trim() + " — " + reason;
-    var purchaseNotes = [];
-    if (supplier) purchaseNotes.push("ผู้ขาย: " + supplier);
-    if (docNo) purchaseNotes.push("เอกสาร: " + docNo);
-    if (costBoxPaid) purchaseNotes.push("ทุน/กล่อง: " + costBoxPaid);
-    if (costPackPaid) purchaseNotes.push("ทุน/ซอง: " + costPackPaid);
-    if (purchaseNotes.length) addStockDetail = (addStockDetail || "").trim() + " | " + purchaseNotes.join(", ");
     // target_id = รหัสสินค้า (คงที่แม้เปลี่ยนชื่อทีหลัง) ไม่ใช่ชื่อสินค้า — กัน
     // ประวัติเข้า-ออกสินค้าใน Streamlit หลุดหายไปเวลามีการเปลี่ยนชื่อสินค้า
     // (fallback เป็นชื่อถ้าแถวไม่มี id ด้วยเหตุผลใดก็ตาม)
@@ -3260,7 +3245,7 @@ function handleAddProduct(data) {
     writeSupabaseRow_("catalog", newRow, SUPABASE_CATALOG_HEADER, "name", lock);
     // target_id = รหัสสินค้า (id), ไม่ใช่ชื่อ — ดู comment เดียวกันใน handleAddStock
     _logStaffAction_(staffName, null, "add_product", newId, "ชื่อ: " + newRow.name);
-    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, id: newId, name: newRow.name })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));

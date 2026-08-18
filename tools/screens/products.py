@@ -340,8 +340,8 @@ _product_cats = sorted(set(catalog["category"].dropna().tolist())) if not catalo
 _product_cats = [c for c in _product_cats if c]
 ALL_CATEGORIES = sorted(set(_product_cats) | {k[len(CAT_DESC_PREFIX):] for k in _cat_cfg if k.startswith(CAT_DESC_PREFIX)})
 
-tab_browse, tab_add, tab_edit, tab_categories = st.tabs(
-    ["📋 สินค้า", "🆕 เพิ่มสินค้าใหม่", "✏️ แก้ไขสินค้า", "🏷️ หมวดหมู่สินค้า"]
+tab_browse, tab_edit, tab_categories = st.tabs(
+    ["📋 สินค้า", "✏️ แก้ไขสินค้า", "🏷️ หมวดหมู่สินค้า"]
 )
 
 
@@ -577,80 +577,6 @@ with tab_edit:
                     st.rerun()
                 except Exception as e:
                     st.error(f"ลบไม่ได้: {e}")
-
-with tab_add:
-    st.markdown("**รูปสินค้า**")
-    img_file = st.file_uploader("เลือกรูปสินค้า", type=["jpg", "jpeg", "png", "webp"], key="new_product_img")
-    if img_file is not None:
-        st.image(img_file, width=200)
-        if st.button("📤 อัปโหลดรูปนี้", key="upload_new_product_img_btn"):
-            try:
-                b64 = base64.b64encode(img_file.getvalue()).decode("ascii")
-                res = gas_post({
-                    "_action": "uploadProductImage",
-                    "base64": b64,
-                    "mimeType": img_file.type or "image/jpeg",
-                    "filename": img_file.name,
-                })
-                st.session_state["new_product_image_url"] = res.get("url", "")
-                st.success("อัปโหลดรูปแล้ว — ลิงก์เติมในช่องด้านล่างให้แล้ว")
-            except Exception as e:
-                st.error(f"อัปโหลดรูปไม่ได้: {e}")
-
-    uploaded_url = st.session_state.get("new_product_image_url", "")
-
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
-    with st.form("add_product_form_tab"):
-        new_name = st.text_input("ชื่อสินค้า")
-        p1, p2 = st.columns(2)
-        new_category = p1.selectbox("หมวดหมู่", [""] + ALL_CATEGORIES, format_func=lambda c: c or "(ไม่ระบุ)")
-        new_slug = p2.text_input(
-            "Slug (สำหรับลิงก์สั่งของโดยตรง, ถ้ามี)",
-            help="ใช้สร้างลิงก์สั่งของตรงจากหน้า order-links.html เช่น ใส่ bt11 เว้นว่างได้",
-        )
-        p3, p4 = st.columns(2)
-        new_cost_box = p3.number_input("ต้นทุน/กล่อง", min_value=0.0, value=0.0, step=1.0)
-        new_cost_pack = p4.number_input("ต้นทุน/ซอง", min_value=0.0, value=0.0, step=1.0)
-        p5, p6 = st.columns(2)
-        new_price_box = p5.number_input("ราคาขาย/กล่อง", min_value=0.0, value=0.0, step=1.0)
-        new_price_pack = p6.number_input("ราคาขาย/ซอง", min_value=0.0, value=0.0, step=1.0)
-        p7, p8 = st.columns(2)
-        new_initial_box = p7.number_input("สต็อกเริ่มต้น (กล่อง)", min_value=0, value=0, step=1)
-        new_initial_pack = p8.number_input("สต็อกเริ่มต้น (ซอง)", min_value=0, value=0, step=1)
-        p9, p10 = st.columns(2)
-        new_limit_box = p9.number_input("จำนวนที่ขายออนไลน์ได้ (กล่อง)", min_value=0, value=0, step=1)
-        new_limit_pack = p10.number_input("จำนวนที่ขายออนไลน์ได้ (ซอง)", min_value=0, value=0, step=1)
-        new_packs_per_box = st.number_input(
-            "จำนวนซองต่อกล่อง (ใช้ตอน \"เบิกกล่องแยกเป็นซอง\" ในฟอร์มเบิกสินค้า, ถ้ามี)", min_value=0.0, value=0.0, step=1.0,
-        )
-        new_barcode = st.text_input("บาร์โค้ด (ถ้ามี)")
-        new_image_url = st.text_input("ลิงก์รูปภาพ", value=uploaded_url, help="อัปโหลดรูปด้านบนแล้วลิงก์จะเติมให้อัตโนมัติ หรือวางลิงก์เองก็ได้")
-        submitted_p = st.form_submit_button("เพิ่มสินค้า")
-        if submitted_p:
-            if not new_name.strip():
-                st.warning("กรอกชื่อสินค้าก่อน")
-            elif not catalog.empty and new_name.strip() in catalog["name"].values:
-                st.error("มีสินค้าชื่อนี้อยู่แล้ว")
-            else:
-                try:
-                    gas_post({
-                        "_action": "addProduct",
-                        "name": new_name.strip(), "category": new_category.strip(),
-                        "cost_box": new_cost_box, "cost_pack": new_cost_pack,
-                        "price_box": new_price_box, "price_pack": new_price_pack,
-                        "initial_box": new_initial_box, "initial_pack": new_initial_pack,
-                        "limit_box": new_limit_box, "limit_pack": new_limit_pack,
-                        "packs_per_box": new_packs_per_box,
-                        "barcode": new_barcode.strip(), "slug": new_slug.strip(),
-                        "image_url": new_image_url.strip(),
-                    })
-                    _flash(f"เพิ่มสินค้า \"{new_name}\" แล้ว")
-                    st.session_state.pop("new_product_image_url", None)
-                    st.cache_data.clear()
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"เพิ่มสินค้าไม่ได้: {e}")
 
 with tab_categories:
     desc_map = {k[len(CAT_DESC_PREFIX):]: v for k, v in _cat_cfg.items() if k.startswith(CAT_DESC_PREFIX)}
