@@ -127,6 +127,21 @@ def _parse_withdraw_detail(detail: str):
 
 
 @st.cache_data(ttl=60)
+def load_branch_withdrawals_df() -> pd.DataFrame:
+    """withdrawals table, written by gas/Code.gs's handleWithdrawStock (เบิกที่
+    สาขา — ต่างจาก handleWithdrawCentralStock ที่ไม่มีตารางของตัวเอง) — มีคอลัมน์
+    branch/name/type/qty/reason ที่ structured อยู่แล้ว ไม่ต้อง regex parse แบบ
+    ฝั่งคลังกลางด้านบน แต่ไม่มี staff_name (ตาราง withdrawals ไม่มีคอลัมน์นี้)"""
+    rows = get_supabase().table("withdrawals").select("*").order("timestamp", desc=True).execute().data
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    df["timestamp_dt"] = pd.to_datetime(df.get("timestamp", ""), errors="coerce", utc=True)
+    df["date"] = df["timestamp_dt"].dt.tz_convert("Asia/Bangkok").dt.date
+    return df
+
+
+@st.cache_data(ttl=60)
 def load_walkin_df() -> pd.DataFrame:
     rows = get_supabase().table("walkin_sales").select("*").execute().data
     df = pd.DataFrame(rows)
@@ -228,7 +243,7 @@ st.download_button(
 st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
 tab_sales, tab_branch, tab_reimburse, tab_withdraw, tab_products, tab_compare = st.tabs(
-    ["ยอดขาย", "แยกสาขา", "สรุปคืนต้นทุน", "เบิกคลังกลาง", "สินค้าขายดี", "ทัวร์นาเมนต์"]
+    ["ยอดขาย", "แยกสาขา", "สรุปคืนต้นทุน", "เบิกของ (ค่าใช้จ่าย)", "สินค้าขายดี", "ทัวร์นาเมนต์"]
 )
 
 with tab_sales:
@@ -414,52 +429,88 @@ with tab_reimburse:
 
 with tab_withdraw:
     st.caption(
-        "รายการเบิกของออกจากคลังกลาง (ปุ่ม \"เบิกของจากคลังกลาง\" ในหน้าสต็อก — ไม่รวมเบิกที่สาขา) "
-        "พร้อมต้นทุนโดยประมาณตามราคาต้นทุนปัจจุบันของสินค้า ใช้ตรวจว่าใครเบิกอะไรไปเท่าไหร่ "
-        "โดยเฉพาะของที่ให้ฟรี (สปอนเซอร์/ตัวอย่าง) ที่มีต้นทุนจริงแต่ไม่มีรายได้มาชดเชย"
+        "ต้นทุนของที่เบิกออก ทั้งจากคลังกลางและจากสต็อกสาขา (ให้ฟรี/สปอนเซอร์/ตัวอย่าง/ชำรุด ฯลฯ) "
+        "— นับเป็น \"ค่าใช้จ่าย\" ของร้านโดยตรง **ไม่เกี่ยวกับยอดที่สาขาต้องคืนต้นทุนให้คลังกลาง** ในแท็บ "
+        "\"สรุปคืนต้นทุน\" (แท็บนั้นคิดจากยอดขายจริง — orders/walkin — เท่านั้น ของที่เบิกไปแจก/ให้ฟรีไม่ถูก"
+        "รวมเข้าไปในยอดนั้นอยู่แล้ว)"
     )
+
+    # ── คลังกลาง — พาร์สจาก staff_actions.detail (ไม่มีตารางของตัวเอง) ──
     wd_df = load_central_withdrawals_df()
     if not wd_df.empty:
         wd_df = wd_df[(wd_df["date"] >= date_from) & (wd_df["date"] <= date_to)]
-    if wd_df.empty:
-        st.caption("ไม่มีรายการเบิกคลังกลางในช่วงที่เลือก")
-    else:
+    if not wd_df.empty:
         parsed = wd_df["detail"].apply(_parse_withdraw_detail)
         wd_df = wd_df.assign(
             qty_box=[p[0] for p in parsed],
             qty_pack=[p[1] for p in parsed],
             reason=[p[2] or "(ไม่ระบุ)" for p in parsed],
         )
-        wd_df = wd_df.assign(cost=wd_df.apply(
-            lambda r: r["qty_box"] * cost_map.get(r["target_id"], {}).get("cost_box", 0)
-                    + r["qty_pack"] * cost_map.get(r["target_id"], {}).get("cost_p", 0),
-            axis=1,
-        ))
-
-        wk1, wk2 = st.columns(2)
-        with wk1:
-            st.markdown(kpi_card("ต้นทุนที่เบิกออกรวม", f"฿{wd_df['cost'].sum():,.0f}", DANGER_TEXT), unsafe_allow_html=True)
-        with wk2:
-            st.markdown(kpi_card("จำนวนรายการเบิก", len(wd_df)), unsafe_allow_html=True)
-
-        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-        st.caption("ต้นทุนแยกตามเหตุผล")
-        st.bar_chart(wd_df.groupby("reason")["cost"].sum().sort_values(ascending=False))
-
-        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
         # target_id เป็น id (รหัสสินค้า, รองรับ rename) สำหรับรายการเบิกใหม่ — resolve
         # กลับเป็นชื่อปัจจุบันเพื่อแสดงผล ส่วนรายการเก่า (target_id ยังเป็นชื่อ) ที่หา
         # ใน id_to_name ไม่เจอ ก็แสดงค่าดิบนั้นต่อไป (มันคือชื่ออยู่แล้ว)
         id_to_name = load_catalog_id_to_name()
         wd_df = wd_df.assign(product_name=wd_df["target_id"].map(lambda t: id_to_name.get(t, t)))
-        wd_show = wd_df.rename(columns={
-            "date": "วันที่", "staff_name": "พนักงาน", "product_name": "สินค้า",
-            "qty_box": "กล่อง", "qty_pack": "ซอง", "reason": "เหตุผล", "cost": "ต้นทุน",
-        })[["วันที่", "พนักงาน", "สินค้า", "กล่อง", "ซอง", "เหตุผล", "ต้นทุน"]].sort_values("วันที่", ascending=False)
-        st.dataframe(wd_show, use_container_width=True, hide_index=True)
+        wd_df = wd_df.assign(cost=wd_df.apply(
+            lambda r: r["qty_box"] * cost_map.get(r["target_id"], {}).get("cost_box", 0)
+                    + r["qty_pack"] * cost_map.get(r["target_id"], {}).get("cost_p", 0),
+            axis=1,
+        ))
+        central_show = pd.DataFrame({
+            "วันที่": wd_df["date"], "แหล่ง": "คลังกลาง", "พนักงาน": wd_df["staff_name"].fillna("-"),
+            "สินค้า": wd_df["product_name"], "กล่อง": wd_df["qty_box"], "ซอง": wd_df["qty_pack"],
+            "เหตุผล": wd_df["reason"], "ต้นทุน": wd_df["cost"],
+        })
+    else:
+        central_show = pd.DataFrame(columns=["วันที่", "แหล่ง", "พนักงาน", "สินค้า", "กล่อง", "ซอง", "เหตุผล", "ต้นทุน"])
+
+    # ── สาขา — จากตาราง withdrawals ตรงๆ (structured อยู่แล้ว, ไม่มี staff_name) ──
+    bwd_df = load_branch_withdrawals_df()
+    if not bwd_df.empty:
+        bwd_df = bwd_df[(bwd_df["date"] >= date_from) & (bwd_df["date"] <= date_to)]
+    if not bwd_df.empty:
+        bwd_df = bwd_df.assign(
+            qty_box=bwd_df.apply(lambda r: r.get("qty", 0) if r.get("type") == "box" else 0, axis=1),
+            qty_pack=bwd_df.apply(lambda r: r.get("qty", 0) if r.get("type") != "box" else 0, axis=1),
+            reason_clean=bwd_df["reason"].fillna("").replace("", "(ไม่ระบุ)"),
+        )
+        bwd_df = bwd_df.assign(cost=bwd_df.apply(
+            lambda r: r["qty_box"] * cost_map.get(r.get("name"), {}).get("cost_box", 0)
+                    + r["qty_pack"] * cost_map.get(r.get("name"), {}).get("cost_p", 0),
+            axis=1,
+        ))
+        branch_show = pd.DataFrame({
+            "วันที่": bwd_df["date"], "แหล่ง": bwd_df["branch"], "พนักงาน": "-",
+            "สินค้า": bwd_df["name"], "กล่อง": bwd_df["qty_box"], "ซอง": bwd_df["qty_pack"],
+            "เหตุผล": bwd_df["reason_clean"], "ต้นทุน": bwd_df["cost"],
+        })
+    else:
+        branch_show = pd.DataFrame(columns=["วันที่", "แหล่ง", "พนักงาน", "สินค้า", "กล่อง", "ซอง", "เหตุผล", "ต้นทุน"])
+
+    combined = pd.concat([central_show, branch_show], ignore_index=True)
+    if combined.empty:
+        st.caption("ไม่มีรายการเบิกในช่วงที่เลือก")
+    else:
+        wk1, wk2, wk3, wk4 = st.columns(4)
+        with wk1:
+            st.markdown(kpi_card("ต้นทุนที่เบิกออกรวม", f"฿{combined['ต้นทุน'].sum():,.0f}", DANGER_TEXT), unsafe_allow_html=True)
+        with wk2:
+            st.markdown(kpi_card("— จากคลังกลาง", f"฿{central_show['ต้นทุน'].sum():,.0f}"), unsafe_allow_html=True)
+        with wk3:
+            st.markdown(kpi_card("— จากสาขา", f"฿{branch_show['ต้นทุน'].sum():,.0f}"), unsafe_allow_html=True)
+        with wk4:
+            st.markdown(kpi_card("จำนวนรายการเบิก", len(combined)), unsafe_allow_html=True)
+
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+        st.caption("ต้นทุนแยกตามเหตุผล (เช่น \"ส่งให้สปอนเซอร์\")")
+        st.bar_chart(combined.groupby("เหตุผล")["ต้นทุน"].sum().sort_values(ascending=False))
+
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+        combined_show = combined.sort_values("วันที่", ascending=False)
+        st.dataframe(combined_show, use_container_width=True, hide_index=True)
         st.download_button(
-            "⬇️ ดาวน์โหลดรายการเบิกคลังกลาง (CSV)", df_to_csv_bytes(wd_show),
-            file_name=f"waka_central_withdrawals_{date_from}_{date_to}.csv", mime="text/csv",
+            "⬇️ ดาวน์โหลดรายการเบิก (CSV)", df_to_csv_bytes(combined_show),
+            file_name=f"waka_withdrawals_{date_from}_{date_to}.csv", mime="text/csv",
             key="dl_withdraw",
         )
 
