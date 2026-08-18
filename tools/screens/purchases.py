@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 """ซื้อสินค้าเข้า — บันทึกการสั่งซื้อสต็อกเข้าคลังกลาง (ผู้ขาย/เอกสาร/ต้นทุน),
-ติดตามยอดค้างชำระ (มัดจำ), และรายงานยอดซื้อ/ต้นทุนรายวัน-รายเดือน. เขียนผ่าน
-GAS (handleRecordPurchase/handleRecordPurchasePayment) เหมือนหน้าอื่นๆ — หน้า
-นี้อ่าน Supabase ตรงเพื่อแสดงผล/รายงานเท่านั้น"""
+ติดตามยอดค้างชำระ (มัดจำ), และรายงานยอดซื้อ/ต้นทุนรายวัน-รายเดือน.
+
+บันทึกการซื้อ (ค่าใช้จ่าย/ใบสั่งซื้อ) กับของเข้าคลังจริงเป็นคนละขั้นตอนกัน
+โดยตั้งใจ — สั่งซื้อ/จ่ายมัดจำไว้ก่อน ของค่อยตามมาทีหลังก็มี: บันทึกการซื้อ
+(recordPurchase) แค่เก็บรายการ+ยอดเงินไว้ก่อน ไม่แตะสต็อก ต้องกด "รับของเข้า
+คลัง" (receivePurchase) อีกทีตอนของมาถึงจริง ค่อยเพิ่ม catalog.qty_box/qty_pack.
+
+เขียนผ่าน GAS (handleRecordPurchase/handleReceivePurchase/
+handleRecordPurchasePayment) เหมือนหน้าอื่นๆ — หน้านี้อ่าน Supabase ตรงเพื่อ
+แสดงผล/รายงานเท่านั้น"""
 
 import json
 import os
@@ -103,6 +110,7 @@ def _record_purchase_dialog(catalog: pd.DataFrame):
     sel_names = st.multiselect("เลือกสินค้าที่ซื้อเข้า", all_names, key="rp_products")
 
     st.caption("ทุน/หน่วย เว้นว่างไม่ต้องแก้ก็ได้ — ระบบใช้ต้นทุนปัจจุบันของสินค้านั้นให้อัตโนมัติ ถ้าแก้ จะอัปเดตต้นทุนสินค้าตัวนั้นให้เป็นราคาล่าสุดด้วย")
+    st.caption("⚠️ บันทึกนี้เป็นการบันทึกค่าใช้จ่าย/ใบสั่งซื้อเท่านั้น — สต็อกคลังกลางจะยังไม่เพิ่มจนกว่าจะกด \"รับของเข้าคลัง\" ในแท็บประวัติการซื้อตอนของมาถึงจริง")
 
     items_payload = []
     running_total = 0.0
@@ -179,8 +187,9 @@ today_cost = purchases.loc[purchases["date"] == today, "total_cost"].sum() if no
 month_cost = purchases.loc[purchases["month"] == this_month, "total_cost"].sum() if not purchases.empty else 0
 month_count = int((purchases["month"] == this_month).sum()) if not purchases.empty else 0
 outstanding_total = purchases["outstanding"].sum() if not purchases.empty else 0
+pending_receipt = int((purchases["status"] == "รอสินค้า").sum()) if not purchases.empty and "status" in purchases.columns else 0
 
-k1, k2, k3, k4 = st.columns(4)
+k1, k2, k3, k4, k5 = st.columns(5)
 with k1:
     st.markdown(kpi_card("ซื้อเข้าวันนี้ (฿)", f"฿{today_cost:,.0f}"), unsafe_allow_html=True)
 with k2:
@@ -190,6 +199,11 @@ with k3:
 with k4:
     st.markdown(
         kpi_card("ยอดค้างชำระรวม (฿)", f"฿{outstanding_total:,.0f}", DANGER_TEXT if outstanding_total > 0 else TEXT2),
+        unsafe_allow_html=True,
+    )
+with k5:
+    st.markdown(
+        kpi_card("รอรับของเข้าคลัง", pending_receipt, DANGER_TEXT if pending_receipt > 0 else TEXT2),
         unsafe_allow_html=True,
     )
 
@@ -246,7 +260,8 @@ with tab_history:
             "ยอดรวม": hist["total_cost"],
             "จ่ายแล้ว": hist["amount_paid"],
             "ค้างชำระ": hist["outstanding"],
-            "สถานะ": hist.apply(_status, axis=1),
+            "สถานะจ่ายเงิน": hist.apply(_status, axis=1),
+            "สถานะรับของ": hist.get("status", "รอสินค้า"),
             "พนักงาน": hist.get("staff_name", ""),
         })
         st.dataframe(display, use_container_width=True, hide_index=True)
@@ -254,6 +269,30 @@ with tab_history:
             "⬇️ ดาวน์โหลดประวัติการซื้อ (CSV)", df_to_csv_bytes(display),
             file_name=f"waka_purchases_{h_from}_{h_to}.csv", mime="text/csv",
         )
+
+        pending = hist[hist.get("status", "รอสินค้า") == "รอสินค้า"]
+        if not pending.empty:
+            st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+            with st.expander(f"📥 รับของเข้าคลัง ({len(pending)} ใบรอของ)", expanded=True):
+                for _, r in pending.iterrows():
+                    rc1, rc2 = st.columns([4, 1])
+                    with rc1:
+                        st.markdown(
+                            f"**{r['purchase_id']}** — {r.get('supplier') or 'ไม่ระบุผู้ขาย'} — "
+                            + _items_text(r["items_json"]) + " — "
+                            + badge(f"฿{r['total_cost']:,.0f}", "pending"),
+                            unsafe_allow_html=True,
+                        )
+                    with rc2:
+                        if st.button("📥 รับของแล้ว", key=f"recv_btn_{r['purchase_id']}", use_container_width=True):
+                            try:
+                                gas_post({"_action": "receivePurchase", "purchase_id": r["purchase_id"]})
+                                _flash(f"รับของเข้าคลังแล้ว — {r['purchase_id']}")
+                                st.cache_data.clear()
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"บันทึกไม่ได้: {e}")
+                    st.markdown("<hr style='margin:8px 0'>", unsafe_allow_html=True)
 
         unpaid = hist[hist["outstanding"] > 0]
         if not unpaid.empty:

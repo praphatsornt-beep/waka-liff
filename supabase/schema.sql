@@ -356,6 +356,15 @@ grant usage, select on all sequences in schema public to service_role;
 -- follow-up payment record; ยอดค้างชำระ = total_cost - amount_paid, derived
 -- at read time rather than stored, so it can never drift out of sync.
 --
+-- status/received_at split recording the purchase (an expense/commitment,
+-- e.g. paid a deposit on a new order) from actually receiving the stock —
+-- placing/paying for an order and the goods physically arriving are two
+-- separate events in time, same two-step shape as shipments' created→
+-- received flow. handleRecordPurchase only inserts the row (status =
+-- "รอสินค้า") and does NOT touch catalog.qty_box/qty_pack; a separate
+-- handleReceivePurchase call (staff confirms goods arrived) is what actually
+-- adds to central stock and flips status to "รับแล้ว".
+--
 -- id is a surrogate key (bigserial), same reasoning as shipments — nothing
 -- about a purchase is naturally unique enough to be a primary key.
 --
@@ -368,6 +377,8 @@ grant usage, select on all sequences in schema public to service_role;
 --   items_json   jsonb,
 --   total_cost   numeric,
 --   amount_paid  numeric,
+--   status       text,
+--   received_at  timestamptz,
 --   staff_name   text,
 --   notes        text
 -- );

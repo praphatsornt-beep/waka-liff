@@ -32,6 +32,7 @@ ACTION_LABELS = {
     "return_stock": "คืนสต็อกกลับคลังกลาง",
     "add_stock": "ปรับสต็อกคลังกลาง",
     "record_purchase": "บันทึกซื้อสินค้าเข้า",
+    "receive_purchase": "รับของเข้าคลัง (ซื้อเข้า)",
     "purchase_payment": "บันทึกจ่ายเงินเพิ่ม (ซื้อเข้า)",
     "add_product": "เพิ่มสินค้าใหม่",
     "rename_product": "เปลี่ยนชื่อสินค้า",

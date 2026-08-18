@@ -356,7 +356,7 @@ var SUPABASE_WITHDRAWALS_HEADER = ["timestamp", "branch", "name", "type", "qty",
 var SUPABASE_STOCK_RETURNS_HEADER = ["timestamp", "branch", "name", "qty_box", "qty_pack"];
 var SUPABASE_WALKIN_SALES_HEADER = ["sale_id", "timestamp", "branch", "items_json", "total", "payment_method", "bank", "staff_name"];
 // No "id" here — surrogate key (bigserial), same reasoning as shipments.
-var SUPABASE_PURCHASES_HEADER = ["purchase_id", "timestamp", "supplier", "doc_no", "items_json", "total_cost", "amount_paid", "staff_name", "notes"];
+var SUPABASE_PURCHASES_HEADER = ["purchase_id", "timestamp", "supplier", "doc_no", "items_json", "total_cost", "amount_paid", "status", "received_at", "staff_name", "notes"];
 
 const BRANCHES = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์"];
 
@@ -485,6 +485,10 @@ function doPost(e) {
 
     if (data._action === "recordPurchase") {
       return handleRecordPurchase(data);
+    }
+
+    if (data._action === "receivePurchase") {
+      return handleReceivePurchase(data);
     }
 
     if (data._action === "recordPurchasePayment") {
@@ -3033,17 +3037,22 @@ function _genPurchaseId() {
   return prefix + String(seq).padStart(3, "0");
 }
 
-// ── บันทึกการซื้อสินค้าเข้า (คลังกลาง) — หลายรายการต่อครั้ง พร้อมผู้ขาย/เอกสาร/
-// ยอดจ่ายจริง (รองรับมัดจำ — amount_paid น้อยกว่า total_cost ได้) ──────────────
-// ต่างจาก handleAddStock ตรงที่นี่คือ "รายการซื้อ" แบบมีโครงสร้าง เก็บลงตาราง
-// purchases แยกต่างหาก (ใช้ทำรายงานซื้อเข้ารายวัน/รายเดือนได้) — handleAddStock
-// (ปุ่ม "เพิ่ม/ลด สต็อกคลังกลาง" เดิม) ยังอยู่เหมือนเดิมสำหรับแก้ยอดนับผิด/ปรับสต็อก
-// เร็วๆ ที่ไม่ใช่การซื้อจริง
+// ── บันทึกการซื้อสินค้าเข้า (ค่าใช้จ่าย/ใบสั่งซื้อ) — หลายรายการต่อครั้ง พร้อม
+// ผู้ขาย/เอกสาร/ยอดจ่ายจริง (รองรับมัดจำ — amount_paid น้อยกว่า total_cost ได้) ──
+// จงใจ "ไม่" แตะ catalog.qty_box/qty_pack ที่นี่ — การสั่งซื้อ/จ่ายเงินกับของจริง
+// มาถึงคลังเป็นคนละเหตุการณ์กัน (สั่งแล้วจ่ายมัดจำไว้ก่อน ของค่อยตามมาทีหลังก็
+// มี) เหมือน shipments ที่ create → received แยกขั้นตอนกัน — สร้างแถวนี้ไว้เป็น
+// สถานะ "รอสินค้า" ก่อนเสมอ ต้องเรียก handleReceivePurchase อีกทีตอนของมาถึงจริง
+// ค่อยเพิ่มสต็อกคลังกลาง ต่างจาก handleAddStock (ปุ่ม "เพิ่ม/ลด สต็อกคลังกลาง"
+// เดิม) ตรงที่นี่คือ "รายการซื้อ" แบบมีโครงสร้าง เก็บลงตาราง purchases แยก
+// ต่างหาก (ใช้ทำรายงานซื้อเข้ารายวัน/รายเดือนได้) — handleAddStock ยังอยู่
+// เหมือนเดิมสำหรับแก้ยอดนับผิด/ปรับสต็อกเร็วๆ ที่ไม่ใช่การซื้อจริง
 // data: { supplier, doc_no, notes, amount_paid, staff_name,
 //         items: [{ name, id, qty_box, qty_pack, cost_box, cost_pack }] }
 // cost_box/cost_pack ที่เว้นว่างไว้ = ใช้ต้นทุนปัจจุบันของสินค้านั้น (ไม่บังคับ
 // กรอกใหม่ทุกครั้งถ้าราคาซื้อไม่เปลี่ยน) — แต่ถ้ากรอกมา จะอัปเดต catalog.cost_box/
-// cost_p ให้เป็นราคาล่าสุดด้วยเช่นกัน (เหมือน handleAddStock)
+// cost_p ให้เป็นราคาล่าสุดด้วยเช่นกัน (รู้ราคาที่จ่ายได้ตั้งแต่สั่งซื้อ ไม่ต้องรอ
+// ของมาถึงก่อนถึงจะอัปเดตต้นทุนได้ — ไม่กระทบมูลค่าสต็อกเพราะ qty ยังไม่ขยับ)
 function handleRecordPurchase(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);
@@ -3078,11 +3087,10 @@ function handleRecordPurchase(data) {
       var costPack = (it.cost_pack === undefined || it.cost_pack === "" || it.cost_pack === null) ? (Number(row.cost_p) || 0) : Number(it.cost_pack);
       var subtotal = qtyBox * costBox + qtyPack * costPack;
 
-      row.qty_box = (Number(row.qty_box) || 0) + qtyBox;
-      row.qty_pack = (Number(row.qty_pack) || 0) + qtyPack;
-      if (it.cost_box !== undefined && it.cost_box !== "" && it.cost_box !== null) row.cost_box = costBox;
-      if (it.cost_pack !== undefined && it.cost_pack !== "" && it.cost_pack !== null) row.cost_p = costPack;
-      changedNames.push(row.name);
+      // อัปเดตเฉพาะต้นทุน (ราคาที่ตกลงซื้อ) ที่นี่ — ไม่แตะ qty_box/qty_pack
+      // จนกว่าจะรับของจริงผ่าน handleReceivePurchase
+      if (it.cost_box !== undefined && it.cost_box !== "" && it.cost_box !== null) { row.cost_box = costBox; changedNames.push(row.name); }
+      if (it.cost_pack !== undefined && it.cost_pack !== "" && it.cost_pack !== null) { row.cost_p = costPack; changedNames.push(row.name); }
 
       purchaseItems.push({ name: row.name, id: row.id || null, qty_box: qtyBox, qty_pack: qtyPack, cost_box: costBox, cost_pack: costPack, subtotal: subtotal });
       totalCost += subtotal;
@@ -3092,8 +3100,10 @@ function handleRecordPurchase(data) {
       return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่มีรายการที่ใส่จำนวนไว้" })));
     }
 
-    CacheService.getScriptCache().remove("catalog_config");
-    _pushCatalogRows_(catRows, changedNames);
+    if (changedNames.length) {
+      CacheService.getScriptCache().remove("catalog_config");
+      _pushCatalogRows_(catRows, changedNames);
+    }
 
     var purchaseId = _genPurchaseId();
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
@@ -3106,6 +3116,7 @@ function handleRecordPurchase(data) {
     var purchaseObj = {
       purchase_id: purchaseId, timestamp: now, supplier: supplier || null, doc_no: docNo || null,
       items_json: purchaseItems, total_cost: totalCost, amount_paid: amountPaid,
+      status: "รอสินค้า", received_at: null,
       staff_name: staffName || null, notes: notes || null,
     };
     writeSupabaseRow_("purchases", purchaseObj, SUPABASE_PURCHASES_HEADER, "purchase_id", lock);
@@ -3114,6 +3125,65 @@ function handleRecordPurchase(data) {
     _logStaffAction_(staffName, null, "record_purchase", purchaseId, "ผู้ขาย: " + (supplier || "-") + " | ยอดรวม: ฿" + totalCost + payNote);
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, purchase_id: purchaseId, total_cost: totalCost, amount_paid: amountPaid })));
+  } catch (err) {
+    try { lock.releaseLock(); } catch(_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+// ── รับของเข้าคลังกลางจริง สำหรับใบซื้อที่บันทึกไว้ก่อนหน้า ──────────────────
+// ตอนนี้เองที่ catalog.qty_box/qty_pack ถึงจะเพิ่มขึ้นจริง — แยกจาก
+// handleRecordPurchase โดยตั้งใจ (ดู comment ด้านบน) idempotent: เรียกซ้ำกับ
+// ใบที่ "รับแล้ว" ไปแล้วไม่ทำอะไรเพิ่ม (กันกดซ้ำเพิ่มสต็อกซ้ำ)
+// data: { purchase_id, staff_name }
+function handleReceivePurchase(data) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    var purchaseId = String(data.purchase_id || "").trim();
+    var staffName = String(data.staff_name || "").trim();
+    if (!purchaseId) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing purchase_id" })));
+    }
+    var rows = supabaseSelect_("purchases", "select=id,status,supplier,items_json&purchase_id=eq." + encodeURIComponent(purchaseId) + "&limit=1");
+    var row = rows[0];
+    if (!row) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบใบซื้อ: " + purchaseId })));
+    }
+    if (String(row.status) === "รับแล้ว") {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, already: true })));
+    }
+
+    var items = Array.isArray(row.items_json) ? row.items_json : [];
+    var catRows = _fetchCatalogRows_();
+    var changedNames = [];
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      var qtyBox = Number(it.qty_box) || 0;
+      var qtyPack = Number(it.qty_pack) || 0;
+      if (qtyBox <= 0 && qtyPack <= 0) continue;
+      var catRow = it.id ? _findCatalogRowById_(catRows, it.id) : _findCatalogRow_(catRows, it.name);
+      if (!catRow) continue; // สินค้าถูกลบไปแล้วตั้งแต่สั่งซื้อ — ข้ามรายการนี้ ไม่ทำทั้งคำขอพัง
+      catRow.qty_box = (Number(catRow.qty_box) || 0) + qtyBox;
+      catRow.qty_pack = (Number(catRow.qty_pack) || 0) + qtyPack;
+      changedNames.push(catRow.name);
+    }
+    if (changedNames.length) {
+      CacheService.getScriptCache().remove("catalog_config");
+      _pushCatalogRows_(catRows, changedNames);
+    }
+
+    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
+    var patchRes = patchSupabase_("purchases", "id=eq." + row.id, { status: "รับแล้ว", received_at: now });
+    if (!patchRes.ok) throw new Error("Supabase purchases receive failed: " + patchRes.text);
+    lock.releaseLock();
+
+    _logStaffAction_(staffName, null, "receive_purchase", purchaseId, "รับของเข้าคลังกลาง — ผู้ขาย: " + (row.supplier || "-"));
+
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
