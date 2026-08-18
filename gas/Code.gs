@@ -3120,13 +3120,19 @@ function handleRecordPurchase(data) {
 // ตอนนี้เองที่ catalog.qty_box/qty_pack ถึงจะเพิ่มขึ้นจริง — แยกจาก
 // handleRecordPurchase โดยตั้งใจ (ดู comment ด้านบน) idempotent: เรียกซ้ำกับ
 // ใบที่ "รับแล้ว" ไปแล้วไม่ทำอะไรเพิ่ม (กันกดซ้ำเพิ่มสต็อกซ้ำ)
-// data: { purchase_id, staff_name }
+// data: { purchase_id, staff_name, release_online_limit }
+// release_online_limit (optional): สำหรับสินค้าที่เปิดขายพรีออเดอร์ไว้ก่อนของมา
+// (ตั้ง limit_box ไว้ต่ำกว่าที่จะได้จริง เพราะตอนนั้น qty_box=0) — พอของมาจริง
+// ยก limit_box/limit_pack ขึ้นให้เท่ากับ qty_box/qty_pack ใหม่ (เฉพาะกรณีเดิม
+// ต่ำกว่าเท่านั้น ไม่มีวันลดลง) ทำให้ขายออนไลน์ + เบิกไปสาขา ใช้สต็อกก้อนเดียวกัน
+// เต็มที่ ไม่ติดเพดานเก่าที่ตั้งไว้ตอนพรีออเดอร์อีกต่อไป
 function handleReceivePurchase(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
     var purchaseId = String(data.purchase_id || "").trim();
     var staffName = String(data.staff_name || "").trim();
+    var releaseLimit = !!data.release_online_limit;
     if (!purchaseId) {
       lock.releaseLock();
       return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing purchase_id" })));
@@ -3154,6 +3160,14 @@ function handleReceivePurchase(data) {
       if (!catRow) continue; // สินค้าถูกลบไปแล้วตั้งแต่สั่งซื้อ — ข้ามรายการนี้ ไม่ทำทั้งคำขอพัง
       catRow.qty_box = (Number(catRow.qty_box) || 0) + qtyBox;
       catRow.qty_pack = (Number(catRow.qty_pack) || 0) + qtyPack;
+      if (releaseLimit) {
+        if (catRow.limit_box !== null && catRow.limit_box !== undefined && catRow.limit_box !== "" && Number(catRow.limit_box) < catRow.qty_box) {
+          catRow.limit_box = catRow.qty_box;
+        }
+        if (catRow.limit_pack !== null && catRow.limit_pack !== undefined && catRow.limit_pack !== "" && Number(catRow.limit_pack) < catRow.qty_pack) {
+          catRow.limit_pack = catRow.qty_pack;
+        }
+      }
       changedNames.push(catRow.name);
     }
     if (changedNames.length) {

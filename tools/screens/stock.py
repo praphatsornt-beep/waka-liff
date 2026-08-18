@@ -958,10 +958,17 @@ with tab_receive:
                                 + badge(f"฿{r['total_cost']:,.0f}", "pending"),
                                 unsafe_allow_html=True,
                             )
+                            release_limit = st.checkbox(
+                                "ปลดล็อกยอดขายออนไลน์ให้เท่าสต็อกที่มีหลังรับของนี้ (สำหรับสินค้าที่เปิดพรีออเดอร์ไว้ก่อนของมา)",
+                                key=f"release_limit_{r['purchase_id']}",
+                            )
                         with rc2:
                             if st.button("📥 รับของแล้ว", key=f"recv_purchase_btn_{r['purchase_id']}", use_container_width=True):
                                 try:
-                                    gas_post({"_action": "receivePurchase", "purchase_id": r["purchase_id"]})
+                                    gas_post({
+                                        "_action": "receivePurchase", "purchase_id": r["purchase_id"],
+                                        "release_online_limit": release_limit,
+                                    })
                                     _flash(f"รับของเข้าคลังแล้ว — {r['purchase_id']}")
                                     st.cache_data.clear()
                                     st.rerun()
