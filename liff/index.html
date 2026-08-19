@@ -815,27 +815,34 @@
   const BRANCH_CODES = { 'ts01': 'ต้นสักคอร์เนอร์', 'mt01': 'เมืองทองธานี', 'sn01': 'ศรีนครินทร์' };
 
   function checkAdminPin() {
+    // localStorage ไม่ใช่ sessionStorage — menu.html/app.html อ่าน auth state จาก
+    // localStorage เท่านั้น (ข้ามหน้าได้ ไม่ใช่แค่ tab เดียว) ต้องเขียนคีย์เดียวกัน
+    // ให้ครบเป๊ะกับที่ app.html's checkPin() เขียนเอง โดยเฉพาะ waka_admin_code —
+    // ขาดอันนี้ทำให้ app.html's savedAuthValid เป็น false แล้วเด้งกลับไปหน้า PIN
+    // อีกรอบทุกครั้งที่คนเข้าทาง index.html (เช่นลิงก์ LIFF) แทนที่จะพิมพ์ PIN ใน
+    // app.html โดยตรง — เดิมเป็น sessionStorage เลยไม่เคยพา auth ข้ามไปหน้าอื่นได้เลย
     const val = document.getElementById("adminPinInput").value.trim();
     if (val === PIN_ADMIN) {
-      sessionStorage.setItem("waka_portal_auth", "1");
-      sessionStorage.setItem("waka_app_auth", "admin");
-      sessionStorage.setItem("waka_staff_role", "admin");
-      sessionStorage.setItem("waka_staff_branch", "ทั้งหมด");
-      sessionStorage.setItem("waka_tstaff_auth", "1");
-      sessionStorage.setItem("waka_tstaff_role", "admin");
-      sessionStorage.setItem("waka_tstaff_branch", "ทั้งหมด");
+      localStorage.setItem("waka_portal_auth", "1");
+      localStorage.setItem("waka_app_auth", "admin");
+      localStorage.setItem("waka_staff_role", "admin");
+      localStorage.setItem("waka_staff_branch", "ทั้งหมด");
+      localStorage.setItem("waka_tstaff_auth", "1");
+      localStorage.setItem("waka_tstaff_role", "admin");
+      localStorage.setItem("waka_tstaff_branch", "ทั้งหมด");
+      localStorage.setItem("waka_admin_code", val);
       window.location.href = "menu.html";
     } else if (BRANCH_CODES[val]) {
       const branch = BRANCH_CODES[val];
-      sessionStorage.setItem("waka_portal_auth", "1");
-      sessionStorage.setItem("waka_app_auth", "staff");
-      sessionStorage.setItem("waka_staff_role", "staff");
-      sessionStorage.setItem("waka_staff_branch", branch);
-      sessionStorage.setItem("waka_branch", branch);
-      sessionStorage.setItem("waka_branch_code", val);
-      sessionStorage.setItem("waka_tstaff_auth", "1");
-      sessionStorage.setItem("waka_tstaff_role", "staff");
-      sessionStorage.setItem("waka_tstaff_branch", branch);
+      localStorage.setItem("waka_portal_auth", "1");
+      localStorage.setItem("waka_app_auth", "staff");
+      localStorage.setItem("waka_staff_role", "staff");
+      localStorage.setItem("waka_staff_branch", branch);
+      localStorage.setItem("waka_branch", branch);
+      localStorage.setItem("waka_branch_code", val);
+      localStorage.setItem("waka_tstaff_auth", "1");
+      localStorage.setItem("waka_tstaff_role", "staff");
+      localStorage.setItem("waka_tstaff_branch", branch);
       window.location.href = "app.html#branch";
     } else {
       const err = document.getElementById("adminPinError");
