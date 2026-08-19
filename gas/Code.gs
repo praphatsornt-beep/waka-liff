@@ -691,21 +691,29 @@ function doPost(e) {
 
     // ── ตรวจ limit + หักสต็อก — อ่าน catalog จาก Supabase ครั้งเดียว ส่งต่อทั้ง 3 ฟังก์ชัน ──
     var catRowsForOrder = null;
+    var branchCoverage = { covered: false };
     if (data.items && data.items.length > 0) {
       catRowsForOrder = _fetchCatalogRows_();
       // ปิดช่องโหว่ลูกค้าค้างหน้าตะกร้าไว้ข้ามช่วงที่มีคน rename สินค้า — เขียน
       // item.name ให้ตรงกับชื่อปัจจุบันเสมอถ้า item มี id ที่ resolve เจอ ก่อนตรวจ
       // limit/หักสต็อกด้านล่างซึ่งยัง match ด้วยชื่อเหมือนเดิมทั้งหมด
       _resolveItemsAgainstCatalog_(data.items, catRowsForOrder);
-      var limitCheck = checkCatalogLimits(data.items, catRowsForOrder);
+      // ถ้าสาขาที่ลูกค้าเลือกรับมีของพอส่งมอบเองอยู่แล้ว (ไม่ใช่พรีออเดอร์ — ของ
+      // ต้องเคยส่งไปสาขาจริงแล้วเท่านั้นถึงจะ cover ได้) ให้ข้ามการเช็ค/หักสต็อกกลาง
+      // ไปหักจากสต็อกสาขาแทน (ดู deductBranchStock_ ด้านล่าง)
+      branchCoverage = _checkBranchCoverage_(data.branch, data.items);
+      var limitCheck = checkCatalogLimits(data.items, catRowsForOrder, branchCoverage.covered);
       if (limitCheck.error) {
         try { lock.releaseLock(); } catch(_) {}
         return _cors(ContentService.createTextOutput(JSON.stringify({ success: false, error: limitCheck.error })));
       }
       // ทำเครื่องหมาย preorder items — limit มีค่าแต่ stock = 0
       // ใช้ตอน cancel เพื่อข้ามการคืน qty_box/pack (ไม่เคยหักจริง)
+      // ทำเครื่องหมาย branch-sourced items — ทั้งออเดอร์หักจากสต็อกสาขาแทนคลังกลาง
+      // ใช้ตอน cancel เพื่อคืนไปที่ stock_branch แทน catalog (ดู restoreStock)
       for (var pi = 0; pi < data.items.length; pi++) {
         var pIt = data.items[pi];
+        if (branchCoverage.covered) { pIt._branch_source = true; }
         var pRow = _findCatalogRow_(catRowsForOrder, pIt.name);
         if (!pRow) continue;
         var pLimitField = pIt.type === "box" ? "limit_box" : "limit_pack";
@@ -744,14 +752,19 @@ function doPost(e) {
       customer_confirmed_at: null,
       notified_at: null,
     };
-    var instantReady = slipStatus === "ยืนยัน" && _tryInstantReady_(newOrder);
+    var instantReady = slipStatus === "ยืนยัน" && _tryInstantReady_(newOrder, branchCoverage.covered);
     writeSupabaseOrder_(newOrder);
     _clearDashCache();
 
     if (data.items && data.items.length > 0) {
-      // ส่ง rows เดิมให้แชร์กัน — deductCatalogLimits อัปเดต rows ใน memory แล้ว return คืน
-      var updatedRows = deductCatalogLimits(data.items, catRowsForOrder);
-      deductStock(data.items, updatedRows || catRowsForOrder);
+      if (branchCoverage.covered) {
+        deductBranchStock_(data.branch, data.items);
+        deductCatalogLimits(data.items, catRowsForOrder); // no-op เว้นแต่มี limit ตั้งไว้ด้วย
+      } else {
+        // ส่ง rows เดิมให้แชร์กัน — deductCatalogLimits อัปเดต rows ใน memory แล้ว return คืน
+        var updatedRows = deductCatalogLimits(data.items, catRowsForOrder);
+        deductStock(data.items, updatedRows || catRowsForOrder);
+      }
     }
 
     // อัปโหลดสลิปหลัง write order — นอก lock เพราะ Drive upload ช้า
@@ -881,7 +894,10 @@ function _pushCatalogRows_(rows, changedNames) {
 }
 
 // checkCatalogLimits: ตรวจ limit_box/limit_pack และ actual stock (qty_box/qty_pack)
-function checkCatalogLimits(items, _rows) {
+// skipStockCheck (optional bool): ข้ามการตรวจ "สต็อกกลางไม่พอ" — ใช้เมื่อ caller
+// เช็คแล้วว่าสาขาที่ลูกค้าเลือกรับมีของพอส่งมอบเองอยู่แล้ว (_checkBranchCoverage_)
+// จึงไม่ต้องพึ่งสต็อกกลางเลยสำหรับออเดอร์นี้ — limit_box/pack ยังตรวจตามปกติเสมอ
+function checkCatalogLimits(items, _rows, skipStockCheck) {
   var rows = _rows || _fetchCatalogRows_();
   for (var idx = 0; idx < items.length; idx++) {
     var item = items[idx];
@@ -900,7 +916,7 @@ function checkCatalogLimits(items, _rows) {
     }
     // ตรวจ actual stock — แจ้งเตือนถ้าสต็อกกลางไม่พอ
     var stock = Number(row[stockField]) || 0;
-    if (stock > 0 && item.qty > stock) {
+    if (!skipStockCheck && stock > 0 && item.qty > stock) {
       var ul = item.type === "box" ? "กล่อง" : "ซอง";
       return { error: item.name + " (" + ul + ") สต็อกกลางไม่พอ (เหลือ " + stock + ")" };
     }
@@ -945,21 +961,57 @@ function deductStock(items, _rows) {
   return rows;
 }
 
-function restoreStock(items) {
-  var rows = _fetchCatalogRows_();
-  var changedNames = [];
-  for (var idx = 0; idx < items.length; idx++) {
-    var item = items[idx];
-    // _preorder = true หมายความว่าตอนสั่งซื้อ qty_box/pack เป็น 0 → deductStock ไม่ได้หักจริง
-    // จึงไม่คืน qty กลับ (ป้องกัน ghost stock)
-    if (item._preorder) continue;
-    var row = _findCatalogRow_(rows, item.name);
-    if (!row) continue;
-    var qtyField = item.type === "box" ? "qty_box" : "qty_pack";
-    row[qtyField] = (Number(row[qtyField]) || 0) + (item.qty || 1);
-    changedNames.push(item.name);
+// deductBranchStock_: หัก stock_branch แทนคลังกลาง — ใช้เมื่อออเดอร์ออนไลน์เลือกรับ
+// ที่สาขาที่มีของพร้อมส่งมอบเองอยู่แล้ว (branchCoverage.covered ใน doPost) ของก้อนนี้
+// ย้ายออกจากคลังกลางไปสาขาตั้งแต่ตอนส่งของแล้ว (handleCreateShipment ตัดกลางไปแล้ว)
+// จึงไม่แตะ catalog เลย กันคลังกลางโดนหักซ้ำสอง
+function deductBranchStock_(branch, items) {
+  var rows = _fetchStockBranchRows_(branch);
+  items.forEach(function(item) {
+    var row = _findStockBranchRow_(rows, item.name, branch);
+    if (!row) return;
+    var field = item.type === "box" ? "qty_box" : "qty_pack";
+    row[field] = Math.max(0, (Number(row[field]) || 0) - (item.qty || 1));
+    var res = pushToSupabase_("stock_branch", row);
+    if (!res.ok) throw new Error("Supabase stock_branch write failed (" + row.name + "/" + branch + "): " + res.text);
+  });
+}
+
+// restoreStock: คืนสต็อกตอนยกเลิกออเดอร์/รายการ — `branch` (ชื่อสาขาของออเดอร์) ใช้
+// เฉพาะ item ที่มี _branch_source (หักจาก stock_branch ไปตอนสั่งซื้อ) เพื่อคืนกลับไปที่
+// สต็อกสาขาแทนคลังกลาง ส่วนที่เหลือคืนเข้า catalog ตามปกติ
+function restoreStock(items, branch) {
+  var branchItems = items.filter(function(it) { return it._branch_source; });
+  var centralItems = items.filter(function(it) { return !it._branch_source; });
+
+  if (branchItems.length > 0 && branch) {
+    var bsRows = _fetchStockBranchRows_(branch);
+    branchItems.forEach(function(item) {
+      var row = _findStockBranchRow_(bsRows, item.name, branch);
+      if (!row) return;
+      var field = item.type === "box" ? "qty_box" : "qty_pack";
+      row[field] = (Number(row[field]) || 0) + (item.qty || 1);
+      var res = pushToSupabase_("stock_branch", row);
+      if (!res.ok) throw new Error("Supabase stock_branch restore failed (" + row.name + "/" + branch + "): " + res.text);
+    });
   }
-  if (changedNames.length) _pushCatalogRows_(rows, changedNames);
+
+  if (centralItems.length > 0) {
+    var rows = _fetchCatalogRows_();
+    var changedNames = [];
+    for (var idx = 0; idx < centralItems.length; idx++) {
+      var item = centralItems[idx];
+      // _preorder = true หมายความว่าตอนสั่งซื้อ qty_box/pack เป็น 0 → deductStock ไม่ได้หักจริง
+      // จึงไม่คืน qty กลับ (ป้องกัน ghost stock)
+      if (item._preorder) continue;
+      var row = _findCatalogRow_(rows, item.name);
+      if (!row) continue;
+      var qtyField = item.type === "box" ? "qty_box" : "qty_pack";
+      row[qtyField] = (Number(row[qtyField]) || 0) + (item.qty || 1);
+      changedNames.push(item.name);
+    }
+    if (changedNames.length) _pushCatalogRows_(rows, changedNames);
+  }
 }
 
 function restoreCatalogLimits(items) {
@@ -1005,29 +1057,25 @@ function _clearDashCache() {
   try { CacheService.getScriptCache().remove("dashboard_v1"); } catch(_) {}
 }
 
-// ── ถ้าสต็อกสาขามีของครบพอส่งมอบอยู่แล้ว ตอนสลิปกลายเป็น "ยืนยัน" ก็ตั้งพร้อมรับ
-// ทันที ไม่ต้องรอให้มีล็อตส่งของมาใหม่ค่อยเช็ค (เดิมเช็คแค่ตอน handleReceiveShipment) ──
-// เรียกจาก 2 จุดที่สลิปกลายเป็น "ยืนยัน": ตอนสั่งซื้อ (auto-verify) และตอน admin
-// กดยืนยันสลิปทีหลัง (handleConfirmSlip). แก้ไข `order` ในหน่วยความจำแล้วคืน true
-// ถ้าตั้งพร้อมรับสำเร็จ — caller เป็นคนเขียนลง Supabase + ส่ง LINE แจ้งเอง
-//
-// หักสต็อกที่ "จองไว้แล้ว" ให้ออเดอร์อื่นที่พร้อมรับ/รับบางส่วนที่สาขานี้ (ยืนยันสลิป
-// แล้วแต่ยังไม่ส่งมอบจริง) ออกจากสต็อกที่มีก่อนเช็ค กันออเดอร์ใหม่แย่งของชิ้นเดียวกัน
-// ไปนับซ้ำว่า "พอ" ทั้งที่จริงมีของให้แค่ใบเดียว
-function _tryInstantReady_(order) {
-  var branch = order.branch || "";
-  if (!branch || branch === "จัดส่ง") return false;
-  var items = Array.isArray(order.items_json) ? order.items_json : [];
-  if (items.length === 0) return false;
+// ── เช็คว่าสต็อกสาขา (หลังหักที่ "จองไว้แล้ว" ให้ออเดอร์อื่นที่พร้อมรับ/รับบางส่วน
+// ที่สาขานี้ — ยืนยันสลิปแล้วแต่ยังไม่ส่งมอบจริง) พอส่งมอบ items ทั้งหมดของออเดอร์นี้
+// มั้ย ใช้ทั้งตอนตัดสินใจว่าจะเช็ค/หักสต็อกจากคลังกลางหรือจากสาขา (ดู doPost,
+// deductBranchStock_) และตอนตั้ง fulfillment = "พร้อมรับ" ทันที (_tryInstantReady_)
+// กันออเดอร์ใหม่แย่งของชิ้นเดียวกันไปนับซ้ำว่า "พอ" ทั้งที่จริงมีของให้แค่ใบเดียว
+function _checkBranchCoverage_(branch, items) {
+  var b = branch || "";
+  if (!b || b === "จัดส่ง") return { covered: false };
+  var arr = Array.isArray(items) ? items : [];
+  if (arr.length === 0) return { covered: false };
 
-  var bsRows = _fetchStockBranchRows_(branch);
+  var bsRows = _fetchStockBranchRows_(b);
   var stockLookup = {};
   bsRows.forEach(function(r) {
     stockLookup[r.name] = { qty_box: Number(r.qty_box) || 0, qty_pack: Number(r.qty_pack) || 0 };
   });
 
   var committedFf = ["พร้อมรับ", "บางส่วน", "รับบางส่วนแล้ว", "สาขายืนยัน"];
-  var others = supabaseSelect_("orders", "select=order_id,items_json,fulfillment&branch=eq." + encodeURIComponent(branch) + "&slip_status=eq.ยืนยัน");
+  var others = supabaseSelect_("orders", "select=order_id,items_json,fulfillment&branch=eq." + encodeURIComponent(b) + "&slip_status=eq.ยืนยัน");
   others.forEach(function(o) {
     if (committedFf.indexOf(o.fulfillment || "") < 0) return;
     var oItems = Array.isArray(o.items_json) ? o.items_json : [];
@@ -1039,11 +1087,31 @@ function _tryInstantReady_(order) {
     });
   });
 
-  var covered = items.every(function(it) {
+  var covered = arr.every(function(it) {
     var s = stockLookup[it.name];
     var field = it.type === "box" ? "qty_box" : "qty_pack";
     return s && s[field] >= (it.qty || 1);
   });
+  return { covered: covered };
+}
+
+// ── ถ้าสต็อกสาขามีของครบพอส่งมอบอยู่แล้ว ตอนสลิปกลายเป็น "ยืนยัน" ก็ตั้งพร้อมรับ
+// ทันที ไม่ต้องรอให้มีล็อตส่งของมาใหม่ค่อยเช็ค (เดิมเช็คแค่ตอน handleReceiveShipment) ──
+// เรียกจาก 2 จุดที่สลิปกลายเป็น "ยืนยัน": ตอนสั่งซื้อ (auto-verify) และตอน admin
+// กดยืนยันสลิปทีหลัง (handleConfirmSlip). แก้ไข `order` ในหน่วยความจำแล้วคืน true
+// ถ้าตั้งพร้อมรับสำเร็จ — caller เป็นคนเขียนลง Supabase + ส่ง LINE แจ้งเอง
+//
+// precomputedCovered (optional boolean): ถ้า caller เช็ค _checkBranchCoverage_
+// ไปแล้วก่อนหน้านี้ในคำขอเดียวกัน (เช่นตอนสร้างออเดอร์ ที่ต้องเช็คก่อนเพื่อตัดสินใจ
+// เรื่องหักสต็อกอยู่แล้ว) ส่งผลลัพธ์เข้ามาได้เลย กันอ่าน Supabase ซ้ำ — ถ้าไม่ส่งมา
+// (เช่นตอน handleConfirmSlip ที่เวลาผ่านไปแล้ว ต้องเช็คสดใหม่) ฟังก์ชันนี้เช็คเอง
+function _tryInstantReady_(order, precomputedCovered) {
+  var branch = order.branch || "";
+  if (!branch || branch === "จัดส่ง") return false;
+  var items = Array.isArray(order.items_json) ? order.items_json : [];
+  if (items.length === 0) return false;
+
+  var covered = (typeof precomputedCovered === "boolean") ? precomputedCovered : _checkBranchCoverage_(branch, items).covered;
   if (!covered) return false;
 
   order.fulfillment = "พร้อมรับ";
@@ -1707,7 +1775,7 @@ function handleApi(params) {
     // คืนเฉพาะ item ที่ยังไม่ได้ส่งมอบลูกค้า (ป้องกัน double restore)
     var itemsToRestore = items.filter(function(it) { return !it.handed_at; });
     if (itemsToRestore.length > 0) {
-      restoreStock(itemsToRestore);
+      restoreStock(itemsToRestore, order.branch);
       restoreCatalogLimits(itemsToRestore);
     }
     order.fulfillment = "ยกเลิก";
@@ -2750,7 +2818,7 @@ function handlePartialCancelItems(data) {
     }
 
     // คืน stock + limits
-    restoreStock(cancelledItems);
+    restoreStock(cancelledItems, branch);
     restoreCatalogLimits(cancelledItems);
 
     order.items_json = items;
