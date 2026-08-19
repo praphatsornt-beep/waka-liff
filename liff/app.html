@@ -693,6 +693,23 @@ function logout() {
   location.reload();
 }
 
+// ── ออกจากระบบอัตโนมัติถ้าไม่มีการใช้งานเกิน 3 นาที (กันเผลอไม่ได้ล็อกเครื่องที่
+// หน้าร้าน แล้วมีคนอื่นมาใช้ session ของพนักงานคนก่อนต่อ) — เริ่มนับใหม่ทุกครั้งที่
+// มี click/keydown/touch/scroll เรียกจากทุกจุดที่ auth สำเร็จ (login สดหรือ
+// restore session เดิมตอนโหลดหน้า) ไม่เริ่มจับก่อนนั้น (ยังไม่ login ไม่มีอะไรให้ timeout)
+var IDLE_TIMEOUT_MS = 3 * 60 * 1000;
+var _idleTimer = null;
+function _resetIdleTimer() {
+  if (_idleTimer) clearTimeout(_idleTimer);
+  _idleTimer = setTimeout(logout, IDLE_TIMEOUT_MS);
+}
+function _startIdleWatch() {
+  ['click', 'keydown', 'touchstart', 'scroll'].forEach(function(ev) {
+    document.addEventListener(ev, _resetIdleTimer, { passive: true });
+  });
+  _resetIdleTimer();
+}
+
 // ── PIN ──
 async function checkPin() {
   const val = gid('pinInput').value.trim();
@@ -712,7 +729,7 @@ async function checkPin() {
     localStorage.setItem('waka_tstaff_branch','ทั้งหมด');
     localStorage.setItem('waka_admin_code', val);
     gid('pinOverlay').style.display='none'; gid('app').style.display='block';
-    applyRole('admin'); ensureStaffName(); renderStaffBadge(); switchTab('branch'); initApp(); _applyDeepLink();
+    applyRole('admin'); ensureStaffName(); renderStaffBadge(); switchTab('branch'); initApp(); _applyDeepLink(); _startIdleWatch();
   } else if (d.ok && d.role === 'staff') {
     localStorage.setItem('waka_app_auth','staff');
     localStorage.setItem('waka_portal_auth','1');
@@ -724,7 +741,7 @@ async function checkPin() {
     localStorage.setItem('waka_branch', d.branch);
     localStorage.setItem('waka_branch_code', val);
     gid('pinOverlay').style.display='none'; gid('app').style.display='block';
-    applyRole('staff'); ensureStaffName(); renderStaffBadge(); autoLoginBranch(d.branch); switchTab('branch'); initApp(); _applyDeepLink();
+    applyRole('staff'); ensureStaffName(); renderStaffBadge(); autoLoginBranch(d.branch); switchTab('branch'); initApp(); _applyDeepLink(); _startIdleWatch();
   } else { gid('pinError').style.display='block'; setTimeout(()=>gid('pinError').style.display='none',2000); }
 }
 const savedAuth = localStorage.getItem('waka_app_auth') || (localStorage.getItem('waka_portal_auth') === '1' ? localStorage.getItem('waka_staff_role') : null);
@@ -743,7 +760,7 @@ if (savedAuthValid) {
   if(savedAuth==='staff'&&sb){autoLoginBranch(sb);}
   else if(savedAuth==='admin'&&sb){gid('branchSelect').value=sb;gid('branchTitle').textContent=sb==='ทั้งหมด'?'ทุกสาขา':'สาขา'+sb;}
   switchTab('branch');
-  initApp(); _applyDeepLink();
+  initApp(); _applyDeepLink(); _startIdleWatch();
 }
 
 function initApp() { loadDashboard(); }

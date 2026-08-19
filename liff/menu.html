@@ -264,6 +264,7 @@ function checkPin() {
     localStorage.setItem('waka_tstaff_branch', branch);
     if (role === 'admin') { document.getElementById('adminSection').style.display = 'block'; }
     showRoleBadge(role, branch);
+    _startIdleWatch();
   } else {
     document.getElementById('pinError').style.display = 'block';
     setTimeout(() => document.getElementById('pinError').style.display = 'none', 2000);
@@ -283,11 +284,29 @@ if (localStorage.getItem('waka_portal_auth') === '1') {
   var _b = localStorage.getItem('waka_staff_branch') || '';
   if (_r === 'admin') { document.getElementById('adminSection').style.display = 'block'; }
   showRoleBadge(_r, _b);
+  _startIdleWatch();
 }
 
 function logout() {
   localStorage.clear();
   location.reload();
+}
+
+// ── ออกจากระบบอัตโนมัติถ้าไม่มีการใช้งานเกิน 3 นาที (กันเผลอไม่ได้ล็อกเครื่องที่
+// หน้าร้าน แล้วมีคนอื่นมาใช้ session ของพนักงานคนก่อนต่อ) — เริ่มนับใหม่ทุกครั้งที่
+// มี click/keydown/touch/scroll เรียกจากทุกจุดที่ auth สำเร็จ (login สดหรือ
+// restore session เดิมตอนโหลดหน้า) ไม่เริ่มจับก่อนนั้น (ยังไม่ login ไม่มีอะไรให้ timeout)
+var IDLE_TIMEOUT_MS = 3 * 60 * 1000;
+var _idleTimer = null;
+function _resetIdleTimer() {
+  if (_idleTimer) clearTimeout(_idleTimer);
+  _idleTimer = setTimeout(logout, IDLE_TIMEOUT_MS);
+}
+function _startIdleWatch() {
+  ['click', 'keydown', 'touchstart', 'scroll'].forEach(function(ev) {
+    document.addEventListener(ev, _resetIdleTimer, { passive: true });
+  });
+  _resetIdleTimer();
 }
 </script>
 </body>

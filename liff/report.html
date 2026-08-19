@@ -178,6 +178,7 @@ if (localStorage.getItem('waka_portal_auth') === '1' && localStorage.getItem('wa
   document.getElementById('pinOverlay').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   loadReport();
+  _startIdleWatch();
 }
 
 function checkPin() {
@@ -188,10 +189,31 @@ function checkPin() {
     document.getElementById('pinOverlay').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     loadReport();
+    _startIdleWatch();
   } else {
     document.getElementById('pinError').style.display = 'block';
     setTimeout(() => document.getElementById('pinError').style.display = 'none', 2000);
   }
+}
+
+function logout() {
+  localStorage.clear();
+  location.reload();
+}
+
+// ── ออกจากระบบอัตโนมัติถ้าไม่มีการใช้งานเกิน 3 นาที (กันเผลอไม่ได้ล็อกเครื่องที่
+// หน้าร้าน แล้วมีคนอื่นมาใช้ session ของพนักงานคนก่อนต่อ) ──
+var IDLE_TIMEOUT_MS = 3 * 60 * 1000;
+var _idleTimer = null;
+function _resetIdleTimer() {
+  if (_idleTimer) clearTimeout(_idleTimer);
+  _idleTimer = setTimeout(logout, IDLE_TIMEOUT_MS);
+}
+function _startIdleWatch() {
+  ['click', 'keydown', 'touchstart', 'scroll'].forEach(function(ev) {
+    document.addEventListener(ev, _resetIdleTimer, { passive: true });
+  });
+  _resetIdleTimer();
 }
 
 function fmt(n) { return '฿' + Number(n).toLocaleString(); }
