@@ -836,6 +836,7 @@ function doPost(e) {
         }
       }
       if (data.lineUserId) notifyCustomer(data.lineUserId, { orderId: orderId, items: data.items, displayName: data.displayName, branch: data.branch, address: data.address, total: data.total, slipStatus: slipStatus, instantReady: instantReady });
+      if (slipStatus === "ยืนยัน") _notifyBranchRestockNeeded_(newOrder, branchCoverage.covered);
     } catch(_) {}
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ success: true, orderId: orderId, slipStatus: slipStatus })));
@@ -1130,6 +1131,29 @@ function _tryInstantReady_(order, precomputedCovered) {
   order.fulfillment = "พร้อมรับ";
   order.fulfilled_at = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
   return true;
+}
+
+// ── แจ้งพนักงานคลังกลางว่าต้องส่งของไปสาขา ────────────────────────────────
+// เรียกเฉพาะตอนสลิปยืนยันแล้วเท่านั้น (ตอนสั่งซื้อที่ auto-verify หรือตอน
+// handleConfirmSlip) กันแจ้งเตือนก่อนเวลาสำหรับออเดอร์ที่ยังไม่ผ่านการตรวจสลิป
+// `covered` = ผลจาก _checkBranchCoverage_/_tryInstantReady_ ของออเดอร์นี้ —
+// ถ้า covered (ของพอที่สาขาอยู่แล้ว) หรือเป็นออเดอร์จัดส่ง ไม่ต้องแจ้งอะไร
+// กรองเฉพาะ item ที่ไม่ใช่พรีออเดอร์ (_preorder) — พรีออเดอร์ยังไม่มีของที่ไหน
+// เลยด้วยซ้ำ แจ้งให้ "ส่งไปสาขา" ตอนนี้ไม่มีประโยชน์ (คลังกลางก็ไม่มีจะส่ง)
+function _notifyBranchRestockNeeded_(order, covered) {
+  var branch = order.branch || "";
+  if (!branch || branch === "จัดส่ง" || covered) return;
+  var items = Array.isArray(order.items_json) ? order.items_json : [];
+  var needed = items.filter(function(it) { return !it._preorder; });
+  if (needed.length === 0) return;
+  var groupStaff = _getConfigValue(null, "group_staff_live");
+  if (!groupStaff) return;
+  var lines = needed.map(function(it) {
+    var u = it.type === "box" ? "กล่อง" : "ซอง";
+    return "  - " + it.name + " x" + (it.qty || 1) + " " + u;
+  }).join("\n");
+  _linePush(groupStaff, "📮 สาขา " + branch + " ของไม่พอส่งมอบออเดอร์ #" + (order.order_id || "") +
+    " — กรุณาส่งของไปสาขาเพิ่ม:\n" + lines, STAFF_LIVE_LINE_TOKEN);
 }
 
 function notifyCustomer(userId, order) {
@@ -2933,6 +2957,7 @@ function handleConfirmSlip(data) {
     var total = order.total || 0;
     var items = Array.isArray(order.items_json) ? order.items_json : [];
     var instantReady = _tryInstantReady_(order);
+    _notifyBranchRestockNeeded_(order, instantReady);
 
     if (uid) {
       var message;
