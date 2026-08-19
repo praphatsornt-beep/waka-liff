@@ -1338,6 +1338,20 @@
     return r ? r.value : null;
   }
 
+  // เช็คว่าสาขาที่เลือกมีของพอส่งมอบทันทีมั้ย ก่อนกดยืนยันสั่งซื้อจริง (ดู submitOrder)
+  async function checkPickupReady(branch, items) {
+    try {
+      const res = await fetch(GAS_URL, {
+        method: "POST",
+        body: JSON.stringify({ _action: "checkPickupReady", branch, items }),
+      });
+      const data = await res.json();
+      return !!data.ready;
+    } catch (e) {
+      return true; // เน็ตมีปัญหา — ปล่อยผ่าน ไม่บล็อกการสั่งซื้อ (backend fallback ตอนสั่งจริงยังปลอดภัยอยู่แล้ว)
+    }
+  }
+
   // ── Total ─────────────────────────────────────────────────────────────────────
   function updateTotal() {
     let total = 0;
@@ -1499,6 +1513,22 @@
     if (getBranch() === "จัดส่ง" && !address) {
       alert("กรุณากรอกที่อยู่จัดส่งให้ครบ (บ้านเลขที่ + จังหวัด + อำเภอ + ตำบล)");
       return;
+    }
+
+    if (getBranch() !== "จัดส่ง") {
+      const ready = await checkPickupReady(getBranch(), items);
+      if (!ready) {
+        const wantsDelivery = confirm(
+          "สินค้าที่สาขา " + getBranch() + " ยังไม่พร้อมส่งมอบทันที ต้องรอจัดส่งจากคลังกลางก่อน\n\n" +
+          "กด ตกลง เพื่อเปลี่ยนเป็นจัดส่งพัสดุแทน\n" +
+          "กด ยกเลิก เพื่อสั่งรับที่สาขาเดิม (ทีมงานจะจัดส่งของไปให้สาขา แล้วแจ้งเมื่อพร้อมรับ)"
+        );
+        if (wantsDelivery) {
+          switchFulfillment("delivery");
+          alert("เปลี่ยนเป็นจัดส่งพัสดุแล้ว กรุณากรอกที่อยู่จัดส่งแล้วกดยืนยันสั่งซื้ออีกครั้ง");
+          return;
+        }
+      }
     }
 
     const btn = document.getElementById("submitBtn");

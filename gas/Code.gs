@@ -440,8 +440,9 @@ function handleCustomerConfirm(orderId, e) {
 }
 
 // POST: รับ order จาก LIFF หรือ internal actions
-// Public POST (ไม่ต้อง _s): LINE webhook, สั่งซื้อ (data.items), tournamentRegister
-var PUBLIC_ACTIONS_POST = ["tournamentRegister"];
+// Public POST (ไม่ต้อง _s): LINE webhook, สั่งซื้อ (data.items), tournamentRegister,
+// checkPickupReady (precheck อ่านอย่างเดียว ไม่มีข้อมูลอ่อนไหว)
+var PUBLIC_ACTIONS_POST = ["tournamentRegister", "checkPickupReady"];
 
 function doPost(e) {
   try {
@@ -453,6 +454,10 @@ function doPost(e) {
 
     if (!isPublicPost && SCRIPT_SECRET && (e.parameter._s || "") !== SCRIPT_SECRET) {
       return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+    }
+
+    if (data._action === "checkPickupReady") {
+      return handleCheckPickupReady(data);
     }
 
     if (data._action === "createShipment") {
@@ -1093,6 +1098,14 @@ function _checkBranchCoverage_(branch, items) {
     return s && s[field] >= (it.qty || 1);
   });
   return { covered: covered };
+}
+
+// data: { branch, items } — public precheck จาก LIFF ก่อนกดยืนยันสั่งซื้อ ถามว่า
+// สาขาที่เลือกมีของพอส่งมอบทันทีมั้ย (เพื่อเสนอเปลี่ยนเป็นจัดส่งถ้าไม่พอ) อ่านอย่างเดียว
+// ไม่ล็อก ไม่หักอะไร — ผลลัพธ์แค่ boolean ไม่รั่วจำนวนสต็อกจริง
+function handleCheckPickupReady(data) {
+  var cov = _checkBranchCoverage_(data.branch, data.items || []);
+  return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, ready: cov.covered })));
 }
 
 // ── ถ้าสต็อกสาขามีของครบพอส่งมอบอยู่แล้ว ตอนสลิปกลายเป็น "ยืนยัน" ก็ตั้งพร้อมรับ
