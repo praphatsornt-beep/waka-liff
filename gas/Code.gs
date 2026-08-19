@@ -2397,7 +2397,16 @@ function handleCreateShipment(data) {
     }
 
     var items = data.items || [];
-    // ตัดสต็อกกลาง (catalog, Supabase-primary)
+    // ตัดสต็อกกลาง (catalog, Supabase-primary) — หักเฉพาะส่วน qty_box_extra/
+    // qty_pack_extra (ส่วน "เผื่อ" ที่ยังไม่เคยถูกหักที่ไหนมาก่อน) เท่านั้น
+    // ห้ามรวม qty_box/qty_pack (ส่วน "ออเดอร์") เข้าไปด้วย — ส่วนนั้นถูกหัก
+    // คลังกลางไปแล้วตั้งแต่ตอนลูกค้าสั่งซื้อ (deductStock ใน doPost) ถ้าหักซ้ำ
+    // ตรงนี้อีกที คลังกลางจะโดนหัก 2 รอบสำหรับของชิ้นเดียวกัน (พบว่าเกิดขึ้นจริง
+    // ทุกครั้งที่สร้างล็อตจากยอดค้าง — ดู tools/screens/stock.py's
+    // load_pending_branch_demand/_create_shipment_dialog) ทำให้ qty_box คลัง
+    // กลางต่ำกว่าความเป็นจริงสะสมไปเรื่อยๆ — stock_branch ตอนรับของ
+    // (handleReceiveShipment) ยังใช้ยอดรวมทั้งก้อนเหมือนเดิม เพราะของจริงต้อง
+    // ไปถึงสาขาครบทั้งสองส่วน แค่คลังกลางไม่ควรถูกหักซ้ำสำหรับส่วนที่หักไปแล้ว
     var shCatRows = _fetchCatalogRows_();
     // ปิดช่องโหว่เดียวกับ doPost/handleWalkinSale — เผื่อ Streamlit ค้างฟอร์ม
     // สร้างล็อตไว้ข้ามช่วงที่มีคน rename สินค้า
@@ -2407,10 +2416,10 @@ function handleCreateShipment(data) {
       var it = items[idx];
       var shRow = _findCatalogRow_(shCatRows, it.name);
       if (!shRow) continue;
-      var totalBox = (it.qty_box || 0) + (it.qty_box_extra || 0);
-      var totalPack = (it.qty_pack || 0) + (it.qty_pack_extra || 0);
-      if (totalBox > 0)  { shRow.qty_box  = Math.max(0, (Number(shRow.qty_box)  || 0) - totalBox);  shChangedNames.push(it.name); }
-      if (totalPack > 0) { shRow.qty_pack = Math.max(0, (Number(shRow.qty_pack) || 0) - totalPack); shChangedNames.push(it.name); }
+      var newBox = it.qty_box_extra || 0;
+      var newPack = it.qty_pack_extra || 0;
+      if (newBox > 0)  { shRow.qty_box  = Math.max(0, (Number(shRow.qty_box)  || 0) - newBox);  shChangedNames.push(it.name); }
+      if (newPack > 0) { shRow.qty_pack = Math.max(0, (Number(shRow.qty_pack) || 0) - newPack); shChangedNames.push(it.name); }
     }
 
     var shObj = { shipment_id: shipId, timestamp: now, to_branch: data.to_branch || "", status: "จัดส่ง", items_json: items, received_at: null };
@@ -2450,7 +2459,12 @@ function handleCancelShipment(data) {
       return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบลอต" })));
     }
 
-    // คืนสต็อกกลาง (catalog, Supabase-primary)
+    // คืนสต็อกกลาง (catalog, Supabase-primary) — คืนเฉพาะส่วน qty_box_extra/
+    // qty_pack_extra ที่ handleCreateShipment หักไปจริงเท่านั้น (ดู comment ที่
+    // นั่น) ห้ามคืนรวม qty_box/qty_pack (ส่วน "ออเดอร์") ด้วย เพราะส่วนนั้นไม่เคย
+    // ถูกหักตอนสร้างล็อตนี้เลย — ออเดอร์ที่ยังไม่ส่งของสำเร็จจะกลับไปอยู่ในสถานะ
+    // "ยังไม่ได้ส่ง" ตามเดิม (โผล่ใน branch_summary/load_pending_branch_demand
+    // อีกครั้งให้พนักงานสร้างล็อตใหม่ทีหลัง) ไม่ต้องคืนอะไรให้คลังกลางสำหรับส่วนนั้น
     var items = Array.isArray(csTarget.items_json) ? csTarget.items_json : [];
     var csCatRows = items.length > 0 ? _fetchCatalogRows_() : null;
     var csChangedNames = [];
@@ -2459,8 +2473,8 @@ function handleCancelShipment(data) {
         var it = items[idx];
         var csRow = _findCatalogRow_(csCatRows, it.name);
         if (!csRow) continue;
-        var totalBox = (it.qty_box || 0) + (it.qty_box_extra || 0);
-        var totalPack = (it.qty_pack || 0) + (it.qty_pack_extra || 0);
+        var totalBox = it.qty_box_extra || 0;
+        var totalPack = it.qty_pack_extra || 0;
         if (totalBox > 0)  { csRow.qty_box  = (Number(csRow.qty_box)  || 0) + totalBox;  csChangedNames.push(it.name); }
         if (totalPack > 0) { csRow.qty_pack = (Number(csRow.qty_pack) || 0) + totalPack; csChangedNames.push(it.name); }
       }

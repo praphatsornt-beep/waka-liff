@@ -457,14 +457,22 @@ def _create_shipment_dialog():
             },
             key=editor_key,
         )
+        # qty_box/qty_pack ส่งเป็นส่วน "ออเดอร์" เท่านั้น (คลังกลางหักไปแล้วตอน
+        # ลูกค้าสั่งซื้อ — GAS's handleCreateShipment จะไม่หักซ้ำส่วนนี้) ส่วน
+        # qty_box_extra/qty_pack_extra คือ "เผื่อ" ที่ยังไม่เคยถูกหักจากไหนมาก่อน
+        # ทั้งสองส่วนรวมกันคือยอดที่ต้องไปถึงสาขาจริง (stock_branch ตอนรับของ
+        # ยังบวกเต็มทั้งก้อนเหมือนเดิม) — เดิมโค้ดตรงนี้ยัด "รวม" ทั้งก้อนใส่
+        # qty_box แล้วปล่อย qty_box_extra เป็น 0 เสมอ ทำให้คลังกลางโดนหักซ้ำสอง
+        # สำหรับส่วนที่เป็นออเดอร์ (บั๊กที่แก้พร้อมกันนี้ฝั่ง gas/Code.gs)
         for _, row in demand_edited.iterrows():
             if not row["ส่ง"]:
                 continue
             ship_items.append({
                 "name": row["สินค้า"], "id": ship_name_to_id.get(row["สินค้า"]) or None,
-                "qty_box": _safe_int(row["รวม (กล่อง)"]),
-                "qty_pack": _safe_int(row["รวม (ซอง)"]),
-                "qty_box_extra": 0, "qty_pack_extra": 0,
+                "qty_box": _safe_int(row["ออเดอร์ (กล่อง)"]),
+                "qty_pack": _safe_int(row["ออเดอร์ (ซอง)"]),
+                "qty_box_extra": _safe_int(row["เผื่อ (กล่อง)"]),
+                "qty_pack_extra": _safe_int(row["เผื่อ (ซอง)"]),
             })
     else:
         st.caption(f"ไม่มีออเดอร์รอส่งไปสาขา {ship_branch} ในตอนนี้ — เลือกสินค้าที่จะส่งเองได้ด้านล่าง")
@@ -477,7 +485,10 @@ def _create_shipment_dialog():
             ec1, ec2 = st.columns(2)
             eb = ec1.number_input(f"{name} — กล่อง", min_value=0, value=0, step=1, key=f"shipextrabox_{ship_branch}_{name}")
             ep = ec2.number_input(f"{name} — ซอง", min_value=0, value=0, step=1, key=f"shipextrapack_{ship_branch}_{name}")
-            ship_items.append({"name": name, "id": ship_name_to_id.get(name) or None, "qty_box": eb, "qty_pack": ep, "qty_box_extra": 0, "qty_pack_extra": 0})
+            # ไม่มีออเดอร์ค้างของสินค้านี้เลย → ทั้งหมดที่ใส่คือของใหม่ที่ยังไม่
+            # เคยถูกหักคลังกลางมาก่อน ต้องส่งเป็น qty_box_extra ทั้งก้อน (ไม่ใช่
+            # qty_box) ถึงจะถูกหักจริงตอนสร้างล็อต — ดู comment ด้านบน
+            ship_items.append({"name": name, "id": ship_name_to_id.get(name) or None, "qty_box": 0, "qty_pack": 0, "qty_box_extra": eb, "qty_pack_extra": ep})
 
     if st.button("📦 สร้างล็อตส่งสาขา", key=f"submit_ship_{ship_branch}", type="primary"):
         items_payload = [it for it in ship_items if it["qty_box"] > 0 or it["qty_pack"] > 0]

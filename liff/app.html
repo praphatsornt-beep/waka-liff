@@ -1651,11 +1651,14 @@ function shipUpdateTotal() {
 function shipAddToCart() {
   const name = gid('shipProduct').value; if (!name) { alert('เลือกสินค้า'); return; }
   const d = _shipCurrentDemand();
-  const qty_box = (d.qty_box || 0) + (+gid('shipQtyBox').value || 0);
-  const qty_pack = (d.qty_pack || 0) + (+gid('shipQtyPack').value || 0);
-  if (qty_box <= 0 && qty_pack <= 0) { alert('ใส่จำนวนที่จะส่ง'); return; }
+  const demandBox = d.qty_box || 0, demandPack = d.qty_pack || 0;
+  const bufBox = +gid('shipQtyBox').value || 0, bufPack = +gid('shipQtyPack').value || 0;
+  if (demandBox + bufBox <= 0 && demandPack + bufPack <= 0) { alert('ใส่จำนวนที่จะส่ง'); return; }
   const _p = products.find(x => x.name === name);
-  shipCart.push({ name, id: _p ? _p.id : undefined, qty_box, qty_pack, qty_box_extra: 0, qty_pack_extra: 0 });
+  // qty_box/qty_pack = ส่วนออเดอร์ (คลังกลางหักไปแล้วตอนลูกค้าสั่งซื้อ ไม่ต้องหักซ้ำ
+  // ตอนสร้างล็อต) qty_box_extra/qty_pack_extra = ส่วนเผื่อที่พิมพ์เพิ่ม (ยังไม่เคย
+  // ถูกหักจากไหนมาก่อน handleCreateShipment ฝั่ง GAS จะหักคลังกลางเฉพาะส่วนนี้)
+  shipCart.push({ name, id: _p ? _p.id : undefined, qty_box: demandBox, qty_pack: demandPack, qty_box_extra: bufBox, qty_pack_extra: bufPack });
   gid('shipQtyBox').value = 0; gid('shipQtyPack').value = 0;
   shipOnProductChange();
   shipRenderCart();
@@ -1671,9 +1674,11 @@ function shipRenderCart() {
   if (!shipCart.length) { card.style.display = 'none'; return; }
   card.style.display = 'block';
   gid('shipCartList').innerHTML = shipCart.map((it, idx) => {
+    const box = (it.qty_box || 0) + (it.qty_box_extra || 0);
+    const pack = (it.qty_pack || 0) + (it.qty_pack_extra || 0);
     const parts = [];
-    if (it.qty_box) parts.push(it.qty_box + ' กล่อง');
-    if (it.qty_pack) parts.push(it.qty_pack + ' ซอง');
+    if (box) parts.push(box + ' กล่อง');
+    if (pack) parts.push(pack + ' ซอง');
     return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f0ede8">
       <div style="font-size:13px">${esc(it.name)} — ${parts.join(', ')}</div>
       <button onclick="shipRemoveFromCart(${idx})" style="background:none;border:none;color:var(--red);font-size:16px;cursor:pointer">✕</button>
