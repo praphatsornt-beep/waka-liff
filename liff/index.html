@@ -1339,6 +1339,9 @@
   }
 
   // เช็คว่าสาขาที่เลือกมีของพอส่งมอบทันทีมั้ย ก่อนกดยืนยันสั่งซื้อจริง (ดู submitOrder)
+  // fail-open เสมอ (ปล่อยผ่านเป็น "พร้อม") ยกเว้นได้คำตอบชัดเจนว่า ready:false เท่านั้น
+  // — กันพรอมต์ผิดๆ ถ้า GAS ที่ deploy อยู่ยังเป็นเวอร์ชันเก่าที่ไม่รู้จัก action นี้
+  // (ตอบ error/unauthorized กลับมาแทน ready) หรือเน็ตมีปัญหา
   async function checkPickupReady(branch, items) {
     try {
       const res = await fetch(GAS_URL, {
@@ -1346,9 +1349,9 @@
         body: JSON.stringify({ _action: "checkPickupReady", branch, items }),
       });
       const data = await res.json();
-      return !!data.ready;
+      return data.ready !== false;
     } catch (e) {
-      return true; // เน็ตมีปัญหา — ปล่อยผ่าน ไม่บล็อกการสั่งซื้อ (backend fallback ตอนสั่งจริงยังปลอดภัยอยู่แล้ว)
+      return true;
     }
   }
 
