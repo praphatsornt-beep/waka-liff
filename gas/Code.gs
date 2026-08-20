@@ -338,7 +338,7 @@ var SUPABASE_TOURNAMENT_REG_HEADER = [
 var SUPABASE_CATALOG_HEADER = [
   "name", "category", "slug", "cost_box", "cost_p", "price_box", "price_pack",
   "qty_box", "qty_pack", "limit_box", "limit_pack", "active", "image_url", "barcode", "notice",
-  "id", "packs_per_box",
+  "id", "packs_per_box", "status",
 ];
 var SUPABASE_CONFIG_HEADER = ["key", "value"];
 var SUPABASE_STOCK_BRANCH_HEADER = ["name", "category", "branch", "qty_box", "qty_pack"];
@@ -696,38 +696,47 @@ function doPost(e) {
 
     // ── ตรวจ limit + หักสต็อก — อ่าน catalog จาก Supabase ครั้งเดียว ส่งต่อทั้ง 3 ฟังก์ชัน ──
     var catRowsForOrder = null;
+    // branchCoverage: ระดับ "ทั้งออเดอร์" (true เฉพาะเมื่อไม่มี item พรีออเดอร์ปน
+    // อยู่เลย และ item ที่เหลือทั้งหมดสาขามีของพอ) — ใช้ตัดสิน "พร้อมรับทันที"
+    // (_tryInstantReady_) และแจ้งเตือนคลังกลาง (_notifyBranchRestockNeeded_)
     var branchCoverage = { covered: false };
+    var readyItemsForOrder = [];
+    // readyCovered: เฉพาะ item สถานะ "พร้อมส่ง" (ไม่รวมพรีออเดอร์) — ใช้ตัดสินว่า
+    // จะหักสต็อกจากสาขาหรือคลังกลางสำหรับ item กลุ่มนี้
+    var readyCovered = false;
     if (data.items && data.items.length > 0) {
       catRowsForOrder = _fetchCatalogRows_();
       // ปิดช่องโหว่ลูกค้าค้างหน้าตะกร้าไว้ข้ามช่วงที่มีคน rename สินค้า — เขียน
       // item.name ให้ตรงกับชื่อปัจจุบันเสมอถ้า item มี id ที่ resolve เจอ ก่อนตรวจ
       // limit/หักสต็อกด้านล่างซึ่งยัง match ด้วยชื่อเหมือนเดิมทั้งหมด
       _resolveItemsAgainstCatalog_(data.items, catRowsForOrder);
-      // ถ้าสาขาที่ลูกค้าเลือกรับมีของพอส่งมอบเองอยู่แล้ว (ไม่ใช่พรีออเดอร์ — ของ
-      // ต้องเคยส่งไปสาขาจริงแล้วเท่านั้นถึงจะ cover ได้) ให้ข้ามการเช็ค/หักสต็อกกลาง
-      // ไปหักจากสต็อกสาขาแทน (ดู deductBranchStock_ ด้านล่าง)
-      branchCoverage = _checkBranchCoverage_(data.branch, data.items);
-      var limitCheck = checkCatalogLimits(data.items, catRowsForOrder, branchCoverage.covered);
+
+      // แยก item ตาม catalog.status (พนักงานตั้งเองที่หน้า "สินค้า") ก่อนเช็ค/หัก
+      // อะไรทั้งหมด — พรีออเดอร์ต้องไม่แตะสต็อกกลาง/สาขาเลยไม่ว่ากรณีใด แม้ว่าตอน
+      // นี้จะมีสต็อกอยู่แล้วก็ตาม (พนักงานยังไม่ได้ประกาศว่า "พร้อมส่ง")
+      for (var si = 0; si < data.items.length; si++) {
+        var sIt = data.items[si];
+        var sRow = _findCatalogRow_(catRowsForOrder, sIt.name);
+        sIt._preorder = !!(sRow && sRow.status === "preorder");
+        if (!sIt._preorder) readyItemsForOrder.push(sIt);
+      }
+      var allItemsReady = readyItemsForOrder.length === data.items.length;
+
+      // ดึงสต็อกสาขาครั้งเดียว (หัก reservation จากออเดอร์อื่นที่สาขานี้แล้ว) แล้ว
+      // เช็คความครอบคลุมได้ทั้ง 2 ระดับจากข้อมูลชุดเดียว กันยิง Supabase ซ้ำสองรอบ
+      var branchStockLookup = _branchStockLookup_(data.branch);
+      readyCovered = _itemsCoveredByLookup_(branchStockLookup, readyItemsForOrder);
+      branchCoverage = { covered: allItemsReady && readyCovered };
+
+      var limitCheck = checkCatalogLimits(data.items, catRowsForOrder, readyCovered);
       if (limitCheck.error) {
         try { lock.releaseLock(); } catch(_) {}
         return _cors(ContentService.createTextOutput(JSON.stringify({ success: false, error: limitCheck.error })));
       }
-      // ทำเครื่องหมาย preorder items — limit มีค่าแต่ stock = 0
-      // ใช้ตอน cancel เพื่อข้ามการคืน qty_box/pack (ไม่เคยหักจริง)
-      // ทำเครื่องหมาย branch-sourced items — ทั้งออเดอร์หักจากสต็อกสาขาแทนคลังกลาง
+      // ทำเครื่องหมาย branch-sourced — เฉพาะ item "พร้อมส่ง" ที่หักจากสาขาจริงเท่านั้น
       // ใช้ตอน cancel เพื่อคืนไปที่ stock_branch แทน catalog (ดู restoreStock)
-      for (var pi = 0; pi < data.items.length; pi++) {
-        var pIt = data.items[pi];
-        if (branchCoverage.covered) { pIt._branch_source = true; }
-        var pRow = _findCatalogRow_(catRowsForOrder, pIt.name);
-        if (!pRow) continue;
-        var pLimitField = pIt.type === "box" ? "limit_box" : "limit_pack";
-        var pStockField = pIt.type === "box" ? "qty_box" : "qty_pack";
-        var pLimit = pRow[pLimitField];
-        var pHasLimit = !(pLimit === "" || pLimit === undefined || pLimit === null);
-        if (pHasLimit && (Number(pRow[pStockField]) || 0) === 0) {
-          pIt._preorder = true;
-        }
+      if (readyCovered) {
+        readyItemsForOrder.forEach(function(it) { it._branch_source = true; });
       }
     }
 
@@ -762,13 +771,16 @@ function doPost(e) {
     _clearDashCache();
 
     if (data.items && data.items.length > 0) {
-      if (branchCoverage.covered) {
-        deductBranchStock_(data.branch, data.items);
-        deductCatalogLimits(data.items, catRowsForOrder); // no-op เว้นแต่มี limit ตั้งไว้ด้วย
-      } else {
-        // ส่ง rows เดิมให้แชร์กัน — deductCatalogLimits อัปเดต rows ใน memory แล้ว return คืน
-        var updatedRows = deductCatalogLimits(data.items, catRowsForOrder);
-        deductStock(data.items, updatedRows || catRowsForOrder);
+      // limit_box/pack หักทุก item เสมอ รวมพรีออเดอร์ด้วย (limit คือเพดานขายผ่าน
+      // ลิงค์ ไม่เกี่ยวกับสต็อกจริง) — ส่วนสต็อกจริง (คลังกลาง/สาขา) หักเฉพาะ item
+      // สถานะ "พร้อมส่ง" (readyItemsForOrder) เท่านั้น พรีออเดอร์ไม่แตะสต็อกเลย
+      var updatedRows = deductCatalogLimits(data.items, catRowsForOrder);
+      if (readyItemsForOrder.length > 0) {
+        if (readyCovered) {
+          deductBranchStock_(data.branch, readyItemsForOrder);
+        } else {
+          deductStock(readyItemsForOrder, updatedRows || catRowsForOrder);
+        }
       }
     }
 
@@ -903,12 +915,20 @@ function _pushCatalogRows_(rows, changedNames) {
 // skipStockCheck (optional bool): ข้ามการตรวจ "สต็อกกลางไม่พอ" — ใช้เมื่อ caller
 // เช็คแล้วว่าสาขาที่ลูกค้าเลือกรับมีของพอส่งมอบเองอยู่แล้ว (_checkBranchCoverage_)
 // จึงไม่ต้องพึ่งสต็อกกลางเลยสำหรับออเดอร์นี้ — limit_box/pack ยังตรวจตามปกติเสมอ
+//
+// catalog.status (พนักงานตั้งเองที่หน้า "สินค้า") เป็นตัวกำหนดว่าจะตรวจสต็อกจริง
+// ด้วยมั้ย: "inactive" ปฏิเสธทันที, "preorder" ตรวจแค่ limit ไม่แตะสต็อกเลยไม่ว่า
+// qty_box/pack จะมีค่าเท่าไหร่ก็ตาม (ต่างจากเดิมที่เดาจาก qty===0), ส่วน "ready"
+// (หรือแถวเก่าที่ยังไม่มี status — ก่อน migration) ตรวจสต็อกตามปกติ
 function checkCatalogLimits(items, _rows, skipStockCheck) {
   var rows = _rows || _fetchCatalogRows_();
   for (var idx = 0; idx < items.length; idx++) {
     var item = items[idx];
     var row = _findCatalogRow_(rows, item.name);
     if (!row) continue;
+    if (row.status === "inactive") {
+      return { error: item.name + " ปิดการขายแล้ว" };
+    }
     var limitField = item.type === "box" ? "limit_box" : "limit_pack";
     var stockField = item.type === "box" ? "qty_box" : "qty_pack";
     var limit = row[limitField];
@@ -920,6 +940,7 @@ function checkCatalogLimits(items, _rows, skipStockCheck) {
         return { error: item.name + " (" + unitLabel + ") เหลือเพียง " + limit + " " + unitLabel };
       }
     }
+    if (row.status === "preorder") continue; // พรีออเดอร์ — ไม่แตะสต็อกจริงเลย
     // ตรวจ actual stock — แจ้งเตือนถ้าสต็อกกลางไม่พอ
     var stock = Number(row[stockField]) || 0;
     if (!skipStockCheck && stock > 0 && item.qty > stock) {
@@ -1068,11 +1089,14 @@ function _clearDashCache() {
 // มั้ย ใช้ทั้งตอนตัดสินใจว่าจะเช็ค/หักสต็อกจากคลังกลางหรือจากสาขา (ดู doPost,
 // deductBranchStock_) และตอนตั้ง fulfillment = "พร้อมรับ" ทันที (_tryInstantReady_)
 // กันออเดอร์ใหม่แย่งของชิ้นเดียวกันไปนับซ้ำว่า "พอ" ทั้งที่จริงมีของให้แค่ใบเดียว
-function _checkBranchCoverage_(branch, items) {
+// ดึงสต็อกสาขา (หัก reservation จากออเดอร์อื่นที่ยืนยันสลิปแล้วแต่ยังไม่ส่งมอบ
+// ที่สาขานี้ออกแล้ว) แยกออกมาจาก _checkBranchCoverage_ เพื่อให้ doPost เช็คความ
+// ครอบคลุมได้หลายชุด item (ทั้งออเดอร์ vs เฉพาะ item สถานะ "พร้อมส่ง") จาก
+// การดึงข้อมูลรอบเดียว แทนที่จะยิง Supabase ซ้ำต่อชุด — คืน null ถ้าไม่มีสาขา/
+// เป็นออเดอร์จัดส่ง (เหมือน _checkBranchCoverage_ เดิม)
+function _branchStockLookup_(branch) {
   var b = branch || "";
-  if (!b || b === "จัดส่ง") return { covered: false };
-  var arr = Array.isArray(items) ? items : [];
-  if (arr.length === 0) return { covered: false };
+  if (!b || b === "จัดส่ง") return null;
 
   var bsRows = _fetchStockBranchRows_(b);
   var stockLookup = {};
@@ -1093,12 +1117,23 @@ function _checkBranchCoverage_(branch, items) {
     });
   });
 
-  var covered = arr.every(function(it) {
+  return stockLookup;
+}
+
+// เช็คว่า stockLookup (จาก _branchStockLookup_) พอส่งมอบ items ทั้งหมดในชุดนี้มั้ย
+function _itemsCoveredByLookup_(stockLookup, items) {
+  var arr = Array.isArray(items) ? items : [];
+  if (!stockLookup || arr.length === 0) return false;
+  return arr.every(function(it) {
     var s = stockLookup[it.name];
     var field = it.type === "box" ? "qty_box" : "qty_pack";
     return s && s[field] >= (it.qty || 1);
   });
-  return { covered: covered };
+}
+
+function _checkBranchCoverage_(branch, items) {
+  var stockLookup = _branchStockLookup_(branch);
+  return { covered: _itemsCoveredByLookup_(stockLookup, items) };
 }
 
 // data: { branch, items } — public precheck จาก LIFF ก่อนกดยืนยันสั่งซื้อ ถามว่า
@@ -1125,7 +1160,17 @@ function _tryInstantReady_(order, precomputedCovered) {
   var items = Array.isArray(order.items_json) ? order.items_json : [];
   if (items.length === 0) return false;
 
-  var covered = (typeof precomputedCovered === "boolean") ? precomputedCovered : _checkBranchCoverage_(branch, items).covered;
+  var covered;
+  if (typeof precomputedCovered === "boolean") {
+    covered = precomputedCovered;
+  } else {
+    // มี item พรีออเดอร์ปนอยู่ = ยังไม่พร้อมรับทั้งใบแน่ๆ ไม่ว่าของที่เหลือจะพอ
+    // ที่สาขามั้ยก็ตาม (ใช้ตอน handleConfirmSlip เช็คสดใหม่ — ตอนสั่งซื้อ doPost
+    // ส่ง precomputedCovered ที่คิดตามตรรกะเดียวกันนี้มาแล้ว)
+    var hasPreorder = items.some(function(it) { return !!it._preorder; });
+    var readyItems = items.filter(function(it) { return !it._preorder; });
+    covered = !hasPreorder && _checkBranchCoverage_(branch, readyItems).covered;
+  }
   if (!covered) return false;
 
   order.fulfillment = "พร้อมรับ";
@@ -2957,7 +3002,6 @@ function handleConfirmSlip(data) {
     var total = order.total || 0;
     var items = Array.isArray(order.items_json) ? order.items_json : [];
     var instantReady = _tryInstantReady_(order);
-    _notifyBranchRestockNeeded_(order, instantReady);
 
     if (uid) {
       var message;
@@ -3287,6 +3331,9 @@ function handleReceivePurchase(data) {
         if (catRow.limit_pack !== null && catRow.limit_pack !== undefined && catRow.limit_pack !== "" && Number(catRow.limit_pack) < catRow.qty_pack) {
           catRow.limit_pack = catRow.qty_pack;
         }
+        // ของถึงจริงแล้ว + ปลดล็อกยอดขายในตาเดียวกัน — ถือเป็นช่วงเวลาที่พนักงาน
+        // ตั้งใจประกาศว่าสินค้านี้ "พร้อมส่ง" แล้ว ไม่ต้องไปเปิดหน้าสินค้าแยกอีกที
+        if (catRow.status === "preorder") catRow.status = "ready";
       }
       changedNames.push(catRow.name);
     }
@@ -3344,7 +3391,13 @@ function handleRecordPurchasePayment(data) {
 }
 
 // ── เพิ่มสินค้าใหม่ใน catalog ──
-// data: { name, category, price_box, price_pack, cost_box, cost_pack, barcode, initial_box, initial_pack, staff_name }
+// data: { name, category, price_box, price_pack, cost_box, cost_pack, barcode, initial_box, initial_pack, status, staff_name }
+// status: "preorder" | "ready" — ค่าเริ่มต้น "preorder" ถ้าไม่ส่งมา เพราะสินค้า
+// ใหม่ที่สร้างผ่านหน้า "รับสินค้าเข้าคลัง" (โหมด "+ เพิ่มสินค้าใหม่") จะเริ่มด้วย
+// qty_box/pack = 0 เสมอ (ของจริงเข้าทีหลังตอนกด "รับของเข้าคลัง") — ตั้ง "ready"
+// ไว้ตั้งแต่ตอนที่ยังไม่มีสต็อกจะหลุด safety check (stock=0 ข้ามการตรวจสต็อกไป
+// เฉยๆ) — active ได้จาก status เสมอ กันสองฟิลด์นี้หลุด sync กัน (ดู comment
+// เดียวกันใน handleUpdateProduct)
 function handleAddProduct(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
@@ -3358,6 +3411,7 @@ function handleAddProduct(data) {
 
     var limBox = (data.limit_box === "" || data.limit_box === undefined || data.limit_box === null) ? null : Number(data.limit_box);
     var limPack = (data.limit_pack === "" || data.limit_pack === undefined || data.limit_pack === null) ? null : Number(data.limit_pack);
+    var newStatus = data.status === "ready" ? "ready" : "preorder";
 
     // Next sequential product code (P0001, P0002, ...). The id=not.is.null
     // filter matters — Postgres sorts NULL first on DESC, so without it this
@@ -3371,7 +3425,7 @@ function handleAddProduct(data) {
       cost_box: Number(data.cost_box) || 0, cost_p: Number(data.cost_pack) || 0,
       price_box: Number(data.price_box) || 0, price_pack: Number(data.price_pack) || 0,
       qty_box: Number(data.initial_box) || 0, qty_pack: Number(data.initial_pack) || 0,
-      limit_box: limBox, limit_pack: limPack, active: "TRUE",
+      limit_box: limBox, limit_pack: limPack, active: "TRUE", status: newStatus,
       image_url: data.image_url || "", barcode: data.barcode || "", notice: "",
       packs_per_box: (data.packs_per_box === "" || data.packs_per_box === undefined || data.packs_per_box === null) ? null : Number(data.packs_per_box),
     };
@@ -3439,7 +3493,17 @@ function handleUpdateProduct(data) {
     if (data.limit_box !== undefined) row.limit_box = data.limit_box === "" ? null : Number(data.limit_box);
     if (data.limit_pack !== undefined) row.limit_pack = data.limit_pack === "" ? null : Number(data.limit_pack);
     if (data.packs_per_box !== undefined) row.packs_per_box = data.packs_per_box === "" ? null : Number(data.packs_per_box);
-    if (data.active !== undefined) {
+    // status ("preorder"/"ready"/"inactive") คือฟิลด์เดียวที่พนักงานตั้งเองตอนนี้
+    // (แทนที่ checkbox เปิดขาย/ปิดขายเดิม) — active ("TRUE"/"FALSE") ยังอยู่เพราะ
+    // มีจุดอื่นอ่านอยู่ (เช่น doGet's ตัวกรองแคตตาล็อกลูกค้า) แต่ derive มาจาก
+    // status เสมอในคำขอเดียวกัน กันสองฟิลด์นี้หลุด sync กัน
+    var statusLabels = { preorder: "พรีออเดอร์", ready: "พร้อมส่ง", inactive: "ไม่ขายแล้ว" };
+    if (data.status !== undefined && statusLabels[data.status]) {
+      if (row.status !== data.status) changeLog.push("สถานะ: " + statusLabels[data.status]);
+      row.status = data.status;
+      row.active = data.status === "inactive" ? "FALSE" : "TRUE";
+    } else if (data.active !== undefined) {
+      // legacy path — เผื่อ client เก่าที่ยังไม่ได้อัปเดตยังส่งแค่ active มาตรงๆ
       var newActive = data.active ? "TRUE" : "FALSE";
       if (String(row.active).toUpperCase() !== newActive) changeLog.push("สถานะ: " + (data.active ? "เปิดขาย" : "ปิดขาย"));
       row.active = newActive;

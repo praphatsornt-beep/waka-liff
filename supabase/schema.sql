@@ -393,3 +393,35 @@ grant usage, select on all sequences in schema public to service_role;
 -- live 2026-08-18: recordPurchase failed with "permission denied for
 -- sequence purchases_id_seq" until this ran.
 -- grant usage, select on sequence purchases_id_seq to service_role;
+
+-- ── Migration (2026-08-20): explicit product status ─────────────────────────
+-- Run in the Supabase SQL editor, in this exact order. Replaces the old
+-- implicit "has a limit + qty is 0 = preorder" guess in gas/Code.gs with a
+-- real field staff set themselves at "สินค้า" — พรีออเดอร์/พร้อมส่ง/ไม่ขายแล้ว.
+-- `active` stays (too many places already read it) but gas/Code.gs's
+-- handleAddProduct/handleUpdateProduct always derive it from `status` now,
+-- so the two can't drift apart.
+--
+-- Step 1 — additive, nullable, nothing reads it yet.
+-- alter table catalog add column if not exists status text;
+--
+-- Step 2 — backfill every existing row from today's implicit rule, so
+-- behavior doesn't change the moment gas/Code.gs starts reading `status`:
+-- update catalog set status = 'inactive'
+--   where status is null and active = 'FALSE';
+-- update catalog set status = 'preorder'
+--   where status is null
+--   and ((limit_box is not null and coalesce(qty_box,0) = 0)
+--     or (limit_pack is not null and coalesce(qty_pack,0) = 0));
+-- update catalog set status = 'ready'
+--   where status is null;
+--
+-- Step 3 — run only after confirming every row got a value:
+--   select count(*) from catalog where status is null;  -- must return 0
+-- alter table catalog alter column status set not null;
+-- alter table catalog alter column status set default 'ready';
+--
+-- Deploy order matters: run this migration BEFORE deploying the matching
+-- gas/Code.gs change — a status IS NULL row would otherwise fall through to
+-- the "ready" branch there and get a real stock check applied to what's
+-- still meant to be a preorder.

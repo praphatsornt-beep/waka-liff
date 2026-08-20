@@ -668,6 +668,10 @@ def _receive_stock_dialog():
                         "limit_box": p["limit_box"], "limit_pack": p["limit_pack"],
                         "packs_per_box": p["packs_per_box"],
                         "barcode": p["barcode"], "image_url": p["image_url"],
+                        # เริ่มเป็นพรีออเดอร์เสมอ — สินค้าใหม่ทางนี้ยังไม่มีสต็อกจริง
+                        # จนกว่าจะกด "รับของเข้าคลัง" ทีหลัง (ดู checkbox เปลี่ยนเป็น
+                        # "พร้อมส่ง" ในตอนนั้น)
+                        "status": "preorder",
                     })
                     created_names.append(res.get("name") or p["name"])
                     created_items.append({
@@ -970,7 +974,8 @@ with tab_receive:
                                 unsafe_allow_html=True,
                             )
                             release_limit = st.checkbox(
-                                "ปลดล็อกยอดขายออนไลน์ให้เท่าสต็อกที่มีหลังรับของนี้ (สำหรับสินค้าที่เปิดพรีออเดอร์ไว้ก่อนของมา)",
+                                "ปลดล็อกยอดขายออนไลน์ให้เท่าสต็อกที่มี + เปลี่ยนสถานะเป็น \"พร้อมส่ง\" "
+                                "(สำหรับสินค้าที่เปิดพรีออเดอร์ไว้ก่อนของมา)",
                                 key=f"release_limit_{r['purchase_id']}",
                             )
                         with rc2:

@@ -85,7 +85,7 @@ def load_catalog() -> pd.DataFrame:
     # values becomes NaN, which is truthy in Python — `x.get(col) or ""`
     # then keeps the NaN and renders it as the literal text "nan" in form
     # fields (category/barcode/image_url/notice are all nullable columns).
-    text_cols = [c for c in ["category", "slug", "active", "image_url", "barcode", "notice", "id"] if c in df.columns]
+    text_cols = [c for c in ["category", "slug", "active", "image_url", "barcode", "notice", "id", "status"] if c in df.columns]
     df[text_cols] = df[text_cols].fillna("")
     return df
 
@@ -325,6 +325,55 @@ def _is_active(row) -> bool:
     return str(row.get("active") or "").strip().upper() != "FALSE"
 
 
+def _has_limit(v) -> bool:
+    """True if v is a real set limit (not None/NaN/empty)."""
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return False
+    return str(v).strip() != ""
+
+
+STATUS_LABELS = {"preorder": ("พรีออเดอร์", "pending"), "ready": ("พร้อมส่ง", "success"), "inactive": ("ไม่ขายแล้ว", "danger")}
+
+
+def _guess_status_from_stock(row) -> str:
+    """Guess preorder/ready purely from current price/qty/limit, ignoring
+    active — shared by the pre-migration fallback and by "reopening" a
+    closed product (which has no memory of what it was before)."""
+    sells_box = _num(row.get("price_box")) > 0
+    sells_pack = _num(row.get("price_pack")) > 0
+    has_stock = (sells_box and _num(row.get("qty_box")) > 0) or (sells_pack and _num(row.get("qty_pack")) > 0)
+    if has_stock:
+        return "ready"
+    if _has_limit(row.get("limit_box")) or _has_limit(row.get("limit_pack")):
+        return "preorder"
+    return "ready"
+
+
+def _product_status_code(row) -> str:
+    """"preorder"/"ready"/"inactive" for row["status"] — gas/Code.gs is the
+    source of truth for this field now (handleAddProduct/handleUpdateProduct
+    always write it). Falls back to today's old implicit guess only for rows
+    from before the `catalog.status` migration has been run in Supabase,
+    purely so the page doesn't show a blank badge during that gap."""
+    status = str(row.get("status") or "").strip()
+    if status in STATUS_LABELS:
+        return status
+    if not _is_active(row):
+        return "inactive"
+    return _guess_status_from_stock(row)
+
+
+def _product_status(row) -> tuple[str, str]:
+    """(label, badge_kind) for row — see _product_status_code."""
+    return STATUS_LABELS[_product_status_code(row)]
+
+
+def _default_reopen_status(row) -> str:
+    """Best-guess status to restore to when reopening a closed ("inactive")
+    product — inactive doesn't remember what it was before."""
+    return _guess_status_from_stock(row)
+
+
 # ── Page ──────────────────────────────────────────────────────────────────────
 apply_theme()
 page_header("จัดการสินค้าและหมวดหมู่", "ดูสถานะเปิด/ปิดขาย เพิ่ม/แก้ไขสินค้า และจัดการหมวดหมู่สินค้า")
@@ -352,7 +401,6 @@ def _product_detail_dialog(name: str):
         st.caption("ไม่พบสินค้านี้แล้ว")
         return
     row = row_df.iloc[0]
-    row_active = _is_active(row)
 
     dc1, dc2 = st.columns([1, 3])
     with dc1:
@@ -363,10 +411,8 @@ def _product_detail_dialog(name: str):
         st.markdown(f"### {name}")
         meta_bits = [str(b) for b in [row.get("category"), row.get("id")] if b]
         st.caption(" · ".join(meta_bits) or "—")
-        st.markdown(
-            badge("เปิดขาย" if row_active else "ปิดขาย", "success" if row_active else "danger"),
-            unsafe_allow_html=True,
-        )
+        _status_label, _status_kind = _product_status(row)
+        st.markdown(badge(_status_label, _status_kind), unsafe_allow_html=True)
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     m1, m2, m3, m4 = st.columns(4)
@@ -397,7 +443,9 @@ with tab_browse:
     with br1:
         browse_q = st.text_input("ค้นหาสินค้า", key="browse_product_q", placeholder="ชื่อ / หมวดหมู่ / บาร์โค้ด")
     with br2:
-        browse_status = st.selectbox("สถานะ", ["ทั้งหมด", "เปิดขาย", "ปิดขาย"], key="browse_product_status")
+        browse_status = st.selectbox(
+            "สถานะ", ["ทั้งหมด", "พร้อมส่ง", "พรีออเดอร์", "ไม่ขายแล้ว"], key="browse_product_status",
+        )
 
     browse_df = catalog.copy()
     if not browse_df.empty:
@@ -409,8 +457,8 @@ with tab_browse:
                 | browse_df["barcode"].astype(str).str.lower().str.contains(q, na=False)
             ]
         if browse_status != "ทั้งหมด":
-            active_mask = browse_df.apply(_is_active, axis=1)
-            browse_df = browse_df[active_mask] if browse_status == "เปิดขาย" else browse_df[~active_mask]
+            status_mask = browse_df.apply(lambda r: _product_status(r)[0] == browse_status, axis=1)
+            browse_df = browse_df[status_mask]
 
     st.caption(f"{len(browse_df)} รายการ")
 
@@ -418,7 +466,8 @@ with tab_browse:
         st.info("ไม่พบสินค้า")
     else:
         for _, row in browse_df.sort_values("name").iterrows():
-            row_active = _is_active(row)
+            row_status_label, row_status_kind = _product_status(row)
+            is_closed = row_status_label == "ไม่ขายแล้ว"
             with st.container(border=True):
                 c1, c2, c3 = st.columns([1, 4, 1.4])
                 with c1:
@@ -444,15 +493,13 @@ with tab_browse:
                     st.caption(" · ".join(meta_bits + price_bits) or "—")
                     st.caption(f"สต็อกกลาง — กล่อง {int(_num(row.get('qty_box')))} / ซอง {int(_num(row.get('qty_pack')))}")
                 with c3:
-                    st.markdown(
-                        badge("เปิดขาย" if row_active else "ปิดขาย", "success" if row_active else "danger"),
-                        unsafe_allow_html=True,
-                    )
+                    st.markdown(badge(row_status_label, row_status_kind), unsafe_allow_html=True)
                     st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-                    if st.button("ปิดขาย" if row_active else "เปิดขาย", key=f"browse_toggle_{row['name']}", use_container_width=True):
+                    if st.button("เปิดขาย" if is_closed else "ปิดขาย", key=f"browse_toggle_{row['name']}", use_container_width=True):
                         try:
-                            gas_post({"_action": "updateProduct", "name": row["name"], "id": row.get("id") or None, "active": not row_active})
-                            _flash(f"{'ปิด' if row_active else 'เปิด'}ขาย \"{row['name']}\" แล้ว")
+                            new_status = _default_reopen_status(row) if is_closed else "inactive"
+                            gas_post({"_action": "updateProduct", "name": row["name"], "id": row.get("id") or None, "status": new_status})
+                            _flash(f"{'เปิด' if is_closed else 'ปิด'}ขาย \"{row['name']}\" แล้ว")
                             st.cache_data.clear()
                             st.rerun()
                         except Exception as e:
@@ -515,9 +562,14 @@ with tab_edit:
                 "Slug (สำหรับลิงก์สั่งของโดยตรง)", value=str(edit_row.get("slug") or ""),
                 help="ใช้สร้างลิงก์สั่งของตรงจากหน้า order-links.html เช่น ใส่ bt11 ไว้ว่างได้",
             )
-            # Supabase stores active as the string "TRUE"/"FALSE", not a real bool —
-            # bool("FALSE") is truthy in Python, so compare the string explicitly.
-            e_active = st.checkbox("เปิดขาย (ไม่ติ๊ก = ปิดการขาย/หมด)", value=str(edit_row.get("active") or "").strip().upper() != "FALSE")
+            _status_opts = ["preorder", "ready", "inactive"]
+            _cur_status = _product_status_code(edit_row)
+            e_status = st.selectbox(
+                "สถานะ", _status_opts, index=_status_opts.index(_cur_status),
+                format_func=lambda c: STATUS_LABELS[c][0],
+                help="พรีออเดอร์ = ขายตามโควต้าอย่างเดียว ไม่แตะสต็อกจริง · "
+                     "พร้อมส่ง = ตัดสต็อกสาขา/คลังกลางตามจริง · ไม่ขายแล้ว = ปิดการขาย",
+            )
             e3, e4 = st.columns(2)
             # Supabase's catalog table names the pack-cost column cost_p, not cost_pack
             e_cost_box = e3.number_input("ต้นทุน/กล่อง", min_value=0.0, value=_num(edit_row.get("cost_box")), step=1.0)
@@ -541,7 +593,7 @@ with tab_edit:
                 try:
                     payload = {
                         "_action": "updateProduct", "name": edit_sel, "id": edit_row.get("id") or None,
-                        "category": e_category.strip(), "active": e_active,
+                        "category": e_category.strip(), "status": e_status,
                         "cost_box": e_cost_box, "cost_pack": e_cost_pack,
                         "price_box": e_price_box, "price_pack": e_price_pack,
                         "limit_box": e_limit_box, "limit_pack": e_limit_pack,
