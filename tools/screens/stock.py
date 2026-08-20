@@ -772,7 +772,7 @@ with tab_central:
         })
         show = show.sort_values("รหัสสินค้า", kind="stable")
         show = show[[
-            "รหัสสินค้า", "สินค้า", "สถานะ", "หมวดหมู่", "กล่อง", "ซอง",
+            "สถานะ", "รหัสสินค้า", "สินค้า", "หมวดหมู่", "กล่อง", "ซอง",
             "ขายแล้ว (กล่อง)", "ขายแล้ว (ซอง)",
             "ขายออนไลน์ได้ (กล่อง)", "ขายออนไลน์ได้ (ซอง)", "แจ้งเตือน",
         ]]
@@ -818,7 +818,7 @@ with tab_central:
             column_config={
                 "รหัสสินค้า": st.column_config.TextColumn("CODE", width="small"),
                 "สินค้า": st.column_config.TextColumn(width="large"),
-                "สถานะ": st.column_config.TextColumn(width="small", help="🟡 พรีออเดอร์ · 🟢 พร้อมส่ง · 🔴 ไม่ขายแล้ว"),
+                "สถานะ": st.column_config.TextColumn(" ", width=40, pinned=True, help="🟡 พรีออเดอร์ · 🟢 พร้อมส่ง · 🔴 ไม่ขายแล้ว"),
                 "หมวดหมู่": st.column_config.TextColumn(width="small"),
                 "กล่อง": st.column_config.NumberColumn("กล่อง", min_value=0, step=1, width="small"),
                 "ซอง": st.column_config.NumberColumn("ซอง", min_value=0, step=1, width="small"),
