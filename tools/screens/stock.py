@@ -491,7 +491,11 @@ def _create_shipment_dialog():
             ship_items.append({"name": name, "id": ship_name_to_id.get(name) or None, "qty_box": 0, "qty_pack": 0, "qty_box_extra": eb, "qty_pack_extra": ep})
 
     if st.button("📦 สร้างล็อตส่งสาขา", key=f"submit_ship_{ship_branch}", type="primary"):
-        items_payload = [it for it in ship_items if it["qty_box"] > 0 or it["qty_pack"] > 0]
+        items_payload = [
+            it for it in ship_items
+            if it["qty_box"] > 0 or it["qty_pack"] > 0
+            or it["qty_box_extra"] > 0 or it["qty_pack_extra"] > 0
+        ]
         if not items_payload:
             st.warning("ใส่จำนวนที่จะส่งอย่างน้อย 1 รายการก่อน")
         else:
