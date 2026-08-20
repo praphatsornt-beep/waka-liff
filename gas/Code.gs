@@ -966,7 +966,7 @@ function deductCatalogLimits(items, _rows) {
     changedNames.push(item.name);
   }
   if (changedNames.length) {
-    CacheService.getScriptCache().remove("catalog_config");
+    _clearCatalogCache_();
     _pushCatalogRows_(rows, changedNames);
   }
   return rows;
@@ -1055,7 +1055,7 @@ function restoreCatalogLimits(items) {
     changedNames.push(item.name);
   }
   if (changedNames.length) {
-    CacheService.getScriptCache().remove("catalog_config");
+    _clearCatalogCache_();
     _pushCatalogRows_(rows, changedNames);
   }
 }
@@ -1082,6 +1082,15 @@ function _writeStockBranchRow_(row, lock) {
 
 function _clearDashCache() {
   try { CacheService.getScriptCache().remove("dashboard_v1"); } catch(_) {}
+}
+
+// เคลียร์ทั้ง catalog_config (แคตตาล็อกลูกค้า, doGet) และ product_list_v1
+// (รายการสินค้าสำหรับพนักงาน, action=product_list) พร้อมกัน — สองแคชนี้มาจาก
+// ข้อมูล catalog ชุดเดียวกัน ต้องเคลียร์คู่กันเสมอไม่งั้นอันใดอันหนึ่งจะเก่าค้าง
+function _clearCatalogCache_() {
+  var cache = CacheService.getScriptCache();
+  try { cache.remove("catalog_config"); } catch(_) {}
+  try { cache.remove("product_list_v1"); } catch(_) {}
 }
 
 // ── เช็คว่าสต็อกสาขา (หลังหักที่ "จองไว้แล้ว" ให้ออเดอร์อื่นที่พร้อมรับ/รับบางส่วน
@@ -1730,7 +1739,14 @@ function handleApi(params) {
   }
 
   // ── รายการสินค้าทั้งหมด (สำหรับหน้ารับสต็อก) ──
+  // Cache 120 วิ (เหมือน catalog_config แต่สั้นกว่า เพราะเป็นข้อมูลฝั่งพนักงาน
+  // ที่อยากให้สดกว่าลูกค้าเล็กน้อย) — ก่อนหน้านี้ยิง supabaseSelect_ เต็มตาราง
+  // catalog ทุกครั้งที่ app.html สลับมาแท็บ "รับเข้า" ไม่มี cache เลยสักครั้ง
   if (action === "product_list") {
+    var plCache = CacheService.getScriptCache();
+    var plCached = plCache.get("product_list_v1");
+    if (plCached) return _cors(ContentService.createTextOutput(plCached));
+
     var plRows = supabaseSelect_("catalog", "select=*");
     var products = plRows.filter(function(r) { return r.name; }).map(function(r) {
       return {
@@ -1744,7 +1760,9 @@ function handleApi(params) {
         packs_per_box: Number(r.packs_per_box) || 0,
       };
     });
-    return _cors(ContentService.createTextOutput(JSON.stringify({ products: products })));
+    var plJson = JSON.stringify({ products: products });
+    try { plCache.put("product_list_v1", plJson, 120); } catch(_) {} // เกิน 100KB ไม่ throw ทับคำขอปัจจุบัน แค่ไม่แคช
+    return _cors(ContentService.createTextOutput(plJson));
   }
 
   // ── Admin Catalog (ทุกสินค้า รวม inactive) ──
@@ -3159,7 +3177,7 @@ function handleAddStock(data) {
     if (data.add_pack) row.qty_pack = (Number(row.qty_pack) || 0) + Number(data.add_pack);
     if (data.limit_box !== undefined && data.limit_box !== null) row.limit_box = Number(data.limit_box);
     if (data.limit_pack !== undefined && data.limit_pack !== null) row.limit_pack = Number(data.limit_pack);
-    CacheService.getScriptCache().remove("catalog_config");
+    _clearCatalogCache_();
     writeSupabaseRow_("catalog", row, SUPABASE_CATALOG_HEADER, "name", lock);
     var addStockDetail = (data.add_box ? (Number(data.add_box) > 0 ? "+" : "") + data.add_box + " กล่อง " : "") +
       (data.add_pack ? (Number(data.add_pack) > 0 ? "+" : "") + data.add_pack + " ซอง" : "");
@@ -3250,7 +3268,7 @@ function handleRecordPurchase(data) {
     }
 
     if (changedNames.length) {
-      CacheService.getScriptCache().remove("catalog_config");
+      _clearCatalogCache_();
       _pushCatalogRows_(catRows, changedNames);
     }
 
@@ -3338,7 +3356,7 @@ function handleReceivePurchase(data) {
       changedNames.push(catRow.name);
     }
     if (changedNames.length) {
-      CacheService.getScriptCache().remove("catalog_config");
+      _clearCatalogCache_();
       _pushCatalogRows_(catRows, changedNames);
     }
 
@@ -3429,7 +3447,7 @@ function handleAddProduct(data) {
       image_url: data.image_url || "", barcode: data.barcode || "", notice: "",
       packs_per_box: (data.packs_per_box === "" || data.packs_per_box === undefined || data.packs_per_box === null) ? null : Number(data.packs_per_box),
     };
-    CacheService.getScriptCache().remove("catalog_config");
+    _clearCatalogCache_();
     writeSupabaseRow_("catalog", newRow, SUPABASE_CATALOG_HEADER, "name", lock);
     // target_id = รหัสสินค้า (id), ไม่ใช่ชื่อ — ดู comment เดียวกันใน handleAddStock
     _logStaffAction_(staffName, null, "add_product", newId, "ชื่อ: " + newRow.name);
@@ -3512,7 +3530,7 @@ function handleUpdateProduct(data) {
     if (data.barcode !== undefined) row.barcode = data.barcode || "";
     if (data.notice !== undefined) row.notice = data.notice || "";
     if (data.slug !== undefined) row.slug = data.slug || "";
-    CacheService.getScriptCache().remove("catalog_config");
+    _clearCatalogCache_();
     writeSupabaseRow_("catalog", row, SUPABASE_CATALOG_HEADER, "name", lock);
 
     // target_id = รหัสสินค้า (id) เสมอ — คงที่แม้ชื่อเพิ่งเปลี่ยนไปข้างบน ทำให้
@@ -3565,7 +3583,7 @@ function handleDeleteProduct(data) {
     // แถว stock_branch ที่เหลือ (ยอด 0 ทุกสาขาอยู่แล้ว) ไม่มีประโยชน์ต่อ — ลบทิ้งด้วยกัน
     if (branchRows.length) deleteSupabase_("stock_branch", "name=eq." + encodeURIComponent(name));
 
-    CacheService.getScriptCache().remove("catalog_config");
+    _clearCatalogCache_();
     _logStaffAction_(String(data.staff_name || "").trim(), null, "delete_product", row.id || name, "ชื่อ: " + name);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
@@ -3736,7 +3754,7 @@ function handleConvertBoxToPack(data) {
       }
       catRow.qty_box = haveBoxC - qtyBox;
       catRow.qty_pack = (Number(catRow.qty_pack) || 0) + qtyPack;
-      CacheService.getScriptCache().remove("catalog_config");
+      _clearCatalogCache_();
       writeSupabaseRow_("catalog", catRow, SUPABASE_CATALOG_HEADER, "name");
     }
     lock.releaseLock();
@@ -3791,7 +3809,7 @@ function handleWithdrawCentralStock(data) {
     }
     if (qtyBox  > 0) row.qty_box  = wcHaveBox - qtyBox;
     if (qtyPack > 0) row.qty_pack = wcHavePack - qtyPack;
-    CacheService.getScriptCache().remove("catalog_config");
+    _clearCatalogCache_();
     writeSupabaseRow_("catalog", row, SUPABASE_CATALOG_HEADER, "name", lock);
 
     var wcParts = [];
@@ -3854,7 +3872,7 @@ function handleReturnStock(data) {
     var srObj = { timestamp: now, branch: branch, name: name, qty_box: qtyBox, qty_pack: qtyPack };
     var srRes = pushToSupabase_("stock_returns", srObj);
     if (!srRes.ok) throw new Error("Supabase stock_returns write failed: " + srRes.text);
-    CacheService.getScriptCache().remove("catalog_config");
+    _clearCatalogCache_();
     lock.releaseLock();
     _logStaffAction_(staffName, branch, "return_stock", (catRow && catRow.id) || name, "Box:" + qtyBox + " Pack:" + qtyPack);
 
@@ -4027,7 +4045,7 @@ function handleCancelWalkinSale(data) {
 }
 
 function clearCache() {
-  CacheService.getScriptCache().remove("catalog_config");
+  _clearCatalogCache_();
 }
 
 

@@ -784,7 +784,12 @@ function switchTab(t) {
   if (t==='home') loadDashboard();
 
   if (t==='branch') onBranchChange();
-  if (t==='receive') loadProducts();
+  // โหลดครั้งเดียวต่อ session — เหมือน pattern ที่ใช้อยู่แล้วตรง
+  // shipAddToCart()/withdraw dialog (products.length ? ... : loadProducts())
+  // ก่อนหน้านี้จุดนี้ยิงขอใหม่ทุกครั้งที่สลับมาแท็บนี้ ทั้งที่ชื่อ/บาร์โค้ดสินค้า
+  // ไม่ได้เปลี่ยนบ่อย — ถ้าเพิ่งมีคนเพิ่ม/แก้สินค้าใน Streamlit ระหว่างเปิดหน้านี้
+  // ค้างไว้ ต้องรีเฟรชหน้าเพื่อเห็นของใหม่ (เหมือนจุดอื่นที่ cache แบบนี้อยู่แล้ว)
+  if (t==='receive' && !products.length) loadProducts();
   if (t==='menu') loadCatalogLinks();
   stopScan(); stopScanNew();
 }
