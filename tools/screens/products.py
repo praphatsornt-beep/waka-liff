@@ -495,11 +495,17 @@ with tab_browse:
                 with c3:
                     st.markdown(badge(row_status_label, row_status_kind), unsafe_allow_html=True)
                     st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-                    if st.button("เปิดขาย" if is_closed else "ปิดขาย", key=f"browse_toggle_{row['name']}", use_container_width=True):
+                    row_status_code = _product_status_code(row)
+                    status_choice = st.selectbox(
+                        "สถานะ", ["preorder", "ready", "inactive"],
+                        index=["preorder", "ready", "inactive"].index(row_status_code),
+                        format_func=lambda c: STATUS_LABELS[c][0],
+                        key=f"browse_status_{row['name']}", label_visibility="collapsed",
+                    )
+                    if status_choice != row_status_code:
                         try:
-                            new_status = _default_reopen_status(row) if is_closed else "inactive"
-                            gas_post({"_action": "updateProduct", "name": row["name"], "id": row.get("id") or None, "status": new_status})
-                            _flash(f"{'เปิด' if is_closed else 'ปิด'}ขาย \"{row['name']}\" แล้ว")
+                            gas_post({"_action": "updateProduct", "name": row["name"], "id": row.get("id") or None, "status": status_choice})
+                            _flash(f"เปลี่ยนสถานะ \"{row['name']}\" เป็น {STATUS_LABELS[status_choice][0]} แล้ว")
                             st.cache_data.clear()
                             st.rerun()
                         except Exception as e:

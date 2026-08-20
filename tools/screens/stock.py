@@ -743,6 +743,11 @@ with tab_central:
         show = catalog_show[["name", "category", "qty_box", "qty_pack", "limit_box", "limit_pack", "active"]].copy()
         show["id"] = catalog_show["id"] if "id" in catalog_show.columns else ""
         show["slug"] = catalog_show["slug"] if "slug" in catalog_show.columns else ""
+        _status_dot = {"preorder": "🟡", "ready": "🟢", "inactive": "🔴"}
+        show["สถานะ"] = (
+            catalog_show["status"].apply(lambda s: _status_dot.get(str(s or "").strip(), "🟢"))
+            if "status" in catalog_show.columns else "🟢"
+        )
         # NULL limit_box/limit_pack render as a literal "None" placeholder once
         # the column becomes editable — 0 means "no low-stock threshold set",
         # same meaning as NULL for _low_stock() below, so this is a safe default.
@@ -767,7 +772,7 @@ with tab_central:
         })
         show = show.sort_values("รหัสสินค้า", kind="stable")
         show = show[[
-            "รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "กล่อง", "ซอง",
+            "รหัสสินค้า", "สินค้า", "สถานะ", "Slug", "หมวดหมู่", "กล่อง", "ซอง",
             "ขายแล้ว (กล่อง)", "ขายแล้ว (ซอง)",
             "ขายออนไลน์ได้ (กล่อง)", "ขายออนไลน์ได้ (ซอง)", "แจ้งเตือน",
         ]]
@@ -809,10 +814,11 @@ with tab_central:
             use_container_width=True,
             hide_index=True,
             height=int((len(show) + 1) * 35 + 3),
-            disabled=["รหัสสินค้า", "สินค้า", "Slug", "หมวดหมู่", "ขายแล้ว (กล่อง)", "ขายแล้ว (ซอง)", "แจ้งเตือน"],
+            disabled=["รหัสสินค้า", "สินค้า", "สถานะ", "Slug", "หมวดหมู่", "ขายแล้ว (กล่อง)", "ขายแล้ว (ซอง)", "แจ้งเตือน"],
             column_config={
                 "รหัสสินค้า": st.column_config.TextColumn("CODE", width="small"),
                 "สินค้า": st.column_config.TextColumn(width="large"),
+                "สถานะ": st.column_config.TextColumn(width="small", help="🟡 พรีออเดอร์ · 🟢 พร้อมส่ง · 🔴 ไม่ขายแล้ว"),
                 "Slug": st.column_config.TextColumn(width="small"),
                 "หมวดหมู่": st.column_config.TextColumn(width="small"),
                 "กล่อง": st.column_config.NumberColumn("กล่อง", min_value=0, step=1, width="small"),
