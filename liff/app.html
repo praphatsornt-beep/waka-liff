@@ -1311,7 +1311,7 @@ function renderBrOrdersList() {
           <div class="oid">#${esc(o.order_id)}${o.branch?` · 🏬 ${esc(o.branch)}`:''}</div>
           <span class="status ${sc}">${esc(ff||'รอ')}</span>
         </div>
-        <div class="meta">${esc(o.real_name||o.display_name)} · ${esc(o.phone)} · ฿${Number(o.total).toLocaleString()}</div>
+        <div class="meta">${esc(o.real_name||o.display_name)}${o.email?` (${esc(o.email)})`:''} · ${esc(o.phone)} · ฿${Number(o.total).toLocaleString()}</div>
         <div class="order-detail" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #f0ede8">
           <div style="font-weight:600;margin-bottom:6px">รายการสินค้า</div>
           ${itemsHtml}
@@ -1351,7 +1351,7 @@ async function searchOrders() {
       const readyBtnLabel=activeItemCount>1?'📣 แจ้งพร้อมรับบางชิ้น':'📣 แจ้งพร้อมรับ';
       const itemsJson=esc(JSON.stringify(items)).replace(/'/g,'&#39;');
       return `<div class="card"><div style="display:flex;justify-content:space-between"><strong>#${esc(o.order_id)}</strong><span class="status ${ff==='รับแล้ว'||ff==='สาขายืนยัน'?'s-done':ff==='พร้อมรับ'||ff==='บางส่วน'?'s-ok':'s-wait'}">${esc(ff)}</span></div>
-      <div style="font-size:13px;margin-top:4px">${esc(o.real_name||o.display_name)} · ${esc(o.phone)} · ${esc(o.branch)}</div>
+      <div style="font-size:13px;margin-top:4px">${esc(o.real_name||o.display_name)}${o.email?` (${esc(o.email)})`:''} · ${esc(o.phone)} · ${esc(o.branch)}</div>
       <div style="margin:6px 0;padding:8px;background:#f9f8f5;border-radius:8px">${itemsHtml}</div>
       <div style="font-size:14px;font-weight:700;color:#2d8f4e">฿${Number(o.total).toLocaleString()}</div>
       <div style="font-size:12px;color:#888;margin-top:2px">สลิป: ${esc(o.slip_status)}</div>

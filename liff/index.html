@@ -717,7 +717,7 @@
         <input type="tel" id="phone" placeholder="0xx-xxx-xxxx" maxlength="10" oninput="validatePhoneInput()" />
         <div class="field-error" id="phoneError">กรุณากรอกเบอร์โทร 10 หลัก เริ่มต้นด้วย 0</div>
 
-        <label class="field-label">ชื่อเล่น</label>
+        <label class="field-label">ชื่อเล่น <span class="req">*</span></label>
         <input type="text" id="nickname" placeholder="เช่น เอ" />
 
         <!-- Separator -->
@@ -1513,6 +1513,7 @@
 
     if (!realName) { alert("กรุณากรอกชื่อ-นามสกุลจริง"); return; }
     if (!phone) { alert("กรุณากรอกเบอร์โทร"); return; }
+    if (!nickname) { alert("กรุณากรอกชื่อเล่น"); return; }
     if (!isPhoneValid(phone)) {
       document.getElementById("phone").classList.add("input-error");
       document.getElementById("phoneError").style.display = "block";

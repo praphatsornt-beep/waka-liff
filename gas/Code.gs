@@ -1530,13 +1530,14 @@ function handleApi(params) {
     var branchFilter = params.branch || "";
     if (!branchFilter) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing branch" })));
     if (!_branchAuthorized(params.code, branchFilter)) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
-    var boSb = supabaseSelect_("orders", "select=order_id,real_name,display_name,phone,items_json,total,fulfillment,staff_confirmed_at,customer_confirmed_at,timestamp,notified_at&branch=eq." + encodeURIComponent(branchFilter) + "&slip_status=eq.ยืนยัน&order=timestamp.desc");
+    var boSb = supabaseSelect_("orders", "select=order_id,real_name,display_name,phone,email,items_json,total,fulfillment,staff_confirmed_at,customer_confirmed_at,timestamp,notified_at&branch=eq." + encodeURIComponent(branchFilter) + "&slip_status=eq.ยืนยัน&order=timestamp.desc");
     var boOrders = boSb.map(function(r) {
       return {
         order_id: String(r.order_id || ""),
         real_name: String(r.real_name || ""),
         display_name: String(r.display_name || ""),
         phone: String(r.phone || ""),
+        email: String(r.email || ""), // ชื่อเล่นลูกค้า (repurposed field — ดู liff/index.html)
         items_json: JSON.stringify(r.items_json || []),
         total: String(r.total || "0"),
         fulfillment: String(r.fulfillment || ""),
