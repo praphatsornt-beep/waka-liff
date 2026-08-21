@@ -3074,11 +3074,28 @@ function handleRejectSlip(data) {
     var order = getSupabaseOrder_(data.order_id);
     if (!order) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "order not found" })));
 
+    // idempotent — ปฏิเสธซ้ำ (เช่น กดปุ่มซ้ำก่อนหน้ารีเฟรช) ต้องไม่คืนสต็อก/limit ซ้ำ
+    if (order.slip_status === "ยกเลิก") {
+      return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, already: true })));
+    }
+
     var orderId = String(order.order_id || "");
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd HH:mm");
     var reason = String(data.reason || "").trim();
     var rejectStaffName = String(data.staff_name || "").trim();
     var note = "ปฏิเสธสลิปโดย " + (rejectStaffName || "แอดมิน (ไม่ระบุชื่อ)") + " " + now + (reason ? " (" + reason + ")" : "");
+
+    // คืนสต็อก/limit ที่หักไปตั้งแต่ตอนสร้างออเดอร์ (doPost หักทันทีไม่ว่าสลิปจะ
+    // ตรวจผ่านหรือไม่) — เดิมฟังก์ชันนี้เปลี่ยนแค่ slip_status ไม่คืนอะไรเลย ทำให้
+    // limit_box ของสินค้าพรีออเดอร์ (เช่นลูกค้าส่งสลิปซ้ำแล้วโดนปฏิเสธ) หายไป
+    // ถาวรทั้งที่ไม่มีใครได้ของจริง — คืนเฉพาะ item ที่ยังไม่ส่งมอบลูกค้า (กัน
+    // double restore กับออเดอร์ที่ส่งมอบไปแล้วบางส่วนก่อนถูกปฏิเสธสลิปทีหลัง)
+    // เหมือน action=cancel_order ที่ทำอยู่แล้ว
+    var itemsToRestore = (Array.isArray(order.items_json) ? order.items_json : []).filter(function(it) { return !it.handed_at; });
+    if (itemsToRestore.length > 0) {
+      restoreStock(itemsToRestore, order.branch);
+      restoreCatalogLimits(itemsToRestore);
+    }
 
     order.slip_status = "ยกเลิก";
     order.notes = note;
