@@ -717,8 +717,8 @@
         <input type="tel" id="phone" placeholder="0xx-xxx-xxxx" maxlength="10" oninput="validatePhoneInput()" />
         <div class="field-error" id="phoneError">กรุณากรอกเบอร์โทร 10 หลัก เริ่มต้นด้วย 0</div>
 
-        <label class="field-label">อีเมล <span class="req">*</span></label>
-        <input type="email" id="email" placeholder="example@email.com" />
+        <label class="field-label">ชื่อเล่น</label>
+        <input type="text" id="nickname" placeholder="เช่น เอ" />
 
         <!-- Separator -->
         <div class="separator" style="margin-top:24px"></div>
@@ -1508,12 +1508,11 @@
 
     const realName = document.getElementById("realName").value.trim();
     const phone    = document.getElementById("phone").value.trim();
-    const email    = document.getElementById("email").value.trim();
+    const nickname = document.getElementById("nickname").value.trim();
     const address  = getBranch() === "จัดส่ง" ? getFullAddress() : "";
 
     if (!realName) { alert("กรุณากรอกชื่อ-นามสกุลจริง"); return; }
     if (!phone) { alert("กรุณากรอกเบอร์โทร"); return; }
-    if (!email) { alert("กรุณากรอกอีเมล"); return; }
     if (!isPhoneValid(phone)) {
       document.getElementById("phone").classList.add("input-error");
       document.getElementById("phoneError").style.display = "block";
@@ -1554,7 +1553,7 @@
       branch:   getBranch(),
       realName,
       phone,
-      email:    email || "",
+      email:    nickname || "", // ชื่อเล่น — เก็บใน orders.email เดิม (repurposed field, กันไม่ต้องแก้ schema/GAS เพิ่ม)
       address:  address || "",
       slipBase64: slipBase64 || null,
     };
@@ -1666,7 +1665,7 @@
     document.getElementById("phone").value = "";
     document.getElementById("phone").classList.remove("input-error");
     document.getElementById("phoneError").style.display = "none";
-    document.getElementById("email").value = "";
+    document.getElementById("nickname").value = "";
     document.getElementById("addrLine").value = "";
     document.getElementById("addrProv").value = "";
     document.getElementById("addrAmp").innerHTML = '<option value="">-- เลือกอำเภอ --</option>';
