@@ -1149,7 +1149,18 @@ function _checkBranchCoverage_(branch, items) {
 // สาขาที่เลือกมีของพอส่งมอบทันทีมั้ย (เพื่อเสนอเปลี่ยนเป็นจัดส่งถ้าไม่พอ) อ่านอย่างเดียว
 // ไม่ล็อก ไม่หักอะไร — ผลลัพธ์แค่ boolean ไม่รั่วจำนวนสต็อกจริง
 function handleCheckPickupReady(data) {
-  var cov = _checkBranchCoverage_(data.branch, data.items || []);
+  var items = data.items || [];
+  // พรีออเดอร์ไม่มีของที่สาขาไหนอยู่แล้วโดยนิยาม (ยังไม่ประกาศ "พร้อมส่ง") —
+  // เช็ค branch coverage ไปก็ได้ false เสมอ ทำให้เด้ง prompt "ยังไม่พร้อมส่งมอบ
+  // ทันที เปลี่ยนเป็นจัดส่งไหม" ผิดๆ ทั้งที่พรีออเดอร์ต้องรอไม่ว่าจะเลือกรับที่
+  // สาขาหรือจัดส่งก็ตาม — กรองออกก่อน เหลือแค่ item "พร้อมส่ง" ที่ความครอบคลุม
+  // สต็อกสาขามีความหมายจริง
+  var catRows = _fetchCatalogRows_();
+  var readyItems = items.filter(function(it) {
+    var row = _findCatalogRow_(catRows, it.name);
+    return !(row && row.status === "preorder");
+  });
+  var cov = readyItems.length > 0 ? _checkBranchCoverage_(data.branch, readyItems) : { covered: true };
   return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, ready: cov.covered })));
 }
 
