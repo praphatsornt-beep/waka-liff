@@ -1462,6 +1462,7 @@ function handleApi(params) {
       var seMatch = srow.order_id.toLowerCase().indexOf(q) >= 0
         || srow.real_name.toLowerCase().indexOf(q) >= 0
         || srow.display_name.toLowerCase().indexOf(q) >= 0
+        || srow.email.toLowerCase().indexOf(q) >= 0
         || srow.phone.indexOf(q) >= 0;
       if (seMatch) seResults.push(srow);
     }
@@ -1530,14 +1531,13 @@ function handleApi(params) {
     var branchFilter = params.branch || "";
     if (!branchFilter) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing branch" })));
     if (!_branchAuthorized(params.code, branchFilter)) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
-    var boSb = supabaseSelect_("orders", "select=order_id,real_name,display_name,phone,email,items_json,total,fulfillment,staff_confirmed_at,customer_confirmed_at,timestamp,notified_at&branch=eq." + encodeURIComponent(branchFilter) + "&slip_status=eq.ยืนยัน&order=timestamp.desc");
+    var boSb = supabaseSelect_("orders", "select=order_id,real_name,display_name,phone,items_json,total,fulfillment,staff_confirmed_at,customer_confirmed_at,timestamp,notified_at&branch=eq." + encodeURIComponent(branchFilter) + "&slip_status=eq.ยืนยัน&order=timestamp.desc");
     var boOrders = boSb.map(function(r) {
       return {
         order_id: String(r.order_id || ""),
         real_name: String(r.real_name || ""),
         display_name: String(r.display_name || ""),
         phone: String(r.phone || ""),
-        email: String(r.email || ""), // ชื่อเล่นลูกค้า (repurposed field — ดู liff/index.html)
         items_json: JSON.stringify(r.items_json || []),
         total: String(r.total || "0"),
         fulfillment: String(r.fulfillment || ""),
@@ -3944,7 +3944,8 @@ function handleWalkinSale(data) {
 
     // ปิดช่องโหว่ staff ค้างตะกร้าขายหน้าร้านไว้ข้ามช่วงที่มีคน rename สินค้า —
     // เหมือน doPost ด้านบน (ดู _resolveItemsAgainstCatalog_)
-    _resolveItemsAgainstCatalog_(items, _fetchCatalogRows_());
+    var catRowsForWalkin = _fetchCatalogRows_();
+    _resolveItemsAgainstCatalog_(items, catRowsForWalkin);
 
     var bsRows = _fetchStockBranchRows_(branch);
     // ตรวจสต็อกให้ครบทุกรายการก่อนตัดจริงรายการใดรายการหนึ่ง — กันเคสตัดสต็อก
@@ -3978,6 +3979,19 @@ function handleWalkinSale(data) {
       bsRow[field] = Math.max(0, (Number(bsRow[field]) || 0) - qty);
       var bsRes = pushToSupabase_("stock_branch", bsRow);
       if (!bsRes.ok) throw new Error("Supabase stock_branch write failed (" + bsRow.name + "): " + bsRes.text);
+    }
+
+    // พรีออเดอร์ไม่มีการเช็ค stock เลย (checkCatalogLimits) — limit_box/pack จึง
+    // เป็นตัวกันยอดขายเกินตัวเดียวที่มีอยู่จริง ต้องหักตอนขายหน้าร้านด้วย ไม่งั้น
+    // ของพรีออเดอร์ที่ทยอยเข้าสาขาแล้วขายหน้าร้านไปจะไม่ถูกนับ ทำให้ออนไลน์ยังขาย
+    // ได้เกินจำนวนที่ตั้งไว้จริง (สถานะ "ready" ไม่ทำ — limit ของสถานะนั้นเป็นเพดาน
+    // แยกสำหรับออนไลน์โดยเจตนา ไม่ผูกกับสต็อกจริงที่กันเกินขายอยู่แล้ว)
+    var preorderWalkinItems = items.filter(function(it) {
+      var row = _findCatalogRow_(catRowsForWalkin, it.name);
+      return !!(row && row.status === "preorder");
+    });
+    if (preorderWalkinItems.length > 0) {
+      deductCatalogLimits(preorderWalkinItems, catRowsForWalkin);
     }
 
     var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
