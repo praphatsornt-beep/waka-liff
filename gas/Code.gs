@@ -1237,6 +1237,53 @@ function _linePush(to, text, token) {
   }
 }
 
+// ── เช็คโควต้าข้อความ LINE ที่เหลือเดือนนี้ — ทั้ง OA หลัก (ลูกค้า, WAKA ORDER,
+// LINE_TOKEN) และ OA staff (WAKA NOTI BOT, STAFF_LIVE_LINE_TOKEN) แยกกัน เพราะ
+// แยกโควต้ากันไว้ตั้งแต่แรกไม่ให้แจ้งเตือน staff ปริมาณสูงไปแย่งโควต้าออเดอร์
+// ลูกค้า (ดูคอมเมนต์ STAFF_LIVE_LINE_TOKEN บนสุดของไฟล์) — รัน manual ใน Apps
+// Script editor (Run → checkLineQuota) แล้วดูผลใน Logger (View → Logs) หรือ
+// ผลลัพธ์ return ก็ได้ ไม่มีปุ่มเรียกจากที่อื่นในระบบ เหมือน checkSlipOKQuota()
+function checkLineQuota() {
+  function fetchOne(label, token) {
+    if (!token) return { label: label, error: "ไม่มี token" };
+    var headers = { Authorization: "Bearer " + token };
+    var quotaRes = UrlFetchApp.fetch("https://api.line.me/v2/bot/message/quota", {
+      headers: headers, muteHttpExceptions: true,
+    });
+    var usageRes = UrlFetchApp.fetch("https://api.line.me/v2/bot/message/quota/consumption", {
+      headers: headers, muteHttpExceptions: true,
+    });
+    if (quotaRes.getResponseCode() !== 200 || usageRes.getResponseCode() !== 200) {
+      return { label: label, error: "HTTP " + quotaRes.getResponseCode() + "/" + usageRes.getResponseCode() + ": " + quotaRes.getContentText() };
+    }
+    var quota = JSON.parse(quotaRes.getContentText()); // { type: "limited"|"none", value?: N }
+    var usage = JSON.parse(usageRes.getContentText()); // { totalUsage: N }
+    var limit = quota.type === "limited" ? Number(quota.value) : null; // "none" = ไม่จำกัด (แผนเสียเงินบางแบบ)
+    var used = Number(usage.totalUsage) || 0;
+    return {
+      label: label,
+      limit: limit,
+      used: used,
+      remaining: limit === null ? null : Math.max(0, limit - used),
+    };
+  }
+
+  var results = [
+    fetchOne("ลูกค้า (WAKA ORDER)", LINE_TOKEN),
+    fetchOne("staff (WAKA NOTI BOT)", STAFF_LIVE_LINE_TOKEN),
+  ];
+  results.forEach(function(r) {
+    if (r.error) {
+      Logger.log(r.label + ": error — " + r.error);
+    } else if (r.limit === null) {
+      Logger.log(r.label + ": ไม่จำกัดโควต้า (ใช้ไปแล้ว " + r.used + " ข้อความเดือนนี้)");
+    } else {
+      Logger.log(r.label + ": เหลือ " + r.remaining + " / " + r.limit + " (ใช้ไปแล้ว " + r.used + ")");
+    }
+  });
+  return results;
+}
+
 // `cfgWs` param kept (but unused) — every call site still passes `null` as
 // the first arg from before _config reads went Supabase-only (getConfig_).
 function _getConfigValue(cfgWs, key) {
