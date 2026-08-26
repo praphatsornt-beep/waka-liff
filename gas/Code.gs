@@ -16,8 +16,12 @@ const SCRIPT_SECRET = PROPS.getProperty("SCRIPT_SECRET") || "";
 // โควต้า 300/เดือนออกจาก OA หลักที่ลูกค้าใช้ กันไม่ให้ยอดสั่งซื้อ/ยืนยันสลิปของ
 // ลูกค้าโดนบล็อกเพราะพนักงานใช้โควต้าหมด
 const STAFF_LIVE_LINE_TOKEN = PROPS.getProperty("STAFF_LIVE_LINE_TOKEN") || "";
-// ── Telegram (แจ้งไฟแนนซ์) — แยกออกจาก LINE ทั้งหมดเพราะ Telegram Bot API ไม่มี
-// โควต้าข้อความ/เดือนแบบ LINE OA (ส่งได้ไม่จำกัดฟรี) ใช้แทน finance_line_id เดิม
+// ── Telegram — แยกออกจาก LINE ทั้งหมดเพราะ Telegram Bot API ไม่มีโควต้า
+// ข้อความ/เดือนแบบ LINE OA (ส่งได้ไม่จำกัดฟรี) ใช้กลุ่ม/แชทเดียวกันสำหรับ
+// 2 เรื่อง: (1) แจ้งไฟแนนซ์ล้วนๆ (แทน finance_line_id เดิม ไม่ผ่าน LINE เลย)
+// (2) เป็น mirror ให้แจ้งเตือนกลุ่ม staff (STAFF_LIVE_LINE_TOKEN) ที่ยังส่งผ่าน
+// LINE เป็นหลักอยู่ — กันเคส LINE OA ตัวนั้นชนโควต้า 300/เดือนแล้วข้อความเงียบ
+// หายไปโดยไม่มีใครรู้ตัว (ดู _notifyStaffGroup_)
 const TELEGRAM_BOT_TOKEN     = PROPS.getProperty("TELEGRAM_BOT_TOKEN") || "";
 const TELEGRAM_FINANCE_CHAT_ID = PROPS.getProperty("TELEGRAM_FINANCE_CHAT_ID") || "";
 
@@ -1181,8 +1185,8 @@ function _notifyBranchRestockNeeded_(order, covered) {
     var u = it.type === "box" ? "กล่อง" : "ซอง";
     return "  - " + it.name + " x" + (it.qty || 1) + " " + u;
   }).join("\n");
-  _linePush(groupStaff, "📮 สาขา " + branch + " ของไม่พอส่งมอบออเดอร์ #" + (order.order_id || "") +
-    " — กรุณาส่งของไปสาขาเพิ่ม:\n" + lines, STAFF_LIVE_LINE_TOKEN);
+  _notifyStaffGroup_(groupStaff, "📮 สาขา " + branch + " ของไม่พอส่งมอบออเดอร์ #" + (order.order_id || "") +
+    " — กรุณาส่งของไปสาขาเพิ่ม:\n" + lines);
 }
 
 function notifyCustomer(userId, order) {
@@ -1269,6 +1273,15 @@ function _telegramPush(chatId, text) {
   } catch (e) {
     Logger.log("_telegramPush(" + chatId + ") failed: " + e.message);
   }
+}
+
+// ── แจ้งกลุ่ม staff ทั้ง LINE และ Telegram พร้อมกันเสมอ — LINE (STAFF_LIVE_LINE_TOKEN)
+// ยังเป็นช่องทางหลักที่พนักงานเคยชินอยู่แล้ว ไม่ได้ตัดออก แค่มิเรอร์ข้อความเดียวกัน
+// ไปที่ TELEGRAM_FINANCE_CHAT_ID ด้วยเสมอ (ไม่มีโควต้า/เดือน) เผื่อ LINE OA ตัวนี้
+// ชนโควต้า 300/เดือนแล้วข้อความหายไปเงียบๆ พนักงานยังเห็นผ่าน Telegram อยู่
+function _notifyStaffGroup_(groupId, text) {
+  _linePush(groupId, text, STAFF_LIVE_LINE_TOKEN);
+  _telegramPush(TELEGRAM_FINANCE_CHAT_ID, text);
 }
 
 // ── เช็คโควต้าข้อความ LINE ที่เหลือเดือนนี้ — ทั้ง OA หลัก (ลูกค้า, WAKA ORDER,
@@ -2865,7 +2878,7 @@ function handleReceiveShipment(data) {
         if (tp > 0) parts.push("Pack " + tp);
         return "  - " + it.name + ": " + parts.join(", ");
       }).join("\n");
-      _linePush(groupStaffReceive, "📥 " + staffName + " รับของจากคลังที่สาขา " + branch + " แล้ว\nล็อต: " + data.shipment_id + "\n\n" + receiveItemsText, STAFF_LIVE_LINE_TOKEN);
+      _notifyStaffGroup_(groupStaffReceive, "📥 " + staffName + " รับของจากคลังที่สาขา " + branch + " แล้ว\nล็อต: " + data.shipment_id + "\n\n" + receiveItemsText);
     }
 
     _logStaffAction_(staffName, branch, "receive_shipment", data.shipment_id, null);
@@ -2980,9 +2993,9 @@ function handleHandoverOrder(data) {
     var groupStaffHandover = _getConfigValue(null, "group_staff_live");
     if (groupStaffHandover && staffName) {
       var custName = order.real_name || order.display_name || "";
-      _linePush(groupStaffHandover, "🤝 " + staffName + " ส่งมอบออเดอร์ #" + data.order_id + " ที่สาขา " + branch +
+      _notifyStaffGroup_(groupStaffHandover, "🤝 " + staffName + " ส่งมอบออเดอร์ #" + data.order_id + " ที่สาขา " + branch +
         (custName ? " ให้ " + custName : "") + " แล้ว\n" +
-        handoverNames.map(function(n) { return "- " + n; }).join("\n"), STAFF_LIVE_LINE_TOKEN);
+        handoverNames.map(function(n) { return "- " + n; }).join("\n"));
     }
 
     writeSupabaseOrder_(order, lock);
@@ -3837,8 +3850,8 @@ function handleWithdrawStock(data) {
     var groupStaffWithdraw = _getConfigValue(null, "group_staff_live");
     if (groupStaffWithdraw && staffName) {
       var unitLabel = type === "box" ? "กล่อง" : "ซอง";
-      _linePush(groupStaffWithdraw, "📤 " + staffName + " เบิก " + name + " x" + qty + " " + unitLabel + " จากสาขา " + branch +
-        (reason ? "\nเหตุผล: " + reason : ""), STAFF_LIVE_LINE_TOKEN);
+      _notifyStaffGroup_(groupStaffWithdraw, "📤 " + staffName + " เบิก " + name + " x" + qty + " " + unitLabel + " จากสาขา " + branch +
+        (reason ? "\nเหตุผล: " + reason : ""));
     }
 
     _logStaffAction_(staffName, branch, "withdraw_stock", (wCatRow && wCatRow.id) || name, qty + (type === "box" ? " กล่อง" : " ซอง") + (reason ? " — " + reason : ""));
@@ -3958,8 +3971,8 @@ function handleConvertBoxToPack(data) {
 
     var groupStaffConvert = _getConfigValue(null, "group_staff_live");
     if (groupStaffConvert && staffName) {
-      _linePush(groupStaffConvert, "🔁 " + staffName + " แกะ " + name + " " + qtyBox + " กล่อง → " + qtyPack + " ซอง" +
-        (branch ? " ที่สาขา " + branch : " (คลังกลาง)"), STAFF_LIVE_LINE_TOKEN);
+      _notifyStaffGroup_(groupStaffConvert, "🔁 " + staffName + " แกะ " + name + " " + qtyBox + " กล่อง → " + qtyPack + " ซอง" +
+        (branch ? " ที่สาขา " + branch : " (คลังกลาง)"));
     }
 
     _logStaffAction_(staffName, branch || null, "convert_box_to_pack", catRow.id || name,
@@ -4183,7 +4196,7 @@ function handleWalkinSale(data) {
         var u = it.type === "box" ? "กล่อง" : "ซอง";
         return "  - " + it.name + " (" + u + ") x" + it.qty;
       }).join("\n");
-      _linePush(groupStaffWalkin, "🛒 " + staffName + " ขายหน้าร้านที่สาขา " + branch + " ฿" + total + " (" + payLabel + ")\n\n" + walkinItemsText, STAFF_LIVE_LINE_TOKEN);
+      _notifyStaffGroup_(groupStaffWalkin, "🛒 " + staffName + " ขายหน้าร้านที่สาขา " + branch + " ฿" + total + " (" + payLabel + ")\n\n" + walkinItemsText);
     }
 
     _logStaffAction_(staffName, branch, "walkin_sale", saleId, "฿" + total);
@@ -4231,7 +4244,7 @@ function handleCancelWalkinSale(data) {
     var itemsText = items.map(function(it) { return it.name + " x" + it.qty; }).join(", ");
     var groupStaffCancelWs = _getConfigValue(null, "group_staff_live");
     if (groupStaffCancelWs && staffName) {
-      _linePush(groupStaffCancelWs, "🗑️ " + staffName + " ยกเลิกรายการขายหน้าร้าน " + saleId + " ที่สาขา " + branch + " ฿" + (sale.total || 0) + " (คืนสต็อกแล้ว)\n" + itemsText, STAFF_LIVE_LINE_TOKEN);
+      _notifyStaffGroup_(groupStaffCancelWs, "🗑️ " + staffName + " ยกเลิกรายการขายหน้าร้าน " + saleId + " ที่สาขา " + branch + " ฿" + (sale.total || 0) + " (คืนสต็อกแล้ว)\n" + itemsText);
     }
     _logStaffAction_(staffName, branch, "cancel_walkin_sale", saleId, "฿" + (sale.total || 0) + " — " + itemsText);
 
