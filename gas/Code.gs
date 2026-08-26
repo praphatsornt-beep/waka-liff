@@ -1318,6 +1318,49 @@ function checkLineQuota() {
   return results;
 }
 
+// ── ล้าง Script Properties ของตัวนับเลขที่รายวัน (order/purchase/walkin) ────
+// _genOrderId/_genPurchaseId/_genWalkinSaleId เก็บตัวนับไว้เป็น Script Property
+// คนละคีย์ต่อวัน (order_seq_YYMMDD, purchase_seq_YYMMDD, walkin_seq_YYMMDD)
+// แล้วไม่เคยลบทิ้งเลย — คีย์ของเมื่อวานไม่มีจุดไหนอ่าน/เขียนอีกแล้วหลังเที่ยงคืน
+// ผ่านไป แต่ค้างอยู่ถาวร ทำให้ properties สะสมวันละสูงสุด 3 คีย์ไปเรื่อยๆ จนเกิน
+// 50 (Apps Script UI จำกัดดู/แก้ไขได้แค่ 50 ตัวแรกผ่านหน้าเว็บ ต้องจัดการผ่าน
+// Properties Service แทน) — ฟังก์ชันนี้ลบทุกคีย์ที่ตรง prefix เหล่านี้ที่ "ไม่ใช่
+// วันนี้" ออกทั้งหมด ปลอดภัยเพราะไม่มีจุดไหนในระบบอ่านค่าของวันเก่ากลับไปใช้เลย
+function cleanupOldSequenceProps() {
+  var todayPrefix = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyMMdd");
+  var seqPrefixes = ["order_seq_", "purchase_seq_", "walkin_seq_"];
+  var all = PROPS.getProperties();
+  var deleted = [];
+  Object.keys(all).forEach(function(key) {
+    for (var i = 0; i < seqPrefixes.length; i++) {
+      var p = seqPrefixes[i];
+      if (key.indexOf(p) === 0 && key !== p + todayPrefix) {
+        PROPS.deleteProperty(key);
+        deleted.push(key);
+        break;
+      }
+    }
+  });
+  Logger.log("cleanupOldSequenceProps: ลบ " + deleted.length + " คีย์ — " + deleted.join(", "));
+  return deleted;
+}
+
+// ── ติดตั้ง trigger รายวันให้ cleanupOldSequenceProps() รันเองอัตโนมัติ ─────
+// รันฟังก์ชันนี้ "ครั้งเดียว" จาก Apps Script editor (Run → installCleanupTrigger)
+// — ลบ trigger ชื่อเดิมทิ้งก่อนสร้างใหม่เสมอ กันเผลอรันซ้ำแล้วได้ trigger ซ้ำ
+// หลายตัว หลังติดตั้งแล้ว properties จะไม่มีวันเกิน 50 จากสาเหตุนี้อีก ไม่ต้อง
+// ทำ cleanup ด้วยมือเองอีกเลย
+function installCleanupTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === "cleanupOldSequenceProps") ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger("cleanupOldSequenceProps")
+    .timeBased()
+    .everyDays(1)
+    .atHour(3)
+    .create();
+}
+
 // `cfgWs` param kept (but unused) — every call site still passes `null` as
 // the first arg from before _config reads went Supabase-only (getConfig_).
 function _getConfigValue(cfgWs, key) {
