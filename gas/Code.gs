@@ -4027,6 +4027,12 @@ function handleWithdrawCentralStock(data) {
     if (qtyPack > 0) wcParts.push(qtyPack + " ซอง");
     var wcQtyText = wcParts.join(" ");
 
+    var groupStaffWithdrawCentral = _getConfigValue(null, "group_staff_live");
+    if (groupStaffWithdrawCentral && staffName) {
+      _notifyStaffGroup_(groupStaffWithdrawCentral, "📤 " + staffName + " เบิก " + name + " " + wcQtyText + " จากคลังกลาง" +
+        (reason ? "\nเหตุผล: " + reason : ""));
+    }
+
     _logStaffAction_(staffName, null, "withdraw_central_stock", row.id || name, wcQtyText + (reason ? " — " + reason : ""));
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
