@@ -601,91 +601,16 @@ function doPost(e) {
       return _cors(ContentService.createTextOutput(JSON.stringify({ success: false, error: "unknown action or empty order" })));
     }
 
-    var slipStatus = "ไม่มีสลิป";
-    var slipNote   = "ลูกค้าไม่ได้แนบสลิป";
+    // สลิป (ถ้ามี) ตรวจทีหลัง — นอก lock, หลังบันทึกออเดอร์เริ่มต้นแล้ว (ดูเหตุผล
+    // เต็มที่คอมเมนต์เหนือ writeSupabaseOrder_(newOrder) ตัวแรกด้านล่าง) ที่นี่แค่
+    // ตั้งสถานะชั่วคราวไว้ก่อน
+    var hasSlip    = !!data.slipBase64;
+    var slipStatus = hasSlip ? "รอตรวจ" : "ไม่มีสลิป";
+    var slipNote   = hasSlip ? "กำลังตรวจสอบสลิป..." : "ลูกค้าไม่ได้แนบสลิป";
     var slipUrl    = "";
     var slipAmount = "";
     var slipTxnId  = "";
     var slipDate   = "";
-
-    if (data.slipBase64) {
-      var verify = verifySlipWithSlipOK(data.slipBase64, data.total);
-      var slipokError = verify.error || "";
-      if (verify.error) verify = verifySlipWithClaude(data.slipBase64);
-      slipAmount = verify.amount || "";
-      slipTxnId  = verify.ref || "";
-      slipDate   = verify.date || "";
-
-      var isSlipOK = verify.source === "slipok";
-
-      var fallbackInfo = slipokError ? " [SlipOK: " + slipokError + "]" : "";
-
-      if (!verify.amount) {
-        slipStatus = "รอตรวจ";
-        slipNote   = (verify.error || "อ่านสลิปไม่ได้") + fallbackInfo;
-      } else if (!isSlipOK && verify.suspicious) {
-        slipStatus = "สงสัยปลอม";
-        slipNote   = "Claude: " + (verify.suspicious_reason || "สลิปมีลักษณะผิดปกติ");
-      } else if (slipTxnId && isDuplicateSlip(slipTxnId)) {
-        slipStatus = "สลิปซ้ำ";
-        slipNote   = "เลขอ้างอิง " + slipTxnId + " เคยใช้แล้ว";
-      } else if (Number(verify.amount) < Number(data.total)) {
-        slipStatus = "ยอดไม่ตรง";
-        var src = isSlipOK ? "SlipOK" : "Claude";
-        slipNote   = src + ": สลิป " + verify.amount + " บาท แต่ออเดอร์ " + data.total + " บาท" + fallbackInfo;
-      } else if (isSlipOK) {
-        slipStatus = "ยืนยัน";
-        slipNote   = "SlipOK (QR verified): ยอดตรง " + verify.amount + " บาท, " + (verify.bank || "") + " " + (verify.date || "") + " " + (verify.to_name || "");
-      } else {
-        var shopAcct = _getConfigValue(null, "bank_account") || "";
-        var shopNameTh = _getConfigValue(null, "bank_account_name") || "";
-        var shopNameEn = _getConfigValue(null, "bank_account_name_en") || "";
-        var shopNames = [];
-        shopNameTh.split("|").forEach(function(n) { n = n.trim(); if (n) shopNames.push(n.toLowerCase()); });
-        shopNameEn.split("|").forEach(function(n) { n = n.trim(); if (n) shopNames.push(n.toLowerCase()); });
-
-        var amtOk = Number(verify.amount) >= Number(data.total);
-        var acctOk = !shopAcct || !verify.to_account || isPartialMatch(verify.to_account, shopAcct);
-        var slipNameStr = String(verify.to_name || "").toLowerCase();
-        var nameOk = !verify.to_name;
-        var nameClose = false;
-        if (!nameOk) {
-          for (var ni = 0; ni < shopNames.length; ni++) {
-            if (nameMatch(slipNameStr, shopNames[ni])) { nameOk = true; break; }
-          }
-        }
-        if (!nameOk && verify.to_name) {
-          var bestSim = 0;
-          for (var si = 0; si < shopNames.length; si++) {
-            bestSim = Math.max(bestSim, nameSimilarity(slipNameStr, shopNames[si]));
-          }
-          if (bestSim >= 0.7) nameClose = true;
-        }
-
-        var details = [];
-        details.push("ยอด: " + (amtOk ? "✅ ตรง" : "❌ สลิป " + verify.amount + " ≠ ออเดอร์ " + data.total));
-        details.push("บัญชี: " + (acctOk ? "✅ ตรง" : "❌ อ่านได้ " + (verify.to_account || "-") + " ≠ " + shopAcct));
-        details.push("ชื่อ: " + (nameOk ? "✅ ตรง" : nameClose ? "⚠️ ใกล้เคียง " + (verify.to_name || "-") : "❌ อ่านได้ " + (verify.to_name || "-")));
-
-        if (amtOk && acctOk && (nameOk || nameClose)) {
-          slipStatus = "ยืนยัน";
-          if (nameClose && !nameOk) {
-            slipNote = "✅ ยอดตรง ✅ บัญชีตรง\n⚠️ ชื่อใกล้เคียง (" + (verify.to_name || "") + ")\nระบบยืนยันอัตโนมัติ กรุณาตรวจชื่อบัญชีอีกครั้ง" + fallbackInfo;
-          } else {
-            slipNote = "✅ ยอดตรง ✅ บัญชีตรง ✅ ชื่อตรง" + fallbackInfo;
-          }
-        } else if (amtOk && acctOk && !nameOk) {
-          slipStatus = "รอตรวจเพิ่ม";
-          slipNote = "✅ ยอดตรง ✅ บัญชีตรง\n⚠️ ชื่อไม่ตรง (" + (verify.to_name || "-") + ")\nadmin กรุณาตรวจชื่อบัญชีอีกครั้ง" + fallbackInfo;
-        } else {
-          slipStatus = "รอตรวจเพิ่ม";
-          slipNote   = (amtOk ? "✅ ยอดตรง" : "❌ ยอดไม่ตรง (สลิป " + verify.amount + " ≠ ออเดอร์ " + data.total + ")")
-            + "\n" + (acctOk ? "✅ บัญชีตรง" : "❌ บัญชีไม่ตรง (" + (verify.to_account || "-") + ")")
-            + "\n" + (nameOk ? "✅ ชื่อตรง" : "❌ ชื่อไม่ตรง (" + (verify.to_name || "-") + ")")
-            + "\nadmin กรุณาเช็คแอปธนาคาร" + fallbackInfo;
-        }
-      }
-    }
 
     // ── Lock เฉพาะช่วงวิกฤต: ตรวจ + หักสต็อก + บันทึกออเดอร์ ──
     var lock = LockService.getScriptLock();
@@ -743,6 +668,14 @@ function doPost(e) {
     // Supabase is the store of record for orders (Phase 2) — writing here is
     // what makes the order succeed or fail; a throw propagates to doPost's
     // top-level catch, which releases the lock and reports the error.
+    //
+    // เขียนออเดอร์ด้วยสถานะสลิปชั่วคราว ("รอตรวจ"/"ไม่มีสลิป") ก่อน แล้วค่อยตรวจ
+    // สลิปจริง (ช้า — เรียก SlipOK แล้ว fallback Claude vision ได้) ทีหลัง —
+    // เดิมตรวจสลิปก่อนเขียนออเดอร์เลย ถ้า fetch ฝั่งลูกค้า timeout ระหว่างรอผลตรวจ
+    // (มือถือ/เน็ตอ่อน) ลูกค้าจะไม่รู้ว่าออเดอร์เข้าระบบหรือยัง เห็นแต่ error
+    // เครือข่าย แล้วมักกดสั่งใหม่แนบสลิปเดิมซ้ำ กลายเป็นเคส "สลิปซ้ำ" — สลับลำดับ
+    // ให้ออเดอร์ (พร้อมหักสต็อก/limit แล้ว) ปลอดภัยอยู่ใน Supabase ก่อนเข้าสู่ช่วง
+    // ที่ช้า ไม่ว่าการตรวจสลิปจะช้าแค่ไหนก็ตาม
     var newOrder = {
       order_id: orderId,
       timestamp: Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'"),
@@ -766,7 +699,6 @@ function doPost(e) {
       customer_confirmed_at: null,
       notified_at: null,
     };
-    var instantReady = slipStatus === "ยืนยัน" && _tryInstantReady_(newOrder, branchCoverage.covered);
     writeSupabaseOrder_(newOrder);
     _clearDashCache();
 
@@ -784,18 +716,36 @@ function doPost(e) {
       }
     }
 
-    // อัปโหลดสลิปหลัง write order — นอก lock เพราะ Drive upload ช้า
-    if (data.slipBase64 && !slipUrl) {
+    // ปล่อย lock ก่อนตรวจสลิป — ตรวจสลิปเป็น external API ช้า ถือ lock ค้างไว้
+    // ระหว่างนั้นจะบล็อกออเดอร์อื่นที่กำลังเข้าคิวพร้อมกันโดยไม่จำเป็น (งานที่ต้อง
+    // กันชนกันจริงๆ คือหักสต็อก/limit ด้านบน ซึ่งทำเสร็จภายใต้ lock แล้ว)
+    lock.releaseLock();
+
+    // ── ตรวจสลิปจริง (ช้า) แล้วเขียนทับออเดอร์ด้วยสถานะจริง — ยืนยันกลับลูกค้า
+    // ครั้งเดียวหลังจากขั้นตอนนี้เสร็จ (ดู return ท้ายฟังก์ชัน) ──
+    var instantReady = false;
+    if (hasSlip) {
+      var verified = _verifyAndClassifySlip_(data.slipBase64, data.total);
+      slipStatus = verified.slipStatus;
+      slipNote   = verified.slipNote;
+      slipAmount = verified.slipAmount;
+      slipTxnId  = verified.slipTxnId;
+      slipDate   = verified.slipDate;
+
+      newOrder.slip_status = slipStatus;
+      newOrder.slip_amount = slipAmount || null;
+      newOrder.slip_txn_id = slipTxnId || null;
+      newOrder.notes       = slipNote || null;
+
+      instantReady = slipStatus === "ยืนยัน" && _tryInstantReady_(newOrder, branchCoverage.covered);
+
       try {
         slipUrl = saveSlipToDrive(data.slipBase64, orderId);
-        if (slipUrl) {
-          newOrder.slip_url = slipUrl;
-          writeSupabaseOrder_(newOrder);
-        }
+        if (slipUrl) newOrder.slip_url = slipUrl;
       } catch(_) {}
-    }
 
-    lock.releaseLock();
+      writeSupabaseOrder_(newOrder);
+    }
 
     // LINE push หลัง release lock — ไม่ block order ถัดไป
     try {
@@ -2372,6 +2322,100 @@ function checkSlipOKQuota() {
   });
   Logger.log(res.getContentText());
   return JSON.parse(res.getContentText());
+}
+
+// ── ตรวจสลิป + จัดสถานะ (extract จาก doPost เดิม) ────────────────────────────
+// เรียก SlipOK ก่อน ถ้า error fallback ไป Claude vision — คืน {slipStatus,
+// slipNote, slipAmount, slipTxnId, slipDate} ตัวเดียวกับที่ doPost เคยคำนวณ
+// inline ก่อนเขียนออเดอร์ — ตอนนี้ doPost เขียนออเดอร์ (สถานะ "รอตรวจ") และ
+// ปล่อย lock ก่อนเรียกฟังก์ชันนี้แล้ว (ตรวจสลิปเป็น external API ช้า ไม่ควร
+// ถือ lock ค้างไว้ระหว่างนั้นเพราะจะบล็อกออเดอร์อื่นที่กำลังเข้าคิว) — ผลตรวจได้
+// เมื่อไหร่ doPost ค่อยเขียนทับออเดอร์อีกครั้งด้วยสถานะจริง
+function _verifyAndClassifySlip_(slipBase64, orderTotal) {
+  var slipStatus = "รอตรวจ";
+  var slipNote   = "อ่านสลิปไม่ได้";
+  var slipAmount = "";
+  var slipTxnId  = "";
+  var slipDate   = "";
+
+  var verify = verifySlipWithSlipOK(slipBase64, orderTotal);
+  var slipokError = verify.error || "";
+  if (verify.error) verify = verifySlipWithClaude(slipBase64);
+  slipAmount = verify.amount || "";
+  slipTxnId  = verify.ref || "";
+  slipDate   = verify.date || "";
+
+  var isSlipOK = verify.source === "slipok";
+
+  var fallbackInfo = slipokError ? " [SlipOK: " + slipokError + "]" : "";
+
+  if (!verify.amount) {
+    slipStatus = "รอตรวจ";
+    slipNote   = (verify.error || "อ่านสลิปไม่ได้") + fallbackInfo;
+  } else if (!isSlipOK && verify.suspicious) {
+    slipStatus = "สงสัยปลอม";
+    slipNote   = "Claude: " + (verify.suspicious_reason || "สลิปมีลักษณะผิดปกติ");
+  } else if (slipTxnId && isDuplicateSlip(slipTxnId)) {
+    slipStatus = "สลิปซ้ำ";
+    slipNote   = "เลขอ้างอิง " + slipTxnId + " เคยใช้แล้ว";
+  } else if (Number(verify.amount) < Number(orderTotal)) {
+    slipStatus = "ยอดไม่ตรง";
+    var src = isSlipOK ? "SlipOK" : "Claude";
+    slipNote   = src + ": สลิป " + verify.amount + " บาท แต่ออเดอร์ " + orderTotal + " บาท" + fallbackInfo;
+  } else if (isSlipOK) {
+    slipStatus = "ยืนยัน";
+    slipNote   = "SlipOK (QR verified): ยอดตรง " + verify.amount + " บาท, " + (verify.bank || "") + " " + (verify.date || "") + " " + (verify.to_name || "");
+  } else {
+    var shopAcct = _getConfigValue(null, "bank_account") || "";
+    var shopNameTh = _getConfigValue(null, "bank_account_name") || "";
+    var shopNameEn = _getConfigValue(null, "bank_account_name_en") || "";
+    var shopNames = [];
+    shopNameTh.split("|").forEach(function(n) { n = n.trim(); if (n) shopNames.push(n.toLowerCase()); });
+    shopNameEn.split("|").forEach(function(n) { n = n.trim(); if (n) shopNames.push(n.toLowerCase()); });
+
+    var amtOk = Number(verify.amount) >= Number(orderTotal);
+    var acctOk = !shopAcct || !verify.to_account || isPartialMatch(verify.to_account, shopAcct);
+    var slipNameStr = String(verify.to_name || "").toLowerCase();
+    var nameOk = !verify.to_name;
+    var nameClose = false;
+    if (!nameOk) {
+      for (var ni = 0; ni < shopNames.length; ni++) {
+        if (nameMatch(slipNameStr, shopNames[ni])) { nameOk = true; break; }
+      }
+    }
+    if (!nameOk && verify.to_name) {
+      var bestSim = 0;
+      for (var si = 0; si < shopNames.length; si++) {
+        bestSim = Math.max(bestSim, nameSimilarity(slipNameStr, shopNames[si]));
+      }
+      if (bestSim >= 0.7) nameClose = true;
+    }
+
+    var details = [];
+    details.push("ยอด: " + (amtOk ? "✅ ตรง" : "❌ สลิป " + verify.amount + " ≠ ออเดอร์ " + orderTotal));
+    details.push("บัญชี: " + (acctOk ? "✅ ตรง" : "❌ อ่านได้ " + (verify.to_account || "-") + " ≠ " + shopAcct));
+    details.push("ชื่อ: " + (nameOk ? "✅ ตรง" : nameClose ? "⚠️ ใกล้เคียง " + (verify.to_name || "-") : "❌ อ่านได้ " + (verify.to_name || "-")));
+
+    if (amtOk && acctOk && (nameOk || nameClose)) {
+      slipStatus = "ยืนยัน";
+      if (nameClose && !nameOk) {
+        slipNote = "✅ ยอดตรง ✅ บัญชีตรง\n⚠️ ชื่อใกล้เคียง (" + (verify.to_name || "") + ")\nระบบยืนยันอัตโนมัติ กรุณาตรวจชื่อบัญชีอีกครั้ง" + fallbackInfo;
+      } else {
+        slipNote = "✅ ยอดตรง ✅ บัญชีตรง ✅ ชื่อตรง" + fallbackInfo;
+      }
+    } else if (amtOk && acctOk && !nameOk) {
+      slipStatus = "รอตรวจเพิ่ม";
+      slipNote = "✅ ยอดตรง ✅ บัญชีตรง\n⚠️ ชื่อไม่ตรง (" + (verify.to_name || "-") + ")\nadmin กรุณาตรวจชื่อบัญชีอีกครั้ง" + fallbackInfo;
+    } else {
+      slipStatus = "รอตรวจเพิ่ม";
+      slipNote   = (amtOk ? "✅ ยอดตรง" : "❌ ยอดไม่ตรง (สลิป " + verify.amount + " ≠ ออเดอร์ " + orderTotal + ")")
+        + "\n" + (acctOk ? "✅ บัญชีตรง" : "❌ บัญชีไม่ตรง (" + (verify.to_account || "-") + ")")
+        + "\n" + (nameOk ? "✅ ชื่อตรง" : "❌ ชื่อไม่ตรง (" + (verify.to_name || "-") + ")")
+        + "\nadmin กรุณาเช็คแอปธนาคาร" + fallbackInfo;
+    }
+  }
+
+  return { slipStatus: slipStatus, slipNote: slipNote, slipAmount: slipAmount, slipTxnId: slipTxnId, slipDate: slipDate };
 }
 
 function verifySlipWithSlipOK(base64, orderTotal) {
