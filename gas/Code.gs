@@ -16,6 +16,10 @@ const SCRIPT_SECRET = PROPS.getProperty("SCRIPT_SECRET") || "";
 // โควต้า 300/เดือนออกจาก OA หลักที่ลูกค้าใช้ กันไม่ให้ยอดสั่งซื้อ/ยืนยันสลิปของ
 // ลูกค้าโดนบล็อกเพราะพนักงานใช้โควต้าหมด
 const STAFF_LIVE_LINE_TOKEN = PROPS.getProperty("STAFF_LIVE_LINE_TOKEN") || "";
+// ── Telegram (แจ้งไฟแนนซ์) — แยกออกจาก LINE ทั้งหมดเพราะ Telegram Bot API ไม่มี
+// โควต้าข้อความ/เดือนแบบ LINE OA (ส่งได้ไม่จำกัดฟรี) ใช้แทน finance_line_id เดิม
+const TELEGRAM_BOT_TOKEN     = PROPS.getProperty("TELEGRAM_BOT_TOKEN") || "";
+const TELEGRAM_FINANCE_CHAT_ID = PROPS.getProperty("TELEGRAM_FINANCE_CHAT_ID") || "";
 
 // Branch login codes (mirrors BRANCH_CODES/PIN_ADMIN in liff/app.html) — kept
 // here too so branch-scoped read/write actions can verify the caller actually
@@ -749,9 +753,11 @@ function doPost(e) {
 
     // LINE push หลัง release lock — ไม่ block order ถัดไป
     try {
-      var financeId = _getConfigValue(null, "finance_line_id");
+      // แจ้งไฟแนนซ์ผ่าน Telegram แทน LINE (finance_line_id เดิม) — ไม่มีโควต้า
+      // ข้อความ/เดือนแบบ LINE OA และตอนนี้เด้งทุกออเดอร์ (ทั้งผ่าน/ไม่ผ่าน) ไม่ใช่
+      // แค่เคสมีปัญหาเหมือนก่อนหน้านี้ — ไฟแนนซ์ขอเห็นออเดอร์ทุกใบที่เข้ามา
       var streamlitUrl = "https://waka-space.streamlit.app/orders";
-      if (financeId) {
+      if (TELEGRAM_FINANCE_CHAT_ID) {
         var itemsSummary = (data.items || []).map(function(i) {
           var u = i.type === "box" ? "กล่อง" : "ซอง";
           return "  - " + i.name + " (" + u + ") x" + (i.qty || 1);
@@ -773,7 +779,15 @@ function doPost(e) {
           } catch(_) {}
         }
 
-        if (slipStatus !== "ยืนยัน") {
+        var finMsg2;
+        if (slipStatus === "ยืนยัน") {
+          finMsg2 = "✅ ออเดอร์ผ่านอัตโนมัติ #" + orderId
+            + "\nลูกค้า: " + (data.displayName || "") + (data.realName ? " (" + data.realName + ")" : "")
+            + "\nสาขา: " + (data.branch || "")
+            + "\nยอด: " + data.total + " บาท"
+            + "\n\n" + itemsSummary;
+          if (slipNote) finMsg2 += "\n\n📋 " + slipNote;
+        } else {
           var problemLabel = {
             "ยอดไม่ตรง": "💰 ยอดเงินไม่ตรง",
             "บัญชีไม่ตรง": "🏦 บัญชีไม่ตรง",
@@ -784,18 +798,18 @@ function doPost(e) {
             "ไม่มีสลิป": "📩 ไม่ได้แนบสลิป"
           };
           var icon = slipStatus === "ไม่มีสลิป" ? "📩" : "⚠️";
-          var finMsg2 = icon + " ออเดอร์มีปัญหา #" + orderId
+          finMsg2 = icon + " ออเดอร์มีปัญหา #" + orderId
             + "\nลูกค้า: " + (data.displayName || "") + (data.realName ? " (" + data.realName + ")" : "")
             + "\nสาขา: " + (data.branch || "")
             + "\nยอด: " + data.total + " บาท"
             + "\n\n" + itemsSummary
             + "\n\n❌ ปัญหา: " + (problemLabel[slipStatus] || slipStatus);
           if (slipNote) finMsg2 += "\n📋 " + slipNote;
-          if (slipDate) finMsg2 += "\n\n📅 วันที่โอน: " + slipDate;
-          if (transferAgo) finMsg2 += "\n⏱️ " + transferAgo;
-          finMsg2 += "\n\nตรวจสอบ:\n" + streamlitUrl;
-          _linePush(financeId, finMsg2);
         }
+        if (slipDate) finMsg2 += "\n\n📅 วันที่โอน: " + slipDate;
+        if (transferAgo) finMsg2 += "\n⏱️ " + transferAgo;
+        finMsg2 += "\n\nตรวจสอบ:\n" + streamlitUrl;
+        _telegramPush(TELEGRAM_FINANCE_CHAT_ID, finMsg2);
       }
       if (data.lineUserId) notifyCustomer(data.lineUserId, { orderId: orderId, items: data.items, displayName: data.displayName, branch: data.branch, address: data.address, total: data.total, slipStatus: slipStatus, instantReady: instantReady });
       if (slipStatus === "ยืนยัน") _notifyBranchRestockNeeded_(newOrder, branchCoverage.covered);
@@ -1234,6 +1248,26 @@ function _linePush(to, text, token) {
     }
   } catch (e) {
     Logger.log("_linePush(" + to + ") failed: " + e.message);
+  }
+}
+
+// ── ส่งข้อความ Telegram — เทียบเท่า _linePush() แต่ผ่าน Telegram Bot API แทน
+// ใช้เฉพาะแจ้งไฟแนนซ์ตอนนี้ (ดู doPost) ไม่ผูกกับ order/customer flow อื่นเลย
+function _telegramPush(chatId, text) {
+  if (!TELEGRAM_BOT_TOKEN || !chatId) return;
+  try {
+    var res = UrlFetchApp.fetch("https://api.telegram.org/bot" + TELEGRAM_BOT_TOKEN + "/sendMessage", {
+      method: "post",
+      muteHttpExceptions: true,
+      contentType: "application/json",
+      payload: JSON.stringify({ chat_id: chatId, text: text }),
+    });
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      Logger.log("_telegramPush(" + chatId + ") HTTP " + code + ": " + res.getContentText());
+    }
+  } catch (e) {
+    Logger.log("_telegramPush(" + chatId + ") failed: " + e.message);
   }
 }
 
