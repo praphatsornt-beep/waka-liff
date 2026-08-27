@@ -605,6 +605,11 @@ def render_order_detail(row) -> None:
     ff_icon = fulfill_icon(ff_status)
 
     st.markdown(f"##### รายละเอียดออเดอร์ #{order_id}")
+    notified_at = row.get("notified_at", "") or ""
+    notify_caption = f"📨 แจ้งไลน์: {line_notify_stage(cur_status, ff_status)}"
+    if notified_at:
+        notify_caption += f" · 📣 แจ้งแล้ว {notified_at}"
+    st.caption(notify_caption)
 
     if is_del and row.get("address"):
         st.caption(f"📍 {row.get('address')}")

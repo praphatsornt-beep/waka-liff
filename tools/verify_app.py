@@ -474,37 +474,27 @@ def home():
             if "_error" in data:
                 st.caption(f"{section} โหลดไม่ได้: {data['_error']}")
 
-    st.markdown(
-        f'<div style="font-size:13px;font-weight:700;color:{TEXT2};margin:8px 0 10px">ต้องดำเนินการวันนี้</div>',
-        unsafe_allow_html=True,
-    )
-    a1, a2 = st.columns(2)
-    with a1:
-        st.markdown(action_card("ออเดอร์รอตรวจสลิป", orders.get("pending_count"), "/orders"), unsafe_allow_html=True)
-    with a2:
-        st.markdown(action_card("ผู้สมัครรอยืนยันสลิป", tourney.get("pending_applicants"), "/tournament"), unsafe_allow_html=True)
+    def section_label(text: str) -> str:
+        return f'<div style="font-size:13px;font-weight:700;color:{TEXT2};margin:8px 0 10px">{text}</div>'
 
-    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+    # ── 1. โควต้าระบบ (บนสุด) ──────────────────────────────────────────────
+    st.markdown(quota_status_card(load_quota_status()), unsafe_allow_html=True)
+    st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
 
     recent_orders = orders.get("recent_orders", [])
     today_str = now.strftime("%Y-%m-%d")
     today_orders = [o for o in recent_orders if o.get("timestamp", "").startswith(today_str) and o.get("slip_status") == "ยืนยัน"]
     revenue_today = sum(int(o.get("total", 0)) for o in today_orders)
 
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown(summary_card(
-            "📦", "ออเดอร์วันนี้", orders.get("orders_today", 0), "ออเดอร์", f"฿{revenue_today:,.0f}",
-            "รอตรวจสลิป", orders.get("pending_count", 0), PENDING_TEXT,
-            "ยอดขาย", f"฿{orders.get('revenue_today', 0):,.0f}", SUCCESS_TEXT,
-        ), unsafe_allow_html=True)
-    with c2:
-        st.markdown(summary_card(
-            "🏆", "ทัวร์นาเมนต์", tourney.get("open_count", 0), "งานเปิดรับสมัคร",
-            f"จากทั้งหมด {tourney.get('total_count', 0)} งาน",
-            "รอยืนยันสลิป", tourney.get("pending_applicants") if tourney.get("pending_applicants") is not None else "—", PENDING_TEXT,
-            "เปิดรับสมัคร", tourney.get("open_count", 0), SUCCESS_TEXT,
-        ), unsafe_allow_html=True)
+    # ── 2. ออเดอร์ ─────────────────────────────────────────────────────────
+    st.markdown(section_label("🛒 ออเดอร์"), unsafe_allow_html=True)
+    st.markdown(action_card("ออเดอร์รอตรวจสลิป", orders.get("pending_count"), "/orders"), unsafe_allow_html=True)
+    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+    st.markdown(summary_card(
+        "📦", "ออเดอร์วันนี้", orders.get("orders_today", 0), "ออเดอร์", f"฿{revenue_today:,.0f}",
+        "รอตรวจสลิป", orders.get("pending_count", 0), PENDING_TEXT,
+        "ยอดขาย", f"฿{orders.get('revenue_today', 0):,.0f}", SUCCESS_TEXT,
+    ), unsafe_allow_html=True)
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
@@ -561,17 +551,25 @@ def home():
     st.markdown(stock_warning_card(low_stock), unsafe_allow_html=True)
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-    d1, d2 = st.columns([1.3, 1])
-    with d1:
-        st.markdown(top_products_card(top_products(recent_orders)), unsafe_allow_html=True)
-    with d2:
-        st.markdown(
-            open_tournaments_card(tourney.get("open_events", []), tourney.get("regs_by_event", {})),
-            unsafe_allow_html=True,
-        )
+    st.markdown(top_products_card(top_products(recent_orders)), unsafe_allow_html=True)
 
+    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+
+    # ── 3. ทัวร์นาเมนต์ (ล่างสุด) ──────────────────────────────────────────
+    st.markdown(section_label("🏆 ทัวร์นาเมนต์"), unsafe_allow_html=True)
+    st.markdown(action_card("ผู้สมัครรอยืนยันสลิป", tourney.get("pending_applicants"), "/tournament"), unsafe_allow_html=True)
+    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+    st.markdown(summary_card(
+        "🏆", "ทัวร์นาเมนต์", tourney.get("open_count", 0), "งานเปิดรับสมัคร",
+        f"จากทั้งหมด {tourney.get('total_count', 0)} งาน",
+        "รอยืนยันสลิป", tourney.get("pending_applicants") if tourney.get("pending_applicants") is not None else "—", PENDING_TEXT,
+        "เปิดรับสมัคร", tourney.get("open_count", 0), SUCCESS_TEXT,
+    ), unsafe_allow_html=True)
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-    st.markdown(quota_status_card(load_quota_status()), unsafe_allow_html=True)
+    st.markdown(
+        open_tournaments_card(tourney.get("open_events", []), tourney.get("regs_by_event", {})),
+        unsafe_allow_html=True,
+    )
 
 
 st.set_page_config(page_title="WAKA", page_icon="🏠", layout="wide", initial_sidebar_state="expanded")
