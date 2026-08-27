@@ -391,7 +391,7 @@
             </div>
             <div id="wdConvertPreview" style="display:none;font-size:13px;color:var(--text2);margin:4px 0 8px"></div>
             <div class="form-group"><label>ชื่อพนักงาน</label><input type="text" id="wdStaffName" placeholder="ชื่อพนักงานที่เบิก"></div>
-            <button class="btn btn-orange" onclick="submitWithdraw()">📤 เบิกสินค้า</button>
+            <button class="btn btn-orange" onclick="submitWithdraw(this)">📤 เบิกสินค้า</button>
           </div>
           <div class="card">
             <h3>ประวัติเบิก</h3>
@@ -1577,7 +1577,7 @@ async function loadBrReport() {
 }
 
 // ── เบิกสินค้า ──
-async function submitWithdraw() {
+async function submitWithdraw(btn) {
   const branch=gid('branchSelect').value;if(!branch)return alert('เลือกสาขาก่อน');
   if(branch==='ทั้งหมด')return alert('โหมด "ทุกสาขา" เบิกสินค้าไม่ได้ กรุณาเปลี่ยนไปเลือกสาขาที่ต้องการก่อน');
   const name=gid('wdProduct').value;if(!name)return alert('เลือกสินค้า');
@@ -1587,13 +1587,18 @@ async function submitWithdraw() {
   localStorage.setItem('waka_staff_name',staff_name);
   const _p=products.find(x=>x.name===name);
 
+  // กันมือลั่น/เน็ตช้าแล้วกดซ้ำ — pattern เดียวกับ wsSubmitSale ที่เคยเกิดขาย
+  // ซ้ำจริงมาแล้ว (ดูคอมเมนต์ที่นั่น) ปุ่มนี้เพิ่งมีช่องโหว่เดียวกันเลยเพิ่งเพิ่ม
+  if(btn.disabled)return; btn.disabled=true;
+
   if (reason === 'เบิกกล่องแยกเป็นซอง') {
     const perBox = _p ? (Number(_p.packs_per_box) || 0) : 0;
-    if (perBox <= 0) return alert('สินค้านี้ยังไม่ได้ตั้งค่า "จำนวนซองต่อกล่อง"');
+    if (perBox <= 0) { btn.disabled=false; return alert('สินค้านี้ยังไม่ได้ตั้งค่า "จำนวนซองต่อกล่อง"'); }
     try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'convertBoxToPack',branch,name,id:_p?_p.id:undefined,qty_box:qty,staff_name,code:_authCode()})});const d=await r.json();
       if(d.ok){toast('แปลง '+name+' '+qty+' กล่อง → '+d.packs_added+' ซอง แล้ว');gid('wdQty').value=1;updateWithdrawMode();loadBrStock();}
       else alert(d.error||'ผิดพลาด');
     }catch(e){alert('แปลงไม่ได้');}
+    finally{btn.disabled=false;}
     return;
   }
 
@@ -1601,6 +1606,7 @@ async function submitWithdraw() {
     if(d.ok){toast('เบิก '+name+' x'+qty);gid('wdQty').value=1;loadBrStock();loadWithdrawals();}
     else alert(d.error||'ผิดพลาด');
   }catch(e){alert('บันทึกไม่ได้');}
+  finally{btn.disabled=false;}
 }
 
 async function loadWithdrawals() {
