@@ -374,6 +374,94 @@ def open_tournaments_card(open_events: list, regs_by_event: dict) -> str:
     </div>""")
 
 
+# GAS quota_status endpoint — LINE_TOKEN/STAFF_LIVE_LINE_TOKEN/SLIPOK_KEY live
+# only in Apps Script Script Properties (never in Supabase or Streamlit's own
+# .env), so this is the only way to show quota numbers here — same GAS_URL/
+# WAKA_S values used by tools/screens/orders.py's _gas_request().
+GAS_URL = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
+WAKA_S = "wk26xK9mPqRt"
+
+
+@st.cache_data(ttl=300)
+def load_quota_status():
+    import requests
+    try:
+        resp = requests.get(GAS_URL, params={"action": "api", "do": "quota_status", "_s": WAKA_S}, timeout=15)
+        return resp.json()
+    except (ValueError, requests.RequestException) as e:
+        return {"_error": str(e)}
+
+
+def quota_status_card(quota: dict) -> str:
+    if not quota or "_error" in quota:
+        err = (quota or {}).get("_error", "ไม่ทราบสาเหตุ")
+        return flat(f"""<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:14px;padding:16px 20px">
+        <div style="font-weight:600;font-size:14.5px;margin-bottom:6px">โควต้าเดือนนี้</div>
+        <div style="font-size:12.5px;color:{TEXT3}">โหลดไม่ได้: {err} (ต้อง deploy gas/Code.gs เวอร์ชันล่าสุดก่อน — action=quota_status เพิ่งเพิ่มใหม่)</div>
+        </div>""")
+
+    rows_html = ""
+    for item in quota.get("line", []):
+        label = item.get("label", "")
+        if item.get("error"):
+            rows_html += f"""
+            <div style="margin-bottom:14px">
+              <div style="font-size:13px;font-weight:600">LINE {label}</div>
+              <div style="font-size:12px;color:{TEXT3}">โหลดไม่ได้: {item['error']}</div>
+            </div>
+            """
+            continue
+        limit, used = item.get("limit"), item.get("used", 0)
+        if limit is None:
+            rows_html += f"""
+            <div style="margin-bottom:14px">
+              <div style="display:flex;justify-content:space-between;font-size:13px">
+                <span style="font-weight:600">LINE {label}</span>
+                <span style="font-weight:700;color:{SUCCESS_TEXT}">ไม่จำกัด (ใช้ {used:,})</span>
+              </div>
+            </div>
+            """
+            continue
+        pct = min(100, round(used / limit * 100)) if limit else 0
+        color = DANGER_TEXT if pct >= 90 else (PENDING_TEXT if pct >= 70 else SUCCESS_TEXT)
+        rows_html += f"""
+        <div style="margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
+            <span style="font-weight:600">LINE {label}</span>
+            <span style="font-weight:700;color:{color}">{used:,} / {limit:,}</span>
+          </div>
+          <div style="height:7px;background:{DIVIDER};border-radius:4px;overflow:hidden">
+            <div style="height:100%;background:{color};width:{pct}%"></div>
+          </div>
+        </div>
+        """
+
+    slipok = quota.get("slipok") or {}
+    if slipok.get("error"):
+        rows_html += f"""
+        <div>
+          <div style="font-size:13px;font-weight:600">SlipOK</div>
+          <div style="font-size:12px;color:{TEXT3}">โหลดไม่ได้: {slipok['error']}</div>
+        </div>
+        """
+    elif slipok.get("raw") is not None:
+        # SlipOK's exact response shape was never normalized anywhere in this
+        # codebase (checkSlipOKQuota() in gas/Code.gs only ever logged it) —
+        # show the raw JSON rather than guessing at field names and risking
+        # a silently-wrong number on screen.
+        rows_html += f"""
+        <div>
+          <div style="font-size:13px;font-weight:600;margin-bottom:5px">SlipOK</div>
+          <div style="font-size:11.5px;color:{TEXT3};font-family:monospace;white-space:pre-wrap;word-break:break-all">{json.dumps(slipok['raw'], ensure_ascii=False)}</div>
+        </div>
+        """
+
+    return flat(f"""<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:14px;padding:18px 20px">
+    <div style="font-weight:600;font-size:14.5px;margin-bottom:14px">โควต้าเดือนนี้</div>
+    {flat(rows_html)}
+    </div>""")
+
+
 def home():
     now = datetime.now(TH_TZ)
     subtitle = f"{THAI_DAYS[now.weekday()]}ที่ {now.day} {THAI_MONTHS[now.month - 1]} {now.year + 543}"
@@ -481,6 +569,9 @@ def home():
             open_tournaments_card(tourney.get("open_events", []), tourney.get("regs_by_event", {})),
             unsafe_allow_html=True,
         )
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    st.markdown(quota_status_card(load_quota_status()), unsafe_allow_html=True)
 
 
 st.set_page_config(page_title="WAKA", page_icon="🏠", layout="wide", initial_sidebar_state="expanded")

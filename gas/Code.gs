@@ -1241,40 +1241,45 @@ function _notifyStaffGroup_(groupId, text) {
   _telegramPush(TELEGRAM_FINANCE_CHAT_ID, text);
 }
 
+// ดึงโควต้า+การใช้งาน LINE ของ token เดียว — แยกเป็นฟังก์ชันบนสุดของไฟล์ (ไม่ใช่
+// nested ใน checkLineQuota() แบบเดิม) เพราะตอนนี้ action=quota_status (handleApi)
+// เรียกใช้ตัวเดียวกันนี้ด้วย เพื่อให้หน้าแรก Streamlit แสดงผลตรงกับที่
+// checkLineQuota() log ไว้เป๊ะๆ ไม่ต้องคัดลอก logic ซ้ำสองที่
+function _lineQuotaOne_(label, token) {
+  if (!token) return { label: label, error: "ไม่มี token" };
+  var headers = { Authorization: "Bearer " + token };
+  var quotaRes = UrlFetchApp.fetch("https://api.line.me/v2/bot/message/quota", {
+    headers: headers, muteHttpExceptions: true,
+  });
+  var usageRes = UrlFetchApp.fetch("https://api.line.me/v2/bot/message/quota/consumption", {
+    headers: headers, muteHttpExceptions: true,
+  });
+  if (quotaRes.getResponseCode() !== 200 || usageRes.getResponseCode() !== 200) {
+    return { label: label, error: "HTTP " + quotaRes.getResponseCode() + "/" + usageRes.getResponseCode() + ": " + quotaRes.getContentText() };
+  }
+  var quota = JSON.parse(quotaRes.getContentText()); // { type: "limited"|"none", value?: N }
+  var usage = JSON.parse(usageRes.getContentText()); // { totalUsage: N }
+  var limit = quota.type === "limited" ? Number(quota.value) : null; // "none" = ไม่จำกัด (แผนเสียเงินบางแบบ)
+  var used = Number(usage.totalUsage) || 0;
+  return {
+    label: label,
+    limit: limit,
+    used: used,
+    remaining: limit === null ? null : Math.max(0, limit - used),
+  };
+}
+
 // ── เช็คโควต้าข้อความ LINE ที่เหลือเดือนนี้ — ทั้ง OA หลัก (ลูกค้า, WAKA ORDER,
 // LINE_TOKEN) และ OA staff (WAKA NOTI BOT, STAFF_LIVE_LINE_TOKEN) แยกกัน เพราะ
 // แยกโควต้ากันไว้ตั้งแต่แรกไม่ให้แจ้งเตือน staff ปริมาณสูงไปแย่งโควต้าออเดอร์
 // ลูกค้า (ดูคอมเมนต์ STAFF_LIVE_LINE_TOKEN บนสุดของไฟล์) — รัน manual ใน Apps
 // Script editor (Run → checkLineQuota) แล้วดูผลใน Logger (View → Logs) หรือ
-// ผลลัพธ์ return ก็ได้ ไม่มีปุ่มเรียกจากที่อื่นในระบบ เหมือน checkSlipOKQuota()
+// ผลลัพธ์ return ก็ได้ — หน้าแรก Streamlit ก็แสดงตัวเลขชุดเดียวกันนี้แล้วผ่าน
+// action=quota_status (ดู handleApi)
 function checkLineQuota() {
-  function fetchOne(label, token) {
-    if (!token) return { label: label, error: "ไม่มี token" };
-    var headers = { Authorization: "Bearer " + token };
-    var quotaRes = UrlFetchApp.fetch("https://api.line.me/v2/bot/message/quota", {
-      headers: headers, muteHttpExceptions: true,
-    });
-    var usageRes = UrlFetchApp.fetch("https://api.line.me/v2/bot/message/quota/consumption", {
-      headers: headers, muteHttpExceptions: true,
-    });
-    if (quotaRes.getResponseCode() !== 200 || usageRes.getResponseCode() !== 200) {
-      return { label: label, error: "HTTP " + quotaRes.getResponseCode() + "/" + usageRes.getResponseCode() + ": " + quotaRes.getContentText() };
-    }
-    var quota = JSON.parse(quotaRes.getContentText()); // { type: "limited"|"none", value?: N }
-    var usage = JSON.parse(usageRes.getContentText()); // { totalUsage: N }
-    var limit = quota.type === "limited" ? Number(quota.value) : null; // "none" = ไม่จำกัด (แผนเสียเงินบางแบบ)
-    var used = Number(usage.totalUsage) || 0;
-    return {
-      label: label,
-      limit: limit,
-      used: used,
-      remaining: limit === null ? null : Math.max(0, limit - used),
-    };
-  }
-
   var results = [
-    fetchOne("ลูกค้า (WAKA ORDER)", LINE_TOKEN),
-    fetchOne("staff (WAKA NOTI BOT)", STAFF_LIVE_LINE_TOKEN),
+    _lineQuotaOne_("ลูกค้า (WAKA ORDER)", LINE_TOKEN),
+    _lineQuotaOne_("staff (WAKA NOTI BOT)", STAFF_LIVE_LINE_TOKEN),
   ];
   results.forEach(function(r) {
     if (r.error) {
@@ -2221,6 +2226,19 @@ function handleApi(params) {
     })));
   }
 
+  // ── โควต้า LINE (ทั้ง 2 OA) + SlipOK เดือนนี้ — ให้หน้าแรก Streamlit เรียกดูได้
+  // โดยไม่ต้องเปิด Apps Script editor รัน checkLineQuota()/checkSlipOKQuota() มือ
+  // เอง (logic เดียวกันเป๊ะ ดู _lineQuotaOne_/_slipokQuotaSafe_) — staff-only
+  // เหมือน action อื่นๆ (ต้องผ่าน _s เพราะไม่อยู่ใน PUBLIC_API_DOS)
+  if (action === "quota_status") {
+    var qsLine = [
+      _lineQuotaOne_("ลูกค้า (WAKA ORDER)", LINE_TOKEN),
+      _lineQuotaOne_("staff (WAKA NOTI BOT)", STAFF_LIVE_LINE_TOKEN),
+    ];
+    var qsSlipok = _slipokQuotaSafe_();
+    return _cors(ContentService.createTextOutput(JSON.stringify({ line: qsLine, slipok: qsSlipok })));
+  }
+
   // ── TOURNAMENT API ─────────────────────────────────────────────────────────
 
   if (action === "tournament_status") {
@@ -2548,6 +2566,28 @@ function checkSlipOKQuota() {
   });
   Logger.log(res.getContentText());
   return JSON.parse(res.getContentText());
+}
+
+// เหมือน checkSlipOKQuota() ด้านบน แต่ไม่ throw เลย (muteHttpExceptions + try/catch)
+// เพราะตัวนี้ถูกเรียกจาก action=quota_status (handleApi) ที่ต้องตอบ JSON กลับไปให้
+// หน้าแรก Streamlit เสมอ ไม่ว่า SLIPOK_KEY จะหายไปหรือ SlipOK ตอบ error ก็ตาม —
+// คืน raw response ตรงๆ ไม่ normalize field เพราะ shape จริงของ SlipOK ยังไม่เคย
+// ถูกบันทึกไว้ในโค้ดที่ไหนเลย (checkSlipOKQuota() เดิมก็แค่ log ดูเฉยๆ)
+function _slipokQuotaSafe_() {
+  var slipokKey = PROPS.getProperty("SLIPOK_KEY");
+  var slipokBranch = PROPS.getProperty("SLIPOK_BRANCH") || "1";
+  if (!slipokKey) return { error: "ไม่มี SLIPOK_KEY" };
+  try {
+    var res = UrlFetchApp.fetch("https://api.slipok.com/api/line/apikey/" + slipokBranch + "/quota", {
+      headers: { "x-authorization": slipokKey },
+      muteHttpExceptions: true,
+    });
+    var code = res.getResponseCode();
+    if (code !== 200) return { error: "HTTP " + code + ": " + res.getContentText() };
+    return { raw: JSON.parse(res.getContentText()) };
+  } catch (e) {
+    return { error: e.message };
+  }
 }
 
 // ── ตรวจสลิป + จัดสถานะ (extract จาก doPost เดิม) ────────────────────────────
