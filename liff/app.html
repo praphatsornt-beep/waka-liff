@@ -1267,7 +1267,10 @@ async function loadBrOrders() {
       // กับที่เลือกไว้เลย (ตัว dropdown เองก็มีตัวเลือก "ทั้งหมด" แยกต่างหากอยู่
       // แล้ว — จุดอื่นในไฟล์นี้ เช่น openBrView ก็ใช้ b==='ทั้งหมด' เป็นตัวเช็ค
       // "โหมดทุกสาขา" เหมือนกัน จุดนี้เป็นจุดเดียวที่ไม่ได้เช็คตามนั้น)
-      const branches = ALL_BRANCHES;
+      // ออเดอร์จัดส่ง (branch === "จัดส่ง") ไม่ได้อยู่ใน ALL_BRANCHES (นั่นคือ
+      // สาขาจริง 3 แห่งสำหรับ stock/walk-in) แต่ต้องรวมมาด้วยเฉพาะที่นี่ (มุมมอง
+      // "ทั้งหมด" ของออเดอร์) ไม่งั้น admin จะไม่เห็นออเดอร์จัดส่งเลยตอนดูทุกสาขา
+      const branches = ALL_BRANCHES.concat(['จัดส่ง']);
       const results = await Promise.all(branches.map(async br => {
         const r = await fetch(G+'&action=api&do=branch_orders&branch='+encodeURIComponent(br)+'&code='+encodeURIComponent(_authCode()));
         const d = await r.json();
@@ -1319,7 +1322,7 @@ function renderBrOrdersList() {
           <div style="margin-top:4px;font-size:12px;color:var(--text2)">📨 แจ้งไลน์ล่าสุด: ${esc(_lineStage('ยืนยัน', ff))}</div>
           ${o.notified_at?`<div style="margin-top:4px;font-size:12px;color:#2d8f4e">📨 แจ้งลูกค้าแล้ว · ${esc(o.notified_at)}</div>`:''}
           ${hasPartialPending?`<button class="btn" style="margin-top:10px;background:#d97706" onclick="event.stopPropagation();showPartialReadyDialog('${o.order_id}',${itemsJson})">${readyBtnLabel}</button>`:''}
-          ${(canHandover&&hasReadyItems)||(!items.some(it=>it.ready_at)&&canHandover)?`<button class="btn btn-green" style="margin-top:8px" onclick="event.stopPropagation();showHandoverDialog('${o.order_id}',${itemsJson},'br')">🤝 ส่งมอบสินค้า</button>`:''}
+          ${(canHandover&&hasReadyItems)||(!items.some(it=>it.ready_at)&&canHandover)?`<button class="btn btn-green" style="margin-top:8px" onclick="event.stopPropagation();showHandoverDialog('${o.order_id}',${itemsJson},'br','${esc(o.branch||'')}')">🤝 ส่งมอบสินค้า</button>`:''}
           ${ff==='รับบางส่วนแล้ว'?'<div style="text-align:center;padding:10px;margin-top:8px;background:#fff8e1;border-radius:8px;color:#d97706;font-weight:600">📦 ส่งมอบบางส่วนแล้ว รอสินค้าที่เหลือ</div>':''}
           ${ff==='สาขายืนยัน'?'<div style="text-align:center;padding:10px;margin-top:8px;background:#f0fbf4;border-radius:8px;color:var(--green);font-weight:600">✅ ส่งมอบแล้ว รอลูกค้ายืนยัน</div>':''}
           ${ff==='รับแล้ว'?'<div style="text-align:center;padding:10px;margin-top:8px;background:#f0fbf4;border-radius:8px;color:var(--green);font-weight:600">✅ ลูกค้ายืนยันรับแล้ว</div>':''}
@@ -1359,7 +1362,7 @@ async function searchOrders() {
       ${ff==='รับบางส่วนแล้ว'?'<div style="font-size:12px;color:#d97706;margin-top:4px">📦 ส่งมอบบางส่วนแล้ว รอสินค้าที่เหลือ</div>':''}
       ${o.notified_at?`<div style="font-size:12px;color:#2d8f4e;margin-top:4px">📨 แจ้งลูกค้าแล้ว · ${esc(o.notified_at)}</div>`:''}
       ${hasPartialPending&&o.slip_status==='ยืนยัน'?`<button class="btn btn-sm" style="margin-top:8px;background:#d97706" onclick="showPartialReadyDialog('${o.order_id}',${itemsJson})">${readyBtnLabel}</button>`:''}
-      ${(canHandover&&(hasReadyItems||!items.some(it=>it.ready_at)))?`<button class="btn btn-green btn-sm" style="margin-top:8px" onclick="showHandoverDialog('${o.order_id}',${itemsJson},'search')">🤝 ส่งมอบ</button>`:''}
+      ${(canHandover&&(hasReadyItems||!items.some(it=>it.ready_at)))?`<button class="btn btn-green btn-sm" style="margin-top:8px" onclick="showHandoverDialog('${o.order_id}',${itemsJson},'search','${esc(o.branch||'')}')">🤝 ส่งมอบ</button>`:''}
       </div>`;
     }).join('');
   }catch(e){gid('searchResults').innerHTML='<div class="empty">ค้นหาไม่ได้</div>';}
@@ -1375,11 +1378,32 @@ async function confirmSlip(oid) {
 }
 
 // ── Dialog: ส่งมอบสินค้า (เลือกได้ว่าจะส่งมอบชิ้นไหน) ──
-function showHandoverDialog(orderId, items, src) {
+// branch === "จัดส่ง" ต้องแยกไปคนละ endpoint (action=api&do=update&status=
+// handover ไม่ใช่ handoverOrder) — handoverOrder ตัดสต็อกสาขา (stock_branch)
+// ซึ่งออเดอร์จัดส่งไม่มีแถวให้ตัดเลย และตั้ง fulfillment เป็น "รับแล้ว" ผิด
+// ความหมาย (ควรเป็น "จัดส่งแล้ว") — endpoint นี้ไม่รองรับส่งมอบบางส่วนด้วย
+// (ทั้งออเดอร์เดียว) จึงข้าม dialog เลือกรายการไปเลย ใช้ปุ่มยืนยันตรงๆ แทน
+// เหมือน pattern เดียวกับปุ่ม "📤 จัดส่งแล้ว" ใน tools/screens/orders.py
+function showHandoverDialog(orderId, items, src, branch) {
+  const el = document.getElementById('partialModal');
+  if (branch === 'จัดส่ง') {
+    el.innerHTML = `
+      <div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:flex-end">
+        <div style="background:#fff;border-radius:20px 20px 0 0;padding:24px;width:100%;max-height:80vh;overflow-y:auto">
+          <div style="font-weight:700;font-size:16px;margin-bottom:4px">ยืนยันจัดส่งแล้ว</div>
+          <div style="font-size:13px;color:#888;margin-bottom:16px">ออเดอร์ #${esc(orderId)} (จัดส่งพัสดุ — ยืนยันทั้งออเดอร์ ไม่รองรับส่งบางส่วน)</div>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button onclick="document.getElementById('partialModal').innerHTML=''" style="flex:1;padding:14px;border:1px solid #ddd;border-radius:12px;background:#fff;font-family:inherit;font-size:14px;cursor:pointer">ยกเลิก</button>
+            <button onclick="submitHandover('${esc(orderId)}','${src}','${esc(branch)}')" style="flex:2;padding:14px;border:none;border-radius:12px;background:#2d8f4e;color:#fff;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer">📤 ยืนยันจัดส่งแล้ว</button>
+          </div>
+        </div>
+      </div>`;
+    return;
+  }
+
   const eligible = items.map((it, idx) => ({ ...it, _idx: idx })).filter(it => !it.handed_at && !it.cancelled_at);
   if (!eligible.length) { alert('ไม่มีสินค้าที่ส่งมอบได้'); return; }
   const hasReadyAt = items.some(it => it.ready_at);
-  const el = document.getElementById('partialModal');
   el.innerHTML = `
     <div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:flex-end">
       <div style="background:#fff;border-radius:20px 20px 0 0;padding:24px;width:100%;max-height:80vh;overflow-y:auto">
@@ -1397,18 +1421,32 @@ function showHandoverDialog(orderId, items, src) {
         </div>
         <div style="display:flex;gap:8px;margin-top:12px">
           <button onclick="document.getElementById('partialModal').innerHTML=''" style="flex:1;padding:14px;border:1px solid #ddd;border-radius:12px;background:#fff;font-family:inherit;font-size:14px;cursor:pointer">ยกเลิก</button>
-          <button onclick="submitHandover('${esc(orderId)}','${src}')" style="flex:2;padding:14px;border:none;border-radius:12px;background:#2d8f4e;color:#fff;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer">🤝 ยืนยันส่งมอบ</button>
+          <button onclick="submitHandover('${esc(orderId)}','${src}','${esc(branch||'')}')" style="flex:2;padding:14px;border:none;border-radius:12px;background:#2d8f4e;color:#fff;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer">🤝 ยืนยันส่งมอบ</button>
         </div>
       </div>
     </div>`;
 }
 
-async function submitHandover(orderId, src) {
+async function submitHandover(orderId, src, branch) {
+  const staff_name = await ensureStaffName();
+  if (!staff_name) return;
+
+  if (branch === 'จัดส่ง') {
+    document.getElementById('partialModal').innerHTML = '';
+    try {
+      const r = await fetch(G, { method: 'POST', body: JSON.stringify({ action: 'api', do: 'update', order: orderId, status: 'handover' }) });
+      const d = await r.json();
+      if (d.ok) {
+        toast('บันทึกจัดส่งแล้ว — แจ้ง LINE ลูกค้าแล้ว');
+        if (src === 'br') loadBrOrders(); else searchOrders();
+      } else alert(d.error || 'ผิดพลาด');
+    } catch(e) { alert('ผิดพลาด'); }
+    return;
+  }
+
   const checked = [...document.querySelectorAll('#hoItemList input[type=checkbox]:checked')];
   if (!checked.length) { alert('เลือกสินค้าอย่างน้อย 1 รายการ'); return; }
   const indices = checked.map(cb => +cb.dataset.idx);
-  const staff_name = await ensureStaffName();
-  if (!staff_name) return;
   document.getElementById('partialModal').innerHTML = '';
   try {
     const r = await fetch(G, { method: 'POST', body: JSON.stringify({ _action: 'handoverOrder', order_id: orderId, indices, code: _authCode(), staff_name: staff_name.trim() }) });
