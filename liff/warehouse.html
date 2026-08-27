@@ -678,7 +678,7 @@ async function cancelShipment(shipmentId, btn) {
 }
 
 async function receiveShipment(shipmentId) {
-  if (!confirm('ยืนยันว่าสาขาได้รับของล็อต ' + shipmentId + ' ครบแล้ว?\n\nระบบจะ:\n- อัปเดตสต็อกสาขา\n- แจ้งลูกค้าทุกคนที่มีออเดอร์')) return;
+  if (!confirm('ยืนยันว่าสาขาได้รับของล็อต ' + shipmentId + ' ครบแล้ว?\n\nระบบจะอัปเดตสต็อกสาขาให้ (ไม่ส่งไลน์แจ้งลูกค้า — ประกาศทาง OpenChat แทน)')) return;
   const staff_name = ensureStaffName();
   if (!staff_name) return;
 
@@ -690,8 +690,8 @@ async function receiveShipment(shipmentId) {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     if (data.already) alert('ล็อตนี้รับแล้ว');
-    else if (data.notified_count > 0) alert('รับของสำเร็จ! ส่งไลน์แจ้งพร้อมรับลูกค้า ' + data.notified_count + ' ออเดอร์แล้ว');
-    else alert('รับของสำเร็จ! ไม่มีออเดอร์ที่ของครบพอส่งมอบตอนนี้ (ยังไม่ส่งไลน์แจ้งใคร)');
+    else if (data.ready_count > 0) alert('รับของสำเร็จ! อัปเดตสถานะ "พร้อมรับ" ให้ ' + data.ready_count + ' ออเดอร์แล้ว (ประกาศลูกค้าทาง OpenChat เอง)');
+    else alert('รับของสำเร็จ! ไม่มีออเดอร์ที่ของครบพอส่งมอบตอนนี้');
     loadHistory();
   } catch (err) {
     alert('เกิดข้อผิดพลาด: ' + err.message);

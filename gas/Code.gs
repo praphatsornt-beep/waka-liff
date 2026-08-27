@@ -609,9 +609,10 @@ function doPost(e) {
       return _cors(ContentService.createTextOutput(JSON.stringify({ success: false, error: "unknown action or empty order" })));
     }
 
-    // สลิป (ถ้ามี) ตรวจทีหลัง — นอก lock, หลังบันทึกออเดอร์เริ่มต้นแล้ว (ดูเหตุผล
-    // เต็มที่คอมเมนต์เหนือ writeSupabaseOrder_(newOrder) ตัวแรกด้านล่าง) ที่นี่แค่
-    // ตั้งสถานะชั่วคราวไว้ก่อน
+    // สลิป (ถ้ามี) ตรวจทีหลังแบบ async ผ่าน processPendingSlipVerifications()
+    // (time-driven trigger, ไม่ใช่ inline ใน doPost นี้อีกต่อไป — ดูเหตุผลเต็มที่
+    // คอมเมนต์เหนือ writeSupabaseOrder_(newOrder) ตัวแรกด้านล่าง) ที่นี่แค่ตั้งสถานะ
+    // ชั่วคราวไว้ก่อน
     var hasSlip    = !!data.slipBase64;
     var slipStatus = hasSlip ? "รอตรวจ" : "ไม่มีสลิป";
     var slipNote   = hasSlip ? "กำลังตรวจสอบสลิป..." : "ลูกค้าไม่ได้แนบสลิป";
@@ -678,12 +679,16 @@ function doPost(e) {
     // top-level catch, which releases the lock and reports the error.
     //
     // เขียนออเดอร์ด้วยสถานะสลิปชั่วคราว ("รอตรวจ"/"ไม่มีสลิป") ก่อน แล้วค่อยตรวจ
-    // สลิปจริง (ช้า — เรียก SlipOK แล้ว fallback Claude vision ได้) ทีหลัง —
+    // สลิปจริง (ช้า — เรียก SlipOK แล้ว fallback Claude vision ได้) ทีหลังแบบ async —
     // เดิมตรวจสลิปก่อนเขียนออเดอร์เลย ถ้า fetch ฝั่งลูกค้า timeout ระหว่างรอผลตรวจ
     // (มือถือ/เน็ตอ่อน) ลูกค้าจะไม่รู้ว่าออเดอร์เข้าระบบหรือยัง เห็นแต่ error
     // เครือข่าย แล้วมักกดสั่งใหม่แนบสลิปเดิมซ้ำ กลายเป็นเคส "สลิปซ้ำ" — สลับลำดับ
     // ให้ออเดอร์ (พร้อมหักสต็อก/limit แล้ว) ปลอดภัยอยู่ใน Supabase ก่อนเข้าสู่ช่วง
-    // ที่ช้า ไม่ว่าการตรวจสลิปจะช้าแค่ไหนก็ตาม
+    // ที่ช้า ไม่ว่าการตรวจสลิปจะช้าแค่ไหนก็ตาม — และตอนนี้ doPost ตอบกลับลูกค้า
+    // ทันทีหลัง write นี้เลย (ไม่รอผลตรวจสลิปอีกต่อไป) ตรวจสลิปจริงย้ายไปทำใน
+    // processPendingSlipVerifications() (time-driven trigger) แทน กันกรณีลูกค้า
+    // เน็ตหลุด/สลับแอประหว่างรอผลตรวจ (ยิ่งตรวจช้ายิ่งเสี่ยง) แล้วพลาดเห็นหน้า
+    // "สั่งซื้อสำเร็จ" ทั้งที่ออเดอร์บันทึกจริงแล้ว
     var newOrder = {
       order_id: orderId,
       timestamp: Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'"),
@@ -729,95 +734,47 @@ function doPost(e) {
     // กันชนกันจริงๆ คือหักสต็อก/limit ด้านบน ซึ่งทำเสร็จภายใต้ lock แล้ว)
     lock.releaseLock();
 
-    // ── ตรวจสลิปจริง (ช้า) แล้วเขียนทับออเดอร์ด้วยสถานะจริง — ยืนยันกลับลูกค้า
-    // ครั้งเดียวหลังจากขั้นตอนนี้เสร็จ (ดู return ท้ายฟังก์ชัน) ──
-    var instantReady = false;
+    // ── ตรวจสลิปจริง (ช้า — SlipOK แล้ว fallback Claude vision ได้) ย้ายไปทำ async
+    // ผ่าน processPendingSlipVerifications() (time-driven trigger รันทุก 1 นาที) แทน
+    // การตรวจ inline ตรงนี้แบบเดิม — เหตุผล: doPost คืน response ให้ browser ลูกค้า
+    // ก็ต่อเมื่อ return แล้วเท่านั้น ถ้ารอผลตรวจสลิปก่อน (เดิม) ลูกค้าที่เน็ตมือถือ/
+    // LINE in-app browser หลุดหรือสลับแอประหว่างรอ (ตรวจช้าเมื่อไหร่ยิ่งเสี่ยง) จะไม่
+    // เห็นหน้า "สั่งซื้อสำเร็จ" เลย ทั้งที่ออเดอร์บันทึกจริงแล้วเสมอ (เขียนไปแล้วด้านบน)
+    // — ตอบกลับทันทีตรงนี้แทน (ก่อนตรวจสลิป) ให้หน้า success ขึ้นชัวร์ทุกครั้ง แล้วให้
+    // trigger เป็นคนตรวจสลิป + ส่ง LINE ยืนยันผลทีหลัง (ข้อความเดียวกับเดิมทุกประการ
+    // ผ่าน notifyCustomer() — ดู processPendingSlipVerifications())
     if (hasSlip) {
-      var verified = _verifyAndClassifySlip_(data.slipBase64, data.total);
-      slipStatus = verified.slipStatus;
-      slipNote   = verified.slipNote;
-      slipAmount = verified.slipAmount;
-      slipTxnId  = verified.slipTxnId;
-      slipDate   = verified.slipDate;
-
-      newOrder.slip_status = slipStatus;
-      newOrder.slip_amount = slipAmount || null;
-      newOrder.slip_txn_id = slipTxnId || null;
-      newOrder.notes       = slipNote || null;
-
-      instantReady = slipStatus === "ยืนยัน" && _tryInstantReady_(newOrder, branchCoverage.covered);
-
+      // บันทึกรูปสลิปขึ้น Drive ทันที (เร็ว — แค่ Drive API ไม่ใช่ SlipOK/Claude ที่ช้า)
+      // เก็บ slip_url ไว้ให้ trigger อ่านไฟล์กลับมาตรวจทีหลัง
       try {
         slipUrl = saveSlipToDrive(data.slipBase64, orderId);
-        if (slipUrl) newOrder.slip_url = slipUrl;
-      } catch(_) {}
-
-      writeSupabaseOrder_(newOrder);
-    }
-
-    // LINE push หลัง release lock — ไม่ block order ถัดไป
-    try {
-      // แจ้งไฟแนนซ์ผ่าน Telegram แทน LINE (finance_line_id เดิม) — ไม่มีโควต้า
-      // ข้อความ/เดือนแบบ LINE OA และตอนนี้เด้งทุกออเดอร์ (ทั้งผ่าน/ไม่ผ่าน) ไม่ใช่
-      // แค่เคสมีปัญหาเหมือนก่อนหน้านี้ — ไฟแนนซ์ขอเห็นออเดอร์ทุกใบที่เข้ามา
-      var streamlitUrl = "https://waka-space.streamlit.app/orders";
-      if (TELEGRAM_FINANCE_CHAT_ID) {
-        var itemsSummary = (data.items || []).map(function(i) {
-          var u = i.type === "box" ? "กล่อง" : "ซอง";
-          return "  - " + i.name + " (" + u + ") x" + (i.qty || 1);
-        }).join("\n");
-
-        var transferAgo = "";
-        if (slipDate) {
-          try {
-            var now = new Date();
-            var slip = new Date(slipDate);
-            if (!isNaN(slip.getTime())) {
-              var diffMs = now.getTime() - slip.getTime();
-              var diffMin = Math.floor(diffMs / 60000);
-              if (diffMin < 1) transferAgo = "โอนเมื่อสักครู่";
-              else if (diffMin < 60) transferAgo = "โอนเมื่อ " + diffMin + " นาทีที่แล้ว";
-              else if (diffMin < 1440) transferAgo = "โอนเมื่อ " + Math.floor(diffMin / 60) + " ชั่วโมงที่แล้ว";
-              else transferAgo = "⚠️ โอนเมื่อ " + Math.floor(diffMin / 1440) + " วันที่แล้ว!";
-            }
-          } catch(_) {}
+        if (slipUrl) {
+          newOrder.slip_url = slipUrl;
+          writeSupabaseOrder_(newOrder);
         }
-
-        var finMsg2;
-        if (slipStatus === "ยืนยัน") {
-          finMsg2 = "✅ ออเดอร์ผ่านอัตโนมัติ #" + orderId
-            + "\nลูกค้า: " + (data.displayName || "") + (data.realName ? " (" + data.realName + ")" : "")
-            + "\nสาขา: " + (data.branch || "")
-            + "\nยอด: " + data.total + " บาท"
-            + "\n\n" + itemsSummary;
-          if (slipNote) finMsg2 += "\n\n📋 " + slipNote;
-        } else {
-          var problemLabel = {
-            "ยอดไม่ตรง": "💰 ยอดเงินไม่ตรง",
-            "บัญชีไม่ตรง": "🏦 บัญชีไม่ตรง",
-            "สลิปซ้ำ": "🔁 สลิปซ้ำ (เลขอ้างอิงเคยใช้แล้ว)",
-            "สงสัยปลอม": "🚨 สงสัยสลิปปลอม",
-            "รอตรวจ": "🔍 อ่านสลิปไม่ได้",
-            "รอตรวจเพิ่ม": "🔍 ต้องตรวจเพิ่ม",
-            "ไม่มีสลิป": "📩 ไม่ได้แนบสลิป"
-          };
-          var icon = slipStatus === "ไม่มีสลิป" ? "📩" : "⚠️";
-          finMsg2 = icon + " ออเดอร์มีปัญหา #" + orderId
+      } catch(_) {}
+    } else {
+      // ไม่มีสลิป — ไม่มีอะไรช้า (ไม่ต้องรอ SlipOK/Claude) แจ้ง LINE/Telegram ทันทีได้เลย
+      // เหมือนเดิมทุกประการ ไม่ได้รับผลกระทบจากการย้ายไป async ด้านบน
+      try {
+        var streamlitUrl = "https://waka-space.streamlit.app/orders";
+        if (TELEGRAM_FINANCE_CHAT_ID) {
+          var itemsSummary = (data.items || []).map(function(i) {
+            var u = i.type === "box" ? "กล่อง" : "ซอง";
+            return "  - " + i.name + " (" + u + ") x" + (i.qty || 1);
+          }).join("\n");
+          var finMsg2 = "📩 ออเดอร์มีปัญหา #" + orderId
             + "\nลูกค้า: " + (data.displayName || "") + (data.realName ? " (" + data.realName + ")" : "")
             + "\nสาขา: " + (data.branch || "")
             + "\nยอด: " + data.total + " บาท"
             + "\n\n" + itemsSummary
-            + "\n\n❌ ปัญหา: " + (problemLabel[slipStatus] || slipStatus);
-          if (slipNote) finMsg2 += "\n📋 " + slipNote;
+            + "\n\n❌ ปัญหา: 📩 ไม่ได้แนบสลิป"
+            + "\n\nตรวจสอบ:\n" + streamlitUrl;
+          _telegramPush(TELEGRAM_FINANCE_CHAT_ID, finMsg2);
         }
-        if (slipDate) finMsg2 += "\n\n📅 วันที่โอน: " + slipDate;
-        if (transferAgo) finMsg2 += "\n⏱️ " + transferAgo;
-        finMsg2 += "\n\nตรวจสอบ:\n" + streamlitUrl;
-        _telegramPush(TELEGRAM_FINANCE_CHAT_ID, finMsg2);
-      }
-      if (data.lineUserId) notifyCustomer(data.lineUserId, { orderId: orderId, items: data.items, displayName: data.displayName, branch: data.branch, address: data.address, total: data.total, slipStatus: slipStatus, instantReady: instantReady });
-      if (slipStatus === "ยืนยัน") _notifyBranchRestockNeeded_(newOrder, branchCoverage.covered);
-    } catch(_) {}
+        if (data.lineUserId) notifyCustomer(data.lineUserId, { orderId: orderId, items: data.items, displayName: data.displayName, branch: data.branch, address: data.address, total: data.total, slipStatus: slipStatus, instantReady: false });
+      } catch(_) {}
+    }
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ success: true, orderId: orderId, slipStatus: slipStatus })));
   } catch (err) {
@@ -1371,6 +1328,138 @@ function installCleanupTrigger() {
     .timeBased()
     .everyDays(1)
     .atHour(3)
+    .create();
+}
+
+// ── ตรวจสลิปแบบ async (time-driven trigger, รันทุก 1 นาที) ──────────────────
+// เดิม doPost ตรวจสลิป (SlipOK → fallback Claude vision ถ้า SlipOK ไม่ผ่าน) แบบ
+// synchronous ก่อน return response — ยิ่งตรวจช้า (fallback Claude) ลูกค้าที่เน็ต
+// มือถือ/LINE in-app browser หลุดหรือสลับแอประหว่างรอยิ่งเสี่ยงไม่เห็นหน้า "สั่งซื้อ
+// สำเร็จ" เลย ทั้งที่ออเดอร์บันทึกจริงแล้วเสมอ (ดูคอมเมนต์ใน doPost) — ตอนนี้ doPost
+// ตอบกลับทันทีหลังบันทึกออเดอร์ (สถานะ "รอตรวจ") แล้วปล่อยให้ trigger นี้เป็นคนตรวจ
+// สลิปจริง + ส่ง LINE ยืนยันผลทีหลัง (ข้อความเดียวกับเดิมทุกประการ ผ่าน
+// notifyCustomer() — ไม่ได้แยกส่งเป็น 2 ข้อความ)
+//
+// ติดตั้ง trigger ด้วย installSlipVerificationTrigger() (รันมือครั้งเดียว)
+function processPendingSlipVerifications() {
+  // กัน trigger 2 รอบทับซ้อนกันประมวลผลออเดอร์เดียวกัน (เช่นรอบก่อนยังไม่จบ)
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(0)) return;
+
+  try {
+    // batch จำกัด 5 ออเดอร์/รอบ กัน trigger รันเกินเวลาที่ Apps Script อนุญาต —
+    // ออเดอร์ที่เหลือถูกหยิบไปทำในรอบถัดไป (ทุก 1 นาที) — ไม่กรอง slip_url ที่นี่
+    // (บาง order อาจ saveSlipToDrive พลาดแล้ว slip_url ว่าง — ให้เข้าไปเช็คในลูปแทน
+    // จะได้ log ให้เห็นสาเหตุ แทนที่จะหายไปเงียบๆ จาก query เลย)
+    var pending = supabaseSelect_("orders", "select=order_id&slip_status=eq.รอตรวจ&order=timestamp.asc&limit=5");
+
+    pending.forEach(function(row) {
+      var orderId = row.order_id;
+      try {
+        var order = getSupabaseOrder_(orderId);
+        if (!order) return;
+        // เช็คซ้ำ — เผื่อแอดมินกด handleConfirmSlip/handleRejectSlip เองไปแล้ว
+        // ระหว่างที่ order นี้เข้าคิวรอ trigger รอบนี้อยู่ (กัน LINE ซ้ำซ้อน)
+        if (order.slip_status !== "รอตรวจ") return;
+
+        var slipBase64 = _fetchDriveFileAsBase64_(order.slip_url);
+        if (!slipBase64) {
+          Logger.log("processPendingSlipVerifications(" + orderId + "): ไม่มี/อ่าน slip_url ไม่ได้ (" + order.slip_url + ") — ข้ามรอบนี้");
+          return; // ยังค้าง "รอตรวจ" ต่อไป เห็นได้บน dashboard ฝั่งแอดมิน (pending list เดิม)
+        }
+
+        var verified = _verifyAndClassifySlip_(slipBase64, order.total);
+        order.slip_status = verified.slipStatus;
+        order.slip_amount = verified.slipAmount || null;
+        order.slip_txn_id = verified.slipTxnId || null;
+        order.notes       = verified.slipNote || null;
+
+        var instantReady = verified.slipStatus === "ยืนยัน" && _tryInstantReady_(order);
+        writeSupabaseOrder_(order);
+
+        if (order.line_user_id) {
+          notifyCustomer(order.line_user_id, {
+            orderId: orderId, items: order.items_json, displayName: order.display_name,
+            branch: order.branch, address: order.address, total: order.total,
+            slipStatus: order.slip_status, instantReady: instantReady,
+          });
+        }
+
+        // แจ้งไฟแนนซ์ผ่าน Telegram — เนื้อหา/เงื่อนไขเดิมทุกอย่างจาก doPost (ย้ายมา
+        // ที่นี่เพราะตอนนี้ต้องรอผลตรวจสลิปจริงก่อนถึงจะส่งได้)
+        if (TELEGRAM_FINANCE_CHAT_ID) {
+          var itemsSummary = (Array.isArray(order.items_json) ? order.items_json : []).map(function(i) {
+            var u = i.type === "box" ? "กล่อง" : "ซอง";
+            return "  - " + i.name + " (" + u + ") x" + (i.qty || 1);
+          }).join("\n");
+          var streamlitUrl = "https://waka-space.streamlit.app/orders";
+          var finMsg2;
+          if (order.slip_status === "ยืนยัน") {
+            finMsg2 = "✅ ออเดอร์ผ่านอัตโนมัติ #" + orderId
+              + "\nลูกค้า: " + (order.display_name || "") + (order.real_name ? " (" + order.real_name + ")" : "")
+              + "\nสาขา: " + (order.branch || "")
+              + "\nยอด: " + order.total + " บาท"
+              + "\n\n" + itemsSummary;
+            if (order.notes) finMsg2 += "\n\n📋 " + order.notes;
+          } else {
+            var problemLabel = {
+              "ยอดไม่ตรง": "💰 ยอดเงินไม่ตรง",
+              "บัญชีไม่ตรง": "🏦 บัญชีไม่ตรง",
+              "สลิปซ้ำ": "🔁 สลิปซ้ำ (เลขอ้างอิงเคยใช้แล้ว)",
+              "สงสัยปลอม": "🚨 สงสัยสลิปปลอม",
+              "รอตรวจ": "🔍 อ่านสลิปไม่ได้",
+              "รอตรวจเพิ่ม": "🔍 ต้องตรวจเพิ่ม",
+            };
+            finMsg2 = "⚠️ ออเดอร์มีปัญหา #" + orderId
+              + "\nลูกค้า: " + (order.display_name || "") + (order.real_name ? " (" + order.real_name + ")" : "")
+              + "\nสาขา: " + (order.branch || "")
+              + "\nยอด: " + order.total + " บาท"
+              + "\n\n" + itemsSummary
+              + "\n\n❌ ปัญหา: " + (problemLabel[order.slip_status] || order.slip_status);
+            if (order.notes) finMsg2 += "\n📋 " + order.notes;
+          }
+          if (verified.slipDate) finMsg2 += "\n\n📅 วันที่โอน: " + verified.slipDate;
+          finMsg2 += "\n\nตรวจสอบ:\n" + streamlitUrl;
+          _telegramPush(TELEGRAM_FINANCE_CHAT_ID, finMsg2);
+        }
+
+        if (order.slip_status === "ยืนยัน") _notifyBranchRestockNeeded_(order, instantReady);
+      } catch (e) {
+        Logger.log("processPendingSlipVerifications(" + orderId + ") failed: " + e.message);
+      }
+    });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ดึงไฟล์กลับจาก Drive (ที่ saveSlipToDrive อัปโหลดไว้ตอน doPost) มาเป็น base64
+// สำหรับส่งเข้า SlipOK/Claude — parse Drive file id ออกจาก URL รูปแบบ
+// "thumbnail?id=XXXX&sz=..." ที่ saveSlipToDrive คืนมา
+function _fetchDriveFileAsBase64_(driveUrl) {
+  var m = String(driveUrl || "").match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (!m) return "";
+  try {
+    var bytes = DriveApp.getFileById(m[1]).getBlob().getBytes();
+    return Utilities.base64Encode(bytes);
+  } catch (e) {
+    Logger.log("_fetchDriveFileAsBase64_(" + driveUrl + ") failed: " + e.message);
+    return "";
+  }
+}
+
+// ── ติดตั้ง trigger ให้ processPendingSlipVerifications() รันเองทุก 1 นาที ──────
+// รันฟังก์ชันนี้ "ครั้งเดียว" จาก Apps Script editor (Run → installSlipVerificationTrigger)
+// — ลบ trigger ชื่อเดิมทิ้งก่อนสร้างใหม่เสมอ กันเผลอรันซ้ำแล้วได้ trigger ซ้ำหลายตัว
+// (เหมือน installCleanupTrigger() ด้านบน) — 1 นาทีคือความถี่ละเอียดสุดที่ Apps
+// Script time-driven trigger รองรับ
+function installSlipVerificationTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === "processPendingSlipVerifications") ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger("processPendingSlipVerifications")
+    .timeBased()
+    .everyMinutes(1)
     .create();
 }
 
@@ -2837,7 +2926,11 @@ function handleReceiveShipment(data) {
       stockLookup[r.name] = { qty_box: Number(r.qty_box) || 0, qty_pack: Number(r.qty_pack) || 0 };
     });
     var oMatches = supabaseSelect_("orders", "select=*&branch=eq." + encodeURIComponent(branch) + "&slip_status=eq.ยืนยัน&order=timestamp.asc");
-    var pendingNotifications = [];
+    // ไม่ส่ง LINE แจ้งลูกค้าที่นี่แล้วตามคำขอเจ้าของร้าน (2026-08-27) — จุดนี้
+    // (พนักงานกดรับของล็อตที่สาขา) จะประกาศผ่าน OpenChat แทน ยัง mark
+    // fulfillment = "พร้อมรับ" ตามปกติ (ให้ระบบรู้สถานะถูกต้อง แสดงในแอดมิน/
+    // liff ตามเดิม) แค่ไม่ยิง LINE ส่วนนี้ให้ลูกค้าเท่านั้น
+    var readyCount = 0;
     for (var j = 0; j < oMatches.length; j++) {
       var ord = oMatches[j];
       var oFf = ord.fulfillment || "";
@@ -2857,16 +2950,10 @@ function handleReceiveShipment(data) {
       ord.fulfilled_at = now;
       var ordRes = pushToSupabase_("orders", ord);
       if (!ordRes.ok) throw new Error("Supabase orders write failed: " + ordRes.text);
-      var uid = ord.line_user_id || "";
-      var oid = String(ord.order_id || "");
-      if (uid) {
-        var trackUrl = "https://waka-liff.vercel.app/confirm.html?order=" + oid;
-        pendingNotifications.push({ uid: uid, msg: "สินค้าพร้อมรับที่สาขา" + branch + " แล้ว!\n\nออเดอร์: #" + oid + "\n\nดูสถานะ:\n" + trackUrl + "\n\nสามารถแจ้งเลขที่ออเดอร์ เพื่อรับสินค้าที่สาขาได้เลยครับ" });
-      }
+      readyCount++;
     }
 
     lock.releaseLock();
-    pendingNotifications.forEach(function(n) { _linePush(n.uid, n.msg); });
 
     var groupStaffReceive = _getConfigValue(null, "group_staff_live");
     if (groupStaffReceive && staffName) {
@@ -2883,7 +2970,7 @@ function handleReceiveShipment(data) {
 
     _logStaffAction_(staffName, branch, "receive_shipment", data.shipment_id, null);
 
-    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now, notified_count: pendingNotifications.length })));
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: now, ready_count: readyCount })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
@@ -3233,6 +3320,24 @@ function handleConfirmSlip(data) {
       }
     }
 
+    // แจ้ง Telegram ไฟแนนซ์ด้วย — เดิมเส้นทางกดมือนี้ไม่เคยแจ้ง Telegram เลย
+    // (มีแต่เส้นทางตรวจอัตโนมัติใน processPendingSlipVerifications ที่แจ้ง) ทำให้
+    // ออเดอร์ที่แอดมิน/พนักงานกดยืนยันเองก่อน trigger จะไปถึง ไม่มีร่องรอยใน
+    // Telegram เลย — เพิ่มให้ครบทุกเส้นทางที่สลิปกลายเป็น "ยืนยัน"
+    if (TELEGRAM_FINANCE_CHAT_ID) {
+      var itemsSummaryConfirm = items.map(function(i) {
+        var u = i.type === "box" ? "กล่อง" : "ซอง";
+        return "  - " + i.name + " (" + u + ") x" + (i.qty || 1);
+      }).join("\n");
+      var finMsgConfirm = "✅ ยืนยันสลิปโดยแอดมิน #" + orderId
+        + "\nลูกค้า: " + (order.display_name || "") + (order.real_name ? " (" + order.real_name + ")" : "")
+        + "\nสาขา: " + (branch || "")
+        + "\nยอด: " + total + " บาท"
+        + "\n\n" + itemsSummaryConfirm
+        + "\n\n👤 ยืนยันโดย: " + (confirmStaffName || "ไม่ระบุชื่อ");
+      _telegramPush(TELEGRAM_FINANCE_CHAT_ID, finMsgConfirm);
+    }
+
     writeSupabaseOrder_(order, lock);
     _logStaffAction_(confirmStaffName, branch, "confirm_slip", orderId, null);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
@@ -3288,6 +3393,22 @@ function handleRejectSlip(data) {
       var msg = "🙏 แอดมินขออนุญาตยกเลิกออเดอร์ #" + orderId + " หากมีข้อสงสัยหรือต้องการสอบถามเพิ่มเติม ติดต่อแอดมินได้เลยครับ" + reasonLine +
         "\n\nขออภัยลูกค้าด้วยนะครับ ขอบคุณครับ 💛";
       _linePush(uid, msg);
+    }
+
+    // แจ้ง Telegram ไฟแนนซ์ด้วย — เหตุผลเดียวกับ handleConfirmSlip ด้านบน
+    if (TELEGRAM_FINANCE_CHAT_ID) {
+      var itemsSummaryReject = (Array.isArray(order.items_json) ? order.items_json : []).map(function(i) {
+        var u = i.type === "box" ? "กล่อง" : "ซอง";
+        return "  - " + i.name + " (" + u + ") x" + (i.qty || 1);
+      }).join("\n");
+      var finMsgReject = "❌ ปฏิเสธ/ยกเลิกสลิปโดยแอดมิน #" + orderId
+        + "\nลูกค้า: " + (order.display_name || "") + (order.real_name ? " (" + order.real_name + ")" : "")
+        + "\nสาขา: " + (order.branch || "")
+        + "\nยอด: " + (order.total || 0) + " บาท"
+        + "\n\n" + itemsSummaryReject
+        + (reason ? "\n\nเหตุผล: " + reason : "")
+        + "\n\n👤 โดย: " + (rejectStaffName || "ไม่ระบุชื่อ");
+      _telegramPush(TELEGRAM_FINANCE_CHAT_ID, finMsgReject);
     }
 
     writeSupabaseOrder_(order, lock);
