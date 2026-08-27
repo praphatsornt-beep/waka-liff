@@ -488,13 +488,15 @@ def home():
 
     # ── 2. ออเดอร์ ─────────────────────────────────────────────────────────
     st.markdown(section_label("🛒 ออเดอร์"), unsafe_allow_html=True)
-    st.markdown(action_card("ออเดอร์รอตรวจสลิป", orders.get("pending_count"), "/orders"), unsafe_allow_html=True)
-    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-    st.markdown(summary_card(
-        "📦", "ออเดอร์วันนี้", orders.get("orders_today", 0), "ออเดอร์", f"฿{revenue_today:,.0f}",
-        "รอตรวจสลิป", orders.get("pending_count", 0), PENDING_TEXT,
-        "ยอดขาย", f"฿{orders.get('revenue_today', 0):,.0f}", SUCCESS_TEXT,
-    ), unsafe_allow_html=True)
+    oc1, oc2 = st.columns([1, 1.4])
+    with oc1:
+        st.markdown(action_card("ออเดอร์รอตรวจสลิป", orders.get("pending_count"), "/orders"), unsafe_allow_html=True)
+    with oc2:
+        st.markdown(summary_card(
+            "📦", "ออเดอร์วันนี้", orders.get("orders_today", 0), "ออเดอร์", f"฿{revenue_today:,.0f}",
+            "รอตรวจสลิป", orders.get("pending_count", 0), PENDING_TEXT,
+            "ยอดขาย", f"฿{orders.get('revenue_today', 0):,.0f}", SUCCESS_TEXT,
+        ), unsafe_allow_html=True)
 
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
@@ -557,14 +559,16 @@ def home():
 
     # ── 3. ทัวร์นาเมนต์ (ล่างสุด) ──────────────────────────────────────────
     st.markdown(section_label("🏆 ทัวร์นาเมนต์"), unsafe_allow_html=True)
-    st.markdown(action_card("ผู้สมัครรอยืนยันสลิป", tourney.get("pending_applicants"), "/tournament"), unsafe_allow_html=True)
-    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-    st.markdown(summary_card(
-        "🏆", "ทัวร์นาเมนต์", tourney.get("open_count", 0), "งานเปิดรับสมัคร",
-        f"จากทั้งหมด {tourney.get('total_count', 0)} งาน",
-        "รอยืนยันสลิป", tourney.get("pending_applicants") if tourney.get("pending_applicants") is not None else "—", PENDING_TEXT,
-        "เปิดรับสมัคร", tourney.get("open_count", 0), SUCCESS_TEXT,
-    ), unsafe_allow_html=True)
+    tc1, tc2 = st.columns([1, 1.4])
+    with tc1:
+        st.markdown(action_card("ผู้สมัครรอยืนยันสลิป", tourney.get("pending_applicants"), "/tournament"), unsafe_allow_html=True)
+    with tc2:
+        st.markdown(summary_card(
+            "🏆", "ทัวร์นาเมนต์", tourney.get("open_count", 0), "งานเปิดรับสมัคร",
+            f"จากทั้งหมด {tourney.get('total_count', 0)} งาน",
+            "รอยืนยันสลิป", tourney.get("pending_applicants") if tourney.get("pending_applicants") is not None else "—", PENDING_TEXT,
+            "เปิดรับสมัคร", tourney.get("open_count", 0), SUCCESS_TEXT,
+        ), unsafe_allow_html=True)
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     st.markdown(
         open_tournaments_card(tourney.get("open_events", []), tourney.get("regs_by_event", {})),
