@@ -392,91 +392,67 @@ def load_quota_status():
         return {"_error": str(e)}
 
 
-def quota_status_card(quota: dict) -> str:
-    if not quota or "_error" in quota:
-        err = (quota or {}).get("_error", "ไม่ทราบสาเหตุ")
-        return flat(f"""<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:14px;padding:16px 20px">
-        <div style="font-weight:600;font-size:14.5px;margin-bottom:6px">โควต้าเดือนนี้</div>
-        <div style="font-size:12.5px;color:{TEXT3}">โหลดไม่ได้: {err} (ต้อง deploy gas/Code.gs เวอร์ชันล่าสุดก่อน — action=quota_status เพิ่งเพิ่มใหม่)</div>
-        </div>""")
-
-    rows_html = ""
-    for item in quota.get("line", []):
-        label = item.get("label", "")
-        if item.get("error"):
-            rows_html += f"""
-            <div style="margin-bottom:14px">
-              <div style="font-size:13px;font-weight:600">LINE {label}</div>
-              <div style="font-size:12px;color:{TEXT3}">โหลดไม่ได้: {item['error']}</div>
-            </div>
-            """
-            continue
-        limit, used = item.get("limit"), item.get("used", 0)
-        if limit is None:
-            rows_html += f"""
-            <div style="margin-bottom:14px">
-              <div style="display:flex;justify-content:space-between;font-size:13px">
-                <span style="font-weight:600">LINE {label}</span>
-                <span style="font-weight:700;color:{SUCCESS_TEXT}">ไม่จำกัด (ใช้ {used:,})</span>
-              </div>
-            </div>
-            """
-            continue
-        pct = min(100, round(used / limit * 100)) if limit else 0
-        color = DANGER_TEXT if pct >= 90 else (PENDING_TEXT if pct >= 70 else SUCCESS_TEXT)
-        rows_html += f"""
-        <div style="margin-bottom:14px">
-          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
-            <span style="font-weight:600">LINE {label}</span>
-            <span style="font-weight:700;color:{color}">{used:,} / {limit:,}</span>
-          </div>
-          <div style="height:7px;background:{DIVIDER};border-radius:4px;overflow:hidden">
-            <div style="height:100%;background:{color};width:{pct}%"></div>
-          </div>
-        </div>
-        """
-
-    slipok = quota.get("slipok") or {}
-    if slipok.get("error"):
-        rows_html += f"""
-        <div>
-          <div style="font-size:13px;font-weight:600">SlipOK</div>
-          <div style="font-size:12px;color:{TEXT3}">โหลดไม่ได้: {slipok['error']}</div>
-        </div>
-        """
-    elif slipok.get("raw") is not None:
-        # Shape confirmed live 2026-08-28: {"success":true,"data":{"quota":N,
-        # "specialQuota":N,"overQuota":N,"endDate":"YYYY-MM-DD","specialEndDate":"..."}}
-        # — no fixed monthly limit is returned, only remaining quota + the date
-        # it resets (the 25th of each month per the account owner). Fall back
-        # to a raw JSON dump if SlipOK ever changes this shape unannounced.
-        sd = (slipok["raw"] or {}).get("data")
-        if isinstance(sd, dict) and "quota" in sd:
-            remaining = int(sd.get("quota", 0) or 0)
-            over = int(sd.get("overQuota", 0) or 0)
-            reset_date = sd.get("endDate", "")
-            color = DANGER_TEXT if remaining <= 10 else (PENDING_TEXT if remaining <= 50 else SUCCESS_TEXT)
-            rows_html += f"""
-            <div>
-              <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
-                <span style="font-weight:600">SlipOK</span>
-                <span style="font-weight:700;color:{color}">เหลือ {remaining:,}{f' (เกินโควต้าแล้ว {over:,})' if over else ''}</span>
-              </div>
-              {f'<div style="font-size:11px;color:{TEXT3}">รีเซทรอบถัดไป {reset_date}</div>' if reset_date else ''}
-            </div>
-            """
-        else:
-            rows_html += f"""
-            <div>
-              <div style="font-size:13px;font-weight:600;margin-bottom:5px">SlipOK</div>
-              <div style="font-size:11.5px;color:{TEXT3};font-family:monospace;white-space:pre-wrap;word-break:break-all">{json.dumps(slipok['raw'], ensure_ascii=False)}</div>
-            </div>
-            """
-
-    return flat(f"""<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:14px;padding:18px 20px">
-    <div style="font-weight:600;font-size:14.5px;margin-bottom:14px">โควต้าเดือนนี้</div>
-    {flat(rows_html)}
+def quota_error_card(err: str) -> str:
+    return flat(f"""<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:14px;padding:16px 20px">
+    <div style="font-weight:600;font-size:14.5px;margin-bottom:6px">โควต้าเดือนนี้</div>
+    <div style="font-size:12.5px;color:{TEXT3}">โหลดไม่ได้: {err} (ต้อง deploy gas/Code.gs เวอร์ชันล่าสุดก่อน — action=quota_status เพิ่งเพิ่มใหม่)</div>
     </div>""")
+
+
+def _quota_box(title: str, body_html: str) -> str:
+    return flat(f"""<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:14px;padding:16px 20px;height:100%">
+    <div style="font-weight:600;font-size:13.5px;margin-bottom:12px">{title}</div>
+    {flat(body_html)}
+    </div>""")
+
+
+def quota_line_box(item: dict) -> str:
+    label = item.get("label", "")
+    if item.get("error"):
+        return _quota_box(f"LINE {label}", f'<div style="font-size:12px;color:{TEXT3}">โหลดไม่ได้: {item["error"]}</div>')
+    limit, used = item.get("limit"), item.get("used", 0)
+    if limit is None:
+        body = f"""
+        <div style="font-weight:700;font-size:20px;color:{SUCCESS_TEXT};margin-bottom:4px">ไม่จำกัด</div>
+        <div style="font-size:12px;color:{TEXT3}">ใช้ไป {used:,} ข้อความ</div>
+        """
+        return _quota_box(f"LINE {label}", body)
+    pct = min(100, round(used / limit * 100)) if limit else 0
+    color = DANGER_TEXT if pct >= 90 else (PENDING_TEXT if pct >= 70 else SUCCESS_TEXT)
+    body = f"""
+    <div style="font-weight:700;font-size:20px;color:{color};margin-bottom:8px">{used:,} / {limit:,}</div>
+    <div style="height:7px;background:{DIVIDER};border-radius:4px;overflow:hidden">
+      <div style="height:100%;background:{color};width:{pct}%"></div>
+    </div>
+    """
+    return _quota_box(f"LINE {label}", body)
+
+
+def quota_slipok_box(slipok: dict) -> str:
+    slipok = slipok or {}
+    if slipok.get("error"):
+        return _quota_box("SlipOK", f'<div style="font-size:12px;color:{TEXT3}">โหลดไม่ได้: {slipok["error"]}</div>')
+    if slipok.get("raw") is None:
+        return _quota_box("SlipOK", f'<div style="font-size:12px;color:{TEXT3}">ไม่มีข้อมูล</div>')
+
+    # Shape confirmed live 2026-08-28: {"success":true,"data":{"quota":N,
+    # "specialQuota":N,"overQuota":N,"endDate":"YYYY-MM-DD","specialEndDate":"..."}}
+    # — no fixed monthly limit is returned, only remaining quota + the date it
+    # resets (the 25th of each month per the account owner). Fall back to a
+    # raw JSON dump if SlipOK ever changes this shape unannounced.
+    sd = (slipok["raw"] or {}).get("data")
+    if not (isinstance(sd, dict) and "quota" in sd):
+        body = f'<div style="font-size:11.5px;color:{TEXT3};font-family:monospace;white-space:pre-wrap;word-break:break-all">{json.dumps(slipok["raw"], ensure_ascii=False)}</div>'
+        return _quota_box("SlipOK", body)
+
+    remaining = int(sd.get("quota", 0) or 0)
+    over = int(sd.get("overQuota", 0) or 0)
+    reset_date = sd.get("endDate", "")
+    color = DANGER_TEXT if remaining <= 10 else (PENDING_TEXT if remaining <= 50 else SUCCESS_TEXT)
+    body = f'<div style="font-weight:700;font-size:20px;color:{color};margin-bottom:6px">เหลือ {remaining:,}{f" (เกินโควต้าแล้ว {over:,})" if over else ""}</div>'
+    if reset_date:
+        body += f'<div style="font-size:12px;color:{TEXT3}">รีเซทรอบถัดไป {reset_date}</div>'
+    return _quota_box("SlipOK", body)
 
 
 def home():
@@ -494,8 +470,21 @@ def home():
     def section_label(text: str) -> str:
         return f'<div style="font-size:13px;font-weight:700;color:{TEXT2};margin:8px 0 10px">{text}</div>'
 
-    # ── 1. โควต้าระบบ (บนสุด) ──────────────────────────────────────────────
-    st.markdown(quota_status_card(load_quota_status()), unsafe_allow_html=True)
+    # ── 1. โควต้าระบบ (บนสุด) — 3 กล่องแยกอยู่แถวเดียวกัน (LINE ลูกค้า/staff/SlipOK) ──
+    qdata = load_quota_status()
+    if not qdata or "_error" in qdata:
+        st.markdown(quota_error_card((qdata or {}).get("_error", "ไม่ทราบสาเหตุ")), unsafe_allow_html=True)
+    else:
+        line_items = qdata.get("line", [])
+        qc1, qc2, qc3 = st.columns(3)
+        with qc1:
+            item = line_items[0] if len(line_items) > 0 else {"label": "ลูกค้า (WAKA ORDER)", "error": "ไม่มีข้อมูล"}
+            st.markdown(quota_line_box(item), unsafe_allow_html=True)
+        with qc2:
+            item = line_items[1] if len(line_items) > 1 else {"label": "staff (WAKA NOTI BOT)", "error": "ไม่มีข้อมูล"}
+            st.markdown(quota_line_box(item), unsafe_allow_html=True)
+        with qc3:
+            st.markdown(quota_slipok_box(qdata.get("slipok")), unsafe_allow_html=True)
     st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
 
     recent_orders = orders.get("recent_orders", [])
