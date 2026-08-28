@@ -445,16 +445,33 @@ def quota_status_card(quota: dict) -> str:
         </div>
         """
     elif slipok.get("raw") is not None:
-        # SlipOK's exact response shape was never normalized anywhere in this
-        # codebase (checkSlipOKQuota() in gas/Code.gs only ever logged it) —
-        # show the raw JSON rather than guessing at field names and risking
-        # a silently-wrong number on screen.
-        rows_html += f"""
-        <div>
-          <div style="font-size:13px;font-weight:600;margin-bottom:5px">SlipOK</div>
-          <div style="font-size:11.5px;color:{TEXT3};font-family:monospace;white-space:pre-wrap;word-break:break-all">{json.dumps(slipok['raw'], ensure_ascii=False)}</div>
-        </div>
-        """
+        # Shape confirmed live 2026-08-28: {"success":true,"data":{"quota":N,
+        # "specialQuota":N,"overQuota":N,"endDate":"YYYY-MM-DD","specialEndDate":"..."}}
+        # — no fixed monthly limit is returned, only remaining quota + the date
+        # it resets (the 25th of each month per the account owner). Fall back
+        # to a raw JSON dump if SlipOK ever changes this shape unannounced.
+        sd = (slipok["raw"] or {}).get("data")
+        if isinstance(sd, dict) and "quota" in sd:
+            remaining = int(sd.get("quota", 0) or 0)
+            over = int(sd.get("overQuota", 0) or 0)
+            reset_date = sd.get("endDate", "")
+            color = DANGER_TEXT if remaining <= 10 else (PENDING_TEXT if remaining <= 50 else SUCCESS_TEXT)
+            rows_html += f"""
+            <div>
+              <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
+                <span style="font-weight:600">SlipOK</span>
+                <span style="font-weight:700;color:{color}">เหลือ {remaining:,}{f' (เกินโควต้าแล้ว {over:,})' if over else ''}</span>
+              </div>
+              {f'<div style="font-size:11px;color:{TEXT3}">รีเซทรอบถัดไป {reset_date}</div>' if reset_date else ''}
+            </div>
+            """
+        else:
+            rows_html += f"""
+            <div>
+              <div style="font-size:13px;font-weight:600;margin-bottom:5px">SlipOK</div>
+              <div style="font-size:11.5px;color:{TEXT3};font-family:monospace;white-space:pre-wrap;word-break:break-all">{json.dumps(slipok['raw'], ensure_ascii=False)}</div>
+            </div>
+            """
 
     return flat(f"""<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:14px;padding:18px 20px">
     <div style="font-weight:600;font-size:14.5px;margin-bottom:14px">โควต้าเดือนนี้</div>
