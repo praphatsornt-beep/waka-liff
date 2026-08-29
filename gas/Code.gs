@@ -1752,10 +1752,27 @@ function handleApi(params) {
     var branchFilter = params.branch || "";
     if (!branchFilter) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing branch" })));
     if (!_branchAuthorized(params.code, branchFilter)) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
-    var boSb = supabaseSelect_("orders", "select=order_id,real_name,display_name,phone,items_json,total,fulfillment,staff_confirmed_at,customer_confirmed_at,timestamp,notified_at&branch=eq." + encodeURIComponent(branchFilter) + "&slip_status=eq.ยืนยัน&order=timestamp.desc");
+    // "ทั้งหมด" = แอดมินดูทุกสาขารวมกัน (_branchAuthorized ผ่านเฉพาะ ADMIN_CODE
+    // เพราะไม่มีรหัสสาขาไหน map ไปที่ค่านี้) — เดิม client (liff/app.html) ยิง
+    // request แยกทีละสาขา 4 รอบพร้อมกันแล้วรวมเองฝั่ง browser ทำให้ช้ากว่าดู
+    // สาขาเดียวชัดเจน (overhead ของ Apps Script web app ต่อ request ค่อนข้างสูง)
+    // — รวมเป็น query เดียวที่นี่แทน ระบุ branch=in.(...) เจาะจง 3 สาขาจริง +
+    // "จัดส่ง" (ไม่ใช่ทุกค่า branch ที่มีในตาราง กันข้อมูลเก่า/ผิดปกติหลุดเข้ามา)
+    // ให้ผลลัพธ์เหมือนเดิมทุกประการ แค่เร็วกว่า — ต้องคืนคอลัมน์ branch มาด้วย
+    // (เดิมไม่คืนเพราะ client เป็นคนกำกับเองจาก branch ที่วน loop ยิงไป)
+    var boIsAll = branchFilter === "ทั้งหมด";
+    var boQuery = "select=order_id,branch,real_name,display_name,phone,items_json,total,fulfillment,staff_confirmed_at,customer_confirmed_at,timestamp,notified_at&slip_status=eq.ยืนยัน&order=timestamp.desc";
+    boQuery += boIsAll
+      ? "&branch=in.(" + BRANCHES.concat(["จัดส่ง"]).map(encodeURIComponent).join(",") + ")"
+      : "&branch=eq." + encodeURIComponent(branchFilter);
+    var boSb = supabaseSelect_("orders", boQuery);
     var boOrders = boSb.map(function(r) {
       return {
         order_id: String(r.order_id || ""),
+        // เดิม single-branch view ไม่คืน branch เลย (client ไม่เคยแท็กเองด้วย) —
+        // การ์ดออเดอร์เลยไม่โชว์ badge สาขาซ้ำตอนดูสาขาเดียว (รู้อยู่แล้วว่าดู
+        // สาขาไหน) คงพฤติกรรมเดิมไว้ ให้มีค่าเฉพาะโหมด "ทั้งหมด" เท่านั้น
+        branch: boIsAll ? String(r.branch || "") : "",
         real_name: String(r.real_name || ""),
         display_name: String(r.display_name || ""),
         phone: String(r.phone || ""),

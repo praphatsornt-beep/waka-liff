@@ -355,6 +355,9 @@
             <button class="br-order-tab active" id="brTabPending" onclick="setBrOrdersTab('pending')">ออเดอร์ค้างส่ง</button>
             <button class="br-order-tab" id="brTabAll" onclick="setBrOrdersTab('all')">ประวัติทั้งหมด</button>
           </div>
+          <select id="brOrdersProductFilter" class="branch-sel" style="margin:8px 0" onchange="setBrOrdersProductFilter(this.value)">
+            <option value="">สินค้าทั้งหมด</option>
+          </select>
           <div id="brOrdersList"><div class="empty">กำลังโหลด...</div></div>
         </div>
         <div id="brHandover" style="display:none">
@@ -1239,7 +1242,30 @@ function onBranchChange() {
 
 let _brOrdersAll = [];
 let _brOrdersTab = 'pending';
+let _brOrdersProductFilter = '';
 const _brOrdersDoneStatuses = ['รับแล้ว','สาขายืนยัน','ยกเลิก'];
+
+function _brOrdersItemsOf(o) {
+  try { return JSON.parse(o.items_json || '[]'); } catch(_) { return []; }
+}
+
+// เติม option ตัวกรองสินค้าจากรายชื่อสินค้าจริงที่อยู่ในออเดอร์ที่โหลดมา (ไม่ใช่
+// รายการสินค้าทั้งหมดในระบบ) — เรียกทุกครั้งหลัง loadBrOrders โหลดข้อมูลใหม่
+function _populateBrOrdersProductFilter() {
+  const names = new Set();
+  _brOrdersAll.forEach(o => _brOrdersItemsOf(o).forEach(it => { if (it.name) names.add(it.name); }));
+  const sel = gid('brOrdersProductFilter');
+  const sorted = Array.from(names).sort((a,b) => a.localeCompare(b, 'th'));
+  sel.innerHTML = '<option value="">สินค้าทั้งหมด</option>' +
+    sorted.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  sel.value = _brOrdersProductFilter; // ถ้าค่าที่เคยเลือกไม่มีในสาขานี้แล้ว browser จะ reset เป็น "" เอง
+  _brOrdersProductFilter = sel.value;
+}
+
+function setBrOrdersProductFilter(name) {
+  _brOrdersProductFilter = name;
+  renderBrOrdersList();
+}
 // นับ request เพื่อกัน race condition: โหมด "ทั้งหมด" ยิง 3 request พร้อมกัน
 // (Promise.all) ช้ากว่าการดูสาขาเดียว (1 request) — ถ้า admin ดู "ทั้งหมด"
 // แล้วรีบสลับไปสาขาใดสาขาหนึ่งก่อนที่ request แรกจะเสร็จ ผลลัพธ์ของ "ทั้งหมด"
@@ -1267,33 +1293,35 @@ async function loadBrOrders() {
       // กับที่เลือกไว้เลย (ตัว dropdown เองก็มีตัวเลือก "ทั้งหมด" แยกต่างหากอยู่
       // แล้ว — จุดอื่นในไฟล์นี้ เช่น openBrView ก็ใช้ b==='ทั้งหมด' เป็นตัวเช็ค
       // "โหมดทุกสาขา" เหมือนกัน จุดนี้เป็นจุดเดียวที่ไม่ได้เช็คตามนั้น)
-      // ออเดอร์จัดส่ง (branch === "จัดส่ง") ไม่ได้อยู่ใน ALL_BRANCHES (นั่นคือ
-      // สาขาจริง 3 แห่งสำหรับ stock/walk-in) แต่ต้องรวมมาด้วยเฉพาะที่นี่ (มุมมอง
-      // "ทั้งหมด" ของออเดอร์) ไม่งั้น admin จะไม่เห็นออเดอร์จัดส่งเลยตอนดูทุกสาขา
-      const branches = ALL_BRANCHES.concat(['จัดส่ง']);
-      const results = await Promise.all(branches.map(async br => {
-        const r = await fetch(G+'&action=api&do=branch_orders&branch='+encodeURIComponent(br)+'&code='+encodeURIComponent(_authCode()));
-        const d = await r.json();
-        return (d.orders || []).map(o => Object.assign({}, o, { branch: br }));
-      }));
+      // เดิมยิง 4 request แยกทีละสาขา (Promise.all) แล้วรวม+แท็ก branch เอง
+      // ฝั่ง browser — ช้ากว่าดูสาขาเดียวชัดเจน (overhead ของ Apps Script web
+      // app ต่อ request สูง) — ตอนนี้ GAS รวม query เป็นครั้งเดียวให้แล้ว
+      // (branch=ทั้งหมด คืนทุกสาขาจริง + "จัดส่ง" พร้อม field branch มาด้วยเลย
+      // เรียงตาม timestamp.desc มาแล้วจาก Supabase ไม่ต้อง sort ซ้ำฝั่งนี้)
+      const r = await fetch(G+'&action=api&do=branch_orders&branch='+encodeURIComponent('ทั้งหมด')+'&code='+encodeURIComponent(_authCode()));
+      const d = await r.json();
       if (reqId !== _brOrdersReqId) return; // มีการเรียก loadBrOrders() ใหม่แซงไปแล้ว ทิ้งผลลัพธ์นี้
-      _brOrdersAll = results.flat().sort((a, b2) => (b2.timestamp || '').localeCompare(a.timestamp || ''));
+      _brOrdersAll = d.orders || [];
     } else {
       const r=await fetch(G+'&action=api&do=branch_orders&branch='+encodeURIComponent(b)+'&code='+encodeURIComponent(_authCode()));
       const d=await r.json();
       if (reqId !== _brOrdersReqId) return; // มีการเรียก loadBrOrders() ใหม่แซงไปแล้ว ทิ้งผลลัพธ์นี้
       _brOrdersAll = d.orders || [];
     }
+    _populateBrOrdersProductFilter();
     renderBrOrdersList();
   }catch(e){ if (reqId === _brOrdersReqId) gid('brOrdersList').innerHTML='<div class="empty">โหลดไม่ได้</div>'; }
 }
 
 function renderBrOrdersList() {
   const el = gid('brOrdersList');
-  const orders = _brOrdersTab === 'pending'
+  let orders = _brOrdersTab === 'pending'
     ? _brOrdersAll.filter(o => !_brOrdersDoneStatuses.includes(o.fulfillment || ''))
     : _brOrdersAll;
-  if (!orders.length) { el.innerHTML = '<div class="empty">' + (_brOrdersTab === 'pending' ? 'ไม่มีออเดอร์ค้างส่ง' : 'ไม่มีออเดอร์') + '</div>'; return; }
+  if (_brOrdersProductFilter) {
+    orders = orders.filter(o => _brOrdersItemsOf(o).some(it => it.name === _brOrdersProductFilter));
+  }
+  if (!orders.length) { el.innerHTML = '<div class="empty">' + (_brOrdersTab === 'pending' ? 'ไม่มีออเดอร์ค้างส่ง' : 'ไม่มีออเดอร์') + (_brOrdersProductFilter ? ' (สินค้านี้)' : '') + '</div>'; return; }
   el.innerHTML = orders.map(o => {
       const ff=o.fulfillment||'รอ';
       const sc=ff==='รับแล้ว'||ff==='สาขายืนยัน'?'s-done':ff==='พร้อมรับ'||ff==='บางส่วน'?'s-ok':ff==='รับบางส่วนแล้ว'?'s-wait':'s-wait';
