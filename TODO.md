@@ -166,8 +166,12 @@ Staff กดลิงค์ใน Line (ไม่ต้องเปิด Stream
 
 ### Security (ควรทำก่อนใช้งานจริง)
 - [ ] **Server-side auth doPost** — validate LIFF access token ก่อนรับออเดอร์ ป้องกัน fake orders
-- [ ] **Staff API auth** — ย้าย PIN verification ไป server-side (ตอนนี้ PIN อยู่ใน client source code)
-- [ ] **Staff API ใช้ POST แทน GET** — ป้องกัน prefetch/cache trigger status change
+- [x] **Staff API auth** — ย้าย PIN verification ไป server-side แล้ว (2026-08-09 audit: `liff/app.html`
+      เลิก hardcode `PIN_ADMIN`/`BRANCH_CODES`, ตรวจผ่าน `action=verify_code` ฝั่ง GAS แทน; 2026-08-29:
+      `tools/screens/*.py`/`verify_app.py` ย้าย `WAKA_S`/`ADMIN_CODE` ออกจาก hardcode ไปอ่าน
+      `st.secrets` แทน — ค่ายังไม่ได้ rotate จริง แค่ย้ายที่เก็บ)
+- [x] **Staff API ใช้ POST แทน GET** — `action=verify_code` บังคับ POST แล้ว (กัน PIN หลุดไปอยู่ใน query
+      string/server log)
 
 ### Performance (ควรทำถ้ามีออเดอร์เยอะ)
 - [ ] **Order ID ใช้ Script Properties** — ไม่ต้องอ่าน Sheet ทั้งหมดเพื่อหาเลขล่าสุด

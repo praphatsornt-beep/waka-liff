@@ -112,12 +112,23 @@ repo reads or writes them anymore.
   logic, and PIN-based branch/admin authorization (`BRANCH_CODES`,
   `ADMIN_CODE` — read from Script Properties, not hardcoded, since
   2026-08-09's security audit found the old hardcoded values exposed via
-  this being a public repo). The actual PIN values live only in Script
-  Properties and must match what's entered in `liff/app.html`'s
-  `PIN_ADMIN`/`BRANCH_CODES` and `tools/screens/*.py`'s `WAKA_S`/
-  `ADMIN_CODE` constants — none of these should ever be the real, live
-  values again once rotated; treat any value currently in git history
-  (pre-rotation) as permanently burned.
+  this being a public repo). `liff/app.html` no longer holds `PIN_ADMIN`/
+  `BRANCH_CODES` as client-side constants either — it verifies PIN/branch
+  codes through `action=api&do=verify_code` (POST-only) on the server
+  instead, so the browser never receives the full code list. The one
+  secret still shipped client-side by necessity is `WAKA_S` (the
+  `SCRIPT_SECRET` shared value, in `liff/app.html`'s `WAKA_S` const) —
+  every staff-only GAS call needs it, and it's visible via view-source by
+  design (a light gate, not a real secret). `tools/screens/*.py` +
+  `tools/verify_app.py` read the same `WAKA_S` plus `ADMIN_CODE` from
+  `st.secrets` (`.streamlit/secrets.toml` locally, gitignored; Streamlit
+  Cloud's Secrets UI in production) as of 2026-08-29 — previously these
+  were hardcoded identically across all 6 files and committed to this
+  public repo, which undid half of the 2026-08-09 rotation's point.
+  Actual PIN values live only in Script Properties (GAS) / Secrets
+  (Streamlit) and must be kept in sync across both when rotated — treat
+  any value currently in git history (pre-2026-08-09, or pre-2026-08-29
+  for the Streamlit-side hardcoding) as permanently burned.
 - **`liff/*.html`** — static frontend pages (customer ordering, staff
   fulfillment, warehouse, reports), each calling the GAS Web App URL
   directly via `fetch`. Deployed to Vercel. These files are tracked
