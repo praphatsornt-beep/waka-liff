@@ -1356,7 +1356,19 @@ function processPendingSlipVerifications() {
     // ออเดอร์ที่เหลือถูกหยิบไปทำในรอบถัดไป (ทุก 1 นาที) — ไม่กรอง slip_url ที่นี่
     // (บาง order อาจ saveSlipToDrive พลาดแล้ว slip_url ว่าง — ให้เข้าไปเช็คในลูปแทน
     // จะได้ log ให้เห็นสาเหตุ แทนที่จะหายไปเงียบๆ จาก query เลย)
-    var pending = supabaseSelect_("orders", "select=order_id&slip_status=eq.รอตรวจ&order=timestamp.asc&limit=5");
+    //
+    // กรอง notes=like.<placeholder>* ไว้ตั้งแต่ query เลย ไม่ใช่แค่เช็คในลูป —
+    // ออเดอร์ที่ได้ข้อสรุปชัดเจนแล้ว (ยอดไม่ตรง/สลิปซ้ำ/บัญชีไม่ตรง ฯลฯ — notes
+    // ถูกเขียนทับด้วยข้อความสรุปจริงแล้ว ไม่ใช่ placeholder อีกต่อไป) จะไม่ถูกดึง
+    // เข้ามาเลยตั้งแต่ต้น กัน dead order สะสมนานๆ เข้ามาแย่งที่ในโควต้า 5 ออเดอร์/
+    // รอบ จนออเดอร์ใหม่จริงๆ/ออเดอร์ที่กำลังรอ retry ต้องรอคิวช้าลง
+    var placeholderPrefix = "กำลังตรวจสอบสลิป...";
+    var retrySuffix = " (รอตรวจซ้ำ)";
+    var RETRY_AFTER_MINUTES = 7; // ธนาคารกรุงเทพ: ต้องรอ ~7 นาทีถึงจะอ่าน QR ผ่าน
+    // SlipOK ได้ — ตรวจแค่ 2 ครั้งพอ (ทันที + อีกครั้งตอนครบ 7 นาที) ไม่ตรวจถี่ทุก
+    // นาทีระหว่างทาง เพราะแต่ละครั้งเปลืองโควต้า SlipOK จริง (โควต้ารวมมีจำกัดแค่
+    // ~100/เดือน) การเดาสุ่มถี่ๆ โดยรู้อยู่แล้วว่าต้องรอกี่นาทีคือเปลืองโดยใช่เหตุ
+    var pending = supabaseSelect_("orders", "select=order_id&slip_status=eq.รอตรวจ&notes=like." + encodeURIComponent(placeholderPrefix + "*") + "&order=timestamp.asc&limit=5");
 
     pending.forEach(function(row) {
       var orderId = row.order_id;
@@ -1367,13 +1379,41 @@ function processPendingSlipVerifications() {
         // ระหว่างที่ order นี้เข้าคิวรอ trigger รอบนี้อยู่ (กัน LINE ซ้ำซ้อน)
         if (order.slip_status !== "รอตรวจ") return;
 
+        // "กำลังตรวจสอบสลิป..." (ตั้งไว้ตอน doPost สร้างออเดอร์) = ยังไม่เคยตรวจเลย
+        // "กำลังตรวจสอบสลิป... (รอตรวจซ้ำ)" (ตั้งไว้ตอนตรวจครั้งแรกแล้วอ่านไม่ได้) =
+        // รอครบ 7 นาทีจากเวลาสั่งซื้อแล้วค่อยตรวจครั้งที่ 2 (ครั้งสุดท้าย) — ถ้า notes
+        // ไม่ตรง pattern ใดเลยแปลว่าได้ข้อสรุปชัดเจนไปแล้ว ไม่ต้องตรวจซ้ำอีก (query
+        // ข้างบนก็กรองไว้แล้วด้วย notes=like.)
+        var notes = String(order.notes || "");
+        var isFirstAttempt = notes === placeholderPrefix;
+        var isRetryAttempt = notes === placeholderPrefix + retrySuffix;
+        if (!isFirstAttempt && !isRetryAttempt) return;
+
+        if (isRetryAttempt) {
+          var orderAgeMin = (Date.now() - new Date(order.timestamp).getTime()) / 60000;
+          if (orderAgeMin < RETRY_AFTER_MINUTES) return; // ยังไม่ครบ 7 นาที รอรอบหน้า ไม่เรียก API เลย
+        }
+
         var slipBase64 = _fetchDriveFileAsBase64_(order.slip_url);
         if (!slipBase64) {
           Logger.log("processPendingSlipVerifications(" + orderId + "): ไม่มี/อ่าน slip_url ไม่ได้ (" + order.slip_url + ") — ข้ามรอบนี้");
-          return; // ยังค้าง "รอตรวจ" ต่อไป เห็นได้บน dashboard ฝั่งแอดมิน (pending list เดิม)
+          return; // ยังค้าง "รอตรวจ" ต่อไป เห็นได้บน dashboard ฝั่งแอดมิน (pending list เดิม) — notes ยังเป็น placeholder เดิม ลองรอบหน้าต่อได้ (ไม่นับเป็นการตรวจจริง ไม่เรียก SlipOK/Claude เลย)
         }
 
         var verified = _verifyAndClassifySlip_(slipBase64, order.total);
+
+        // ยังอ่านไม่ได้เลย (ไม่ใช่แค่ยอด/บัญชี/ชื่อไม่ตรง — คือ SlipOK+Claude ทั้งคู่
+        // สรุปอะไรไม่ได้) และนี่เป็นแค่ครั้งแรก (ยังไม่เคยตรวจซ้ำ) และสาเหตุไม่ใช่
+        // โควต้า API หมด (ลองซ้ำไปก็ไม่ช่วย มีแต่เปลืองโควต้าเพิ่ม — ดูอินซิเดนต์
+        // ออเดอร์ #260828002 2026-08-28 ที่ Claude โควต้าหมดพอดีแล้วยิงซ้ำไม่หยุด)
+        // → รอไปตรวจซ้ำอีกครั้งเดียวตอนครบ 7 นาที (ไม่ใช่ทุกนาที)
+        var isQuotaError = /quota|rate.?limit|overloaded|429/i.test(verified.slipNote || "");
+        if (verified.slipStatus === "รอตรวจ" && !isQuotaError && isFirstAttempt) {
+          order.notes = placeholderPrefix + retrySuffix;
+          writeSupabaseOrder_(order);
+          return; // ยังไม่ใช่ผลสรุป — ไม่แจ้งลูกค้า/ไฟแนนซ์รอบนี้ รอตรวจซ้ำตอนครบ 7 นาที
+        }
+
         order.slip_status = verified.slipStatus;
         order.slip_amount = verified.slipAmount || null;
         order.slip_txn_id = verified.slipTxnId || null;
@@ -2606,7 +2646,8 @@ function _verifyAndClassifySlip_(slipBase64, orderTotal) {
 
   var verify = verifySlipWithSlipOK(slipBase64, orderTotal);
   var slipokError = verify.error || "";
-  if (verify.error) verify = verifySlipWithClaude(slipBase64);
+  var slipokDuplicate = !!verify.isDuplicate;
+  if (verify.error && !slipokDuplicate) verify = verifySlipWithClaude(slipBase64);
   slipAmount = verify.amount || "";
   slipTxnId  = verify.ref || "";
   slipDate   = verify.date || "";
@@ -2615,7 +2656,10 @@ function _verifyAndClassifySlip_(slipBase64, orderTotal) {
 
   var fallbackInfo = slipokError ? " [SlipOK: " + slipokError + "]" : "";
 
-  if (!verify.amount) {
+  if (slipokDuplicate) {
+    slipStatus = "สลิปซ้ำ";
+    slipNote   = "SlipOK: " + slipokError.replace(/^SlipOK:\s*/, "");
+  } else if (!verify.amount) {
     slipStatus = "รอตรวจ";
     slipNote   = (verify.error || "อ่านสลิปไม่ได้") + fallbackInfo;
   } else if (!isSlipOK && verify.suspicious) {
@@ -2705,7 +2749,17 @@ function verifySlipWithSlipOK(base64, orderTotal) {
 
     var rawText = res.getContentText();
     var body = JSON.parse(rawText);
-    if (!body.success) return { error: "SlipOK: " + (body.message || rawText.substring(0, 200)) };
+    if (!body.success) {
+      var errMsg = body.message || rawText.substring(0, 200);
+      // SlipOK เองตรวจจับสลิปซ้ำได้ (เคยส่งสลิปนี้เข้าระบบมาก่อน) แล้วตอบเป็น
+      // error ไม่ใช่ data — เดิมโค้ดเห็น error ก็ fallback ไป Claude ต่อทันที ถ้า
+      // Claude ก็ล่ม/โควต้าหมดพอดี (เช่นอินซิเดนต์ออเดอร์ #260828002 2026-08-28)
+      // จะไม่มีทางสรุปสถานะได้เลย ค้าง "รอตรวจ" แล้วโดน processPendingSlipVerifications
+      // (รันทุก 1 นาที) หยิบไปประมวลผลซ้ำไม่รู้จบ ยิงแจ้งเตือนซ้ำทุกนาที — ตรวจจับ
+      // เคสนี้ตรงนี้เลยให้จบด้วย "สลิปซ้ำ" โดยไม่ต้อง fallback ไป Claude
+      if (/สลิปซ้ำ/.test(errMsg)) return { error: "SlipOK: " + errMsg, isDuplicate: true };
+      return { error: "SlipOK: " + errMsg };
+    }
     if (!body.data) return { error: "SlipOK: no data" };
 
     var d = body.data;
