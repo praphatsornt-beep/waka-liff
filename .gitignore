@@ -4,6 +4,7 @@ token.json
 service_account.json
 service_account.json.json
 .env
+.streamlit/secrets.toml
 .tmp/
 __pycache__/
 *.pyc

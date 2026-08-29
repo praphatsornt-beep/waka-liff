@@ -168,8 +168,8 @@ def _now_th():
 
 
 GAS_URL = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
-WAKA_S  = "wk26xK9mPqRt"  # shared secret doPost/doGet require via ?_s= (same value as tournament.py's WAKA_S)
-ADMIN_CODE = "waka99"  # branch-scoped actions (handoverOrder/partialReady/partialCancelItems) now also
+WAKA_S  = st.secrets["WAKA_S"]  # shared secret doPost/doGet require via ?_s= (same value as tournament.py's WAKA_S)
+ADMIN_CODE = st.secrets["ADMIN_CODE"]  # branch-scoped actions (handoverOrder/partialReady/partialCancelItems) now also
                         # require this to prove branch ownership, same as liff/app.html's admin bypass —
                         # Streamlit is an admin-only tool so it always passes the admin code
 

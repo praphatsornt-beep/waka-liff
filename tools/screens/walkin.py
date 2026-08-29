@@ -17,8 +17,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from theme import apply_theme, page_header, kpi_card, admin_name, TEXT2
 
 GAS_URL  = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
-WAKA_S   = "wk26xK9mPqRt"  # shared secret doPost/doGet require via ?_s= (same value as stock.py's WAKA_S)
-ADMIN_CODE = "waka99"
+WAKA_S   = st.secrets["WAKA_S"]  # shared secret doPost/doGet require via ?_s= (same value as stock.py's WAKA_S)
+ADMIN_CODE = st.secrets["ADMIN_CODE"]
 
 BRANCHES = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์"]
 

@@ -19,8 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from theme import apply_theme, page_header, admin_name, badge
 
 GAS_URL  = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
-WAKA_S   = "wk26xK9mPqRt"  # shared secret doPost/doGet require via ?_s= (same value as stock.py's WAKA_S)
-ADMIN_CODE = "waka99"  # updateProduct/addProduct still require this to prove admin, same as stock.py
+WAKA_S   = st.secrets["WAKA_S"]  # shared secret doPost/doGet require via ?_s= (same value as stock.py's WAKA_S)
+ADMIN_CODE = st.secrets["ADMIN_CODE"]  # updateProduct/addProduct still require this to prove admin, same as stock.py
 
 # label สำหรับ action ที่ target_id ผูกกับสินค้าโดยตรง (ชื่อ/รหัสสินค้า) — ดึงมา
 # แสดงตรงๆ ใน load_product_history() ด้านล่าง ส่วน action ที่ target_id ผูกกับ

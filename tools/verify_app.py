@@ -379,7 +379,7 @@ def open_tournaments_card(open_events: list, regs_by_event: dict) -> str:
 # .env), so this is the only way to show quota numbers here — same GAS_URL/
 # WAKA_S values used by tools/screens/orders.py's _gas_request().
 GAS_URL = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
-WAKA_S = "wk26xK9mPqRt"
+WAKA_S = st.secrets["WAKA_S"]
 
 
 @st.cache_data(ttl=300)
