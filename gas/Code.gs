@@ -2015,26 +2015,6 @@ function handleApi(params) {
     return _cors(ContentService.createTextOutput(plJson));
   }
 
-  // ── Admin Catalog (ทุกสินค้า รวม inactive) ──
-  if (action === "catalog_admin") {
-    var caRows = supabaseSelect_("catalog", "select=*");
-    var products = caRows.filter(function(r) { return r.name; }).map(function(r) {
-      var isActive = !(r.active === false || String(r.active).toUpperCase() === "FALSE" || r.active === 0);
-      return {
-        name: String(r.name || "").trim(),
-        category: String(r.category || ""),
-        cost_box: Number(r.cost_box) || 0, cost_pack: Number(r.cost_p) || 0,
-        price_box: Number(r.price_box) || 0, price_pack: Number(r.price_pack) || 0,
-        qty_box: Number(r.qty_box) || 0, qty_pack: Number(r.qty_pack) || 0,
-        limit_box: (r.limit_box === "" || r.limit_box === undefined || r.limit_box === null) ? -1 : Number(r.limit_box),
-        limit_pack: (r.limit_pack === "" || r.limit_pack === undefined || r.limit_pack === null) ? -1 : Number(r.limit_pack),
-        active: isActive,
-        notice: String(r.notice || "")
-      };
-    });
-    return _cors(ContentService.createTextOutput(JSON.stringify({ products: products })));
-  }
-
   // ── Dashboard KPI ──
   if (action === "dashboard") {
     var dashCache = CacheService.getScriptCache();
@@ -2152,28 +2132,6 @@ function handleApi(params) {
     writeSupabaseOrder_(order);
     _logStaffAction_(cancelStaffName, order.branch, "cancel_order", orderId, cancelReason || null);
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
-  }
-
-  // ── รายการจัดส่งพัสดุ ──
-  if (action === "delivery_orders") {
-    var doSb = supabaseSelect_("orders", "select=order_id,real_name,display_name,phone,address,items_json,total,slip_status,fulfillment,timestamp&branch=eq.จัดส่ง&order=timestamp.desc");
-    var doDeliveries = doSb
-      .filter(function(r) { return r.fulfillment !== "จัดส่งแล้ว" && r.fulfillment !== "รับแล้ว"; })
-      .map(function(r) {
-        return {
-          order_id:     String(r.order_id || ""),
-          real_name:    String(r.real_name || ""),
-          display_name: String(r.display_name || ""),
-          phone:        String(r.phone || ""),
-          address:      String(r.address || ""),
-          items_json:   JSON.stringify(r.items_json || []),
-          total:        Number(r.total) || 0,
-          slip_status:  String(r.slip_status || ""),
-          fulfillment:  String(r.fulfillment || ""),
-          timestamp:    String(r.timestamp || ""),
-        };
-      });
-    return _cors(ContentService.createTextOutput(JSON.stringify({ deliveries: doDeliveries })));
   }
 
   // ── รายการเบิกสินค้า ──
