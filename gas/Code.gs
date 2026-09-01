@@ -757,7 +757,6 @@ function doPost(e) {
       // ไม่มีสลิป — ไม่มีอะไรช้า (ไม่ต้องรอ SlipOK/Claude) แจ้ง LINE/Telegram ทันทีได้เลย
       // เหมือนเดิมทุกประการ ไม่ได้รับผลกระทบจากการย้ายไป async ด้านบน
       try {
-        var streamlitUrl = "https://waka-space.streamlit.app/orders";
         if (TELEGRAM_FINANCE_CHAT_ID) {
           var itemsSummary = (data.items || []).map(function(i) {
             var u = i.type === "box" ? "กล่อง" : "ซอง";
@@ -768,8 +767,7 @@ function doPost(e) {
             + "\nสาขา: " + (data.branch || "")
             + "\nยอด: " + data.total + " บาท"
             + "\n\n" + itemsSummary
-            + "\n\n❌ ปัญหา: 📩 ไม่ได้แนบสลิป"
-            + "\n\nตรวจสอบ:\n" + streamlitUrl;
+            + "\n\n❌ ปัญหา: 📩 ไม่ได้แนบสลิป";
           _telegramPush(TELEGRAM_FINANCE_CHAT_ID, finMsg2);
         }
         if (data.lineUserId) notifyCustomer(data.lineUserId, { orderId: orderId, items: data.items, displayName: data.displayName, branch: data.branch, address: data.address, total: data.total, slipStatus: slipStatus, instantReady: false });
@@ -1450,7 +1448,6 @@ function processPendingSlipVerifications() {
             var u = i.type === "box" ? "กล่อง" : "ซอง";
             return "  - " + i.name + " (" + u + ") x" + (i.qty || 1);
           }).join("\n");
-          var streamlitUrl = "https://waka-space.streamlit.app/orders";
           var finMsg2;
           if (order.slip_status === "ยืนยัน") {
             finMsg2 = "✅ ออเดอร์ผ่านอัตโนมัติ #" + orderId
@@ -1477,7 +1474,6 @@ function processPendingSlipVerifications() {
             if (order.notes) finMsg2 += "\n📋 " + order.notes;
           }
           if (verified.slipDate) finMsg2 += "\n\n📅 วันที่โอน: " + verified.slipDate;
-          finMsg2 += "\n\nตรวจสอบ:\n" + streamlitUrl;
           _telegramPush(TELEGRAM_FINANCE_CHAT_ID, finMsg2);
         }
 
