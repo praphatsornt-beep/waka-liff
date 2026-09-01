@@ -1188,7 +1188,7 @@ function notifyCustomer(userId, order) {
     // ลูกค้าเข้าใจผิดว่าสลิปยังไม่ผ่าน ทั้งที่จริงผ่านแล้ว แยกออกมาให้ชัดเจนกว่าเดิม
     lines.push("✅ ยืนยันการชำระเงินแล้ว");
     lines.push(hasPreorder
-      ? "ทีมงานจะแจ้งเมื่อสินค้าพร้อมรับ/จัดส่งที่ OpenChat: BOARD GAME WAKA SPACE"
+      ? "ทีมงานจะแจ้งเมื่อสินค้าพร้อมรับ/จัดส่งทาง OpenChat: BOARD GAME WAKA SPACE"
       : "ทีมงานจะแจ้งเมื่อสินค้าพร้อมรับ/จัดส่งครับ");
   } else {
     lines.push("ทีมงานจะตรวจสอบและแจ้งกลับทาง LINE ครับ");
@@ -3394,7 +3394,7 @@ function handleConfirmSlip(data) {
         var hasPreorderCS = items.some(function(it) { return !!it._preorder; });
         var readyLineCS = instantReady
           ? "สินค้าพร้อมรับที่สาขาแล้ว🎉"
-          : (hasPreorderCS ? "ทีมงานจะแจ้งเมื่อสินค้าพร้อมรับ/จัดส่งที่ OpenChat: BOARD GAME WAKA SPACE" : "ทีมงานจะแจ้งเมื่อสินค้าพร้อมรับครับ");
+          : (hasPreorderCS ? "ทีมงานจะแจ้งเมื่อสินค้าพร้อมรับ/จัดส่งทาง OpenChat: BOARD GAME WAKA SPACE" : "ทีมงานจะแจ้งเมื่อสินค้าพร้อมรับครับ");
         message = "WAKA ยืนยันการชำระเงินแล้ว ✅\n\nออเดอร์: #" + orderId + "\n\n" + itemsText + "\n\nยอดรวม: " + total + " บาท\n" + (isDelivery ? "จัดส่งพัสดุ" : "รับที่สาขา: " + branch) + "\n\n" + readyLineCS;
       }
       _linePush(uid, message);

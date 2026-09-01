@@ -534,6 +534,12 @@
       margin-bottom: 28px;
       white-space: pre-line;
     }
+    .success-msg-warn {
+      display: inline-block;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--red);
+    }
     .back-btn {
       width: 100%;
       padding: 16px;
@@ -1618,7 +1624,8 @@
     if (data.slipStatus === "รอตรวจ") {
       // ลูกค้ายังไม่ได้ LINE ยืนยันทันทีที่หน้านี้ขึ้น — บอกกรอบเวลาไว้กันเข้าใจว่า
       // ระบบไม่ได้รับออเดอร์แล้วกดสั่งซ้ำ (พบเคสจริง #260901002/#260901003)
-      msg = "ระบบกำลังตรวจสอบสลิปอัตโนมัติ\nจะมีข้อความแจ้งผลทาง LINE ภายใน 1-2 นาที\n(บางธนาคารอาจนานถึง 10 นาที)\n\nไม่ต้องสั่งซ้ำนะครับ";
+      // เน้น "ไม่ต้องสั่งซ้ำ" ให้เด่นด้วย innerHTML — ลูกค้าอ่านแค่ผ่านๆ มักพลาดบรรทัดนี้
+      msg = "ระบบกำลังตรวจสอบสลิปอัตโนมัติ\nจะมีข้อความแจ้งผลทาง LINE ภายใน 1-2 นาที\n(บางธนาคารอาจนานถึง 10 นาที)\n\n<strong class=\"success-msg-warn\">ไม่ต้องสั่งซ้ำนะครับ</strong>";
     } else {
       // "ไม่มีสลิป" — ไม่มีอะไรให้ระบบตรวจอัตโนมัติเลย ทีมงานต้องติดต่อเรื่อง
       // การชำระเงินเอง ไม่ใช่กรอบเวลาแบบเคสข้างบน
@@ -1626,7 +1633,7 @@
     }
 
     document.getElementById("successTitle").textContent = "รับออเดอร์แล้ว";
-    document.getElementById("successMsg").textContent = msg;
+    document.getElementById("successMsg").innerHTML = msg;
 
     document.getElementById("orderView").style.display = "none";
     document.getElementById("successView").style.display = "block";
