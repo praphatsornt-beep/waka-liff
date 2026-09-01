@@ -534,9 +534,6 @@
       margin-bottom: 28px;
       white-space: pre-line;
     }
-    .success-msg.warn {
-      color: var(--red);
-    }
     .back-btn {
       width: 100%;
       padding: 16px;
@@ -1612,39 +1609,24 @@
     document.getElementById("successFulfillment").textContent = fulfillment;
     document.getElementById("successTotal").textContent = total.toLocaleString() + " .-";
 
-    let title = "สั่งซื้อสำเร็จ!";
-    let msg = "";
-    let isWarn = false;
-
-    if (data.slipStatus === "ยืนยัน") {
-      title = "สั่งซื้อสำเร็จ!";
-      msg = "ยืนยันการชำระเงินแล้ว\nรอรับสินค้าได้เลย";
-    } else if (data.slipStatus === "ยอดไม่ตรง") {
-      title = "รับออเดอร์แล้ว";
-      msg = "ยอดในสลิปไม่ตรง\nกรุณาติดต่อแอดมิน";
-      isWarn = true;
-    } else if (data.slipStatus === "สลิปซ้ำ") {
-      title = "รับออเดอร์แล้ว";
-      msg = "ออเดอร์รับแล้ว\nรอทีมงานตรวจสอบ";
-    } else if (data.slipStatus === "บัญชีไม่ตรง" || data.slipStatus === "สงสัยปลอม") {
-      title = "รับออเดอร์แล้ว";
-      msg = "รอทีมงานตรวจสอบ\nจะแจ้งผลทาง LINE";
-    } else if (data.slipStatus === "รอตรวจ") {
-      // เคสปกติของทุกออเดอร์ที่แนบสลิปมา — ตรวจสลิปจริงย้อนไปทำ async
-      // (processPendingSlipVerifications ทุก 1 นาที) ไม่ใช่ตอนนี้แล้ว ลูกค้าจึง
-      // ยังไม่ได้ LINE ยืนยันทันทีที่หน้านี้ขึ้น — บอกกรอบเวลาไว้กันลูกค้าเข้าใจว่า
+    // doPost() ตอบ slipStatus กลับมาแค่ 2 ค่าเท่านั้นเสมอ — "รอตรวจ" (แนบสลิปมา)
+    // หรือ "ไม่มีสลิป" — การตรวจสลิปจริง (ที่ให้ผล "ยืนยัน"/"ยอดไม่ตรง"/"สลิปซ้ำ"
+    // ฯลฯ) ทำ async ทีหลังทั้งหมด (processPendingSlipVerifications ทุก 1 นาที)
+    // ไม่มีทางได้ค่าอื่นกลับมาที่นี่แล้ว (เดิมเคยตรวจ synchronous ก่อน return
+    // จึงมี branch ต่อค่าอื่นๆ ไว้ด้วย — ตอนนี้เป็นโค้ดตายที่ไม่มีทางถูกเรียก ลบทิ้ง)
+    let msg;
+    if (data.slipStatus === "รอตรวจ") {
+      // ลูกค้ายังไม่ได้ LINE ยืนยันทันทีที่หน้านี้ขึ้น — บอกกรอบเวลาไว้กันเข้าใจว่า
       // ระบบไม่ได้รับออเดอร์แล้วกดสั่งซ้ำ (พบเคสจริง #260901002/#260901003)
-      title = "รับออเดอร์แล้ว";
       msg = "ระบบกำลังตรวจสอบสลิปอัตโนมัติ\nจะมีข้อความแจ้งผลทาง LINE ภายใน 1-2 นาที\n(บางธนาคารอาจนานถึง 10 นาที)\n\nไม่ต้องสั่งซ้ำนะครับ";
     } else {
-      title = "รับออเดอร์แล้ว";
-      msg = "ทีมงานจะแจ้งให้ทราบ\nเมื่อยืนยันแล้ว";
+      // "ไม่มีสลิป" — ไม่มีอะไรให้ระบบตรวจอัตโนมัติเลย ทีมงานต้องติดต่อเรื่อง
+      // การชำระเงินเอง ไม่ใช่กรอบเวลาแบบเคสข้างบน
+      msg = "ทีมงานจะติดต่อกลับเรื่องการชำระเงิน\nทาง LINE ครับ";
     }
 
-    document.getElementById("successTitle").textContent = title;
-    const msgEl = document.getElementById("successMsg");
-    msgEl.textContent = msg;
-    msgEl.className = "success-msg" + (isWarn ? " warn" : "");
+    document.getElementById("successTitle").textContent = "รับออเดอร์แล้ว";
+    document.getElementById("successMsg").textContent = msg;
 
     document.getElementById("orderView").style.display = "none";
     document.getElementById("successView").style.display = "block";
