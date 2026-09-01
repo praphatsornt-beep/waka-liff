@@ -1152,6 +1152,11 @@ function notifyCustomer(userId, order) {
     return "  - " + i.name + " (" + unitLabel + ") x" + i.qty;
   }).join("\n");
   var isDelivery = order.branch === "จัดส่ง";
+  // มีอย่างน้อย 1 รายการเป็นพรีออเดอร์มั้ย — ของกลุ่มนี้ยังไม่มีจริง ต้องรอล็อต
+  // เข้าสาขา ซึ่งตั้งแต่ 2026-08-27 ระบบไม่ยิง LINE แจ้งลูกค้าอัตโนมัติตอนของถึง
+  // สาขาแล้ว (handleReceiveShipment) เปลี่ยนไปให้พนักงานประกาศทาง OpenChat แทน —
+  // ลูกค้าจึงไม่มีทางรู้เองว่าต้องติดตามข่าวจากที่ไหน ถ้าไม่บอกไว้ตรงนี้
+  var hasPreorder = (order.items || []).some(function(i) { return !!i._preorder; });
   var lines = [
     "WAKA ขอบคุณสำหรับคำสั่งซื้อเลขที่ #" + order.orderId,
     "",
@@ -1179,6 +1184,14 @@ function notifyCustomer(userId, order) {
     lines.push("สินค้าพร้อมรับที่สาขา" + order.branch + " แล้ว!");
     lines.push("");
     lines.push("ดูสถานะ:\n" + trackUrl);
+  } else if (order.slipStatus === "ยืนยัน") {
+    // สลิปผ่านแล้วแต่ของยังไม่พร้อมส่งมอบทันที (เช่นออเดอร์จัดส่งทุกใบ หรือของ
+    // ที่สาขายังไม่พอ) — เดิมตกไปอยู่ใน else ด้านล่างที่บอก "ทีมงานจะตรวจสอบ" ทำให้
+    // ลูกค้าเข้าใจผิดว่าสลิปยังไม่ผ่าน ทั้งที่จริงผ่านแล้ว แยกออกมาให้ชัดเจนกว่าเดิม
+    lines.push("✅ ยืนยันการชำระเงินแล้ว");
+    lines.push(hasPreorder
+      ? "ทีมงานจะแจ้งเมื่อสินค้าพร้อมรับ/จัดส่งที่ OpenChat: BOARD GAME WAKA SPACE"
+      : "ทีมงานจะแจ้งเมื่อสินค้าพร้อมรับ/จัดส่งครับ");
   } else {
     lines.push("ทีมงานจะตรวจสอบและแจ้งกลับทาง LINE ครับ");
     lines.push("");
@@ -3380,7 +3393,13 @@ function handleConfirmSlip(data) {
           return "  - " + it.name + " (" + unit + ") x" + it.qty;
         }).join("\n");
         var isDelivery = branch === "จัดส่ง";
-        message = "WAKA ยืนยันการชำระเงินแล้ว ✅\n\nออเดอร์: #" + orderId + "\n\n" + itemsText + "\n\nยอดรวม: " + total + " บาท\n" + (isDelivery ? "จัดส่งพัสดุ" : "รับที่สาขา: " + branch) + "\n\n" + (instantReady ? "สินค้าพร้อมรับที่สาขาแล้ว🎉" : "ทีมงานจะแจ้งเมื่อสินค้าพร้อมรับครับ");
+        // เหตุผลเดียวกับ notifyCustomer() — ของพรีออเดอร์ไม่มี LINE แจ้งอัตโนมัติ
+        // ตอนถึงสาขาแล้ว (ประกาศทาง OpenChat แทนตั้งแต่ 2026-08-27) ต้องบอกลูกค้าเอง
+        var hasPreorderCS = items.some(function(it) { return !!it._preorder; });
+        var readyLineCS = instantReady
+          ? "สินค้าพร้อมรับที่สาขาแล้ว🎉"
+          : (hasPreorderCS ? "ทีมงานจะแจ้งเมื่อสินค้าพร้อมรับ/จัดส่งที่ OpenChat: BOARD GAME WAKA SPACE" : "ทีมงานจะแจ้งเมื่อสินค้าพร้อมรับครับ");
+        message = "WAKA ยืนยันการชำระเงินแล้ว ✅\n\nออเดอร์: #" + orderId + "\n\n" + itemsText + "\n\nยอดรวม: " + total + " บาท\n" + (isDelivery ? "จัดส่งพัสดุ" : "รับที่สาขา: " + branch) + "\n\n" + readyLineCS;
       }
       _linePush(uid, message);
       if (instantReady && data.custom_message) {
