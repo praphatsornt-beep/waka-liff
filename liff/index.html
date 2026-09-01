@@ -859,6 +859,11 @@
   let lineProfile = {};
   let slipBase64  = null;
   let activeCategory = "";
+  // กันลูกค้าแตะปุ่ม "ยืนยันสั่งซื้อ" ซ้ำเร็วๆ ก่อน checkPickupReady() (network
+  // round-trip) จะเสร็จ — เดิม btn.disabled ถูกตั้งหลัง await นี้เท่านั้น ทำให้มี
+  // ช่วงที่ปุ่มยังกดซ้ำได้ ลูกค้าที่แตะสองทีติดกันจึงสร้าง 2 ออเดอร์ซ้อนกัน (พบจริง
+  // ออเดอร์ #260901002/#260901003 ห่างกัน 2 วินาที ตะกร้า/ลูกค้าเดียวกันทุกอย่าง)
+  let submitInFlight = false;
   // quantities: { "name__box": n, "name__pack": n }
   const quantities = {};
 
@@ -1501,6 +1506,18 @@
 
   // ── Submit ────────────────────────────────────────────────────────────────────
   async function submitOrder() {
+    // เช็คก่อนอย่างอื่นทั้งหมด รวมถึง checkPickupReady() ด้านล่าง (network
+    // round-trip ที่กินเวลา) — ปิดช่องที่ลูกค้าแตะปุ่มซ้ำเร็วๆ ระหว่างรอ
+    if (submitInFlight) return;
+    submitInFlight = true;
+    try {
+      await submitOrderInner();
+    } finally {
+      submitInFlight = false;
+    }
+  }
+
+  async function submitOrderInner() {
     const items = getSelectedItems();
 
     if (items.length === 0) { alert("กรุณาเลือกสินค้าอย่างน้อย 1 รายการ"); return; }
@@ -1612,6 +1629,13 @@
     } else if (data.slipStatus === "บัญชีไม่ตรง" || data.slipStatus === "สงสัยปลอม") {
       title = "รับออเดอร์แล้ว";
       msg = "รอทีมงานตรวจสอบ\nจะแจ้งผลทาง LINE";
+    } else if (data.slipStatus === "รอตรวจ") {
+      // เคสปกติของทุกออเดอร์ที่แนบสลิปมา — ตรวจสลิปจริงย้อนไปทำ async
+      // (processPendingSlipVerifications ทุก 1 นาที) ไม่ใช่ตอนนี้แล้ว ลูกค้าจึง
+      // ยังไม่ได้ LINE ยืนยันทันทีที่หน้านี้ขึ้น — บอกกรอบเวลาไว้กันลูกค้าเข้าใจว่า
+      // ระบบไม่ได้รับออเดอร์แล้วกดสั่งซ้ำ (พบเคสจริง #260901002/#260901003)
+      title = "รับออเดอร์แล้ว";
+      msg = "ระบบกำลังตรวจสอบสลิปอัตโนมัติ\nจะมีข้อความแจ้งผลทาง LINE ภายใน 1-2 นาที\n(บางธนาคารอาจนานถึง 10 นาที)\n\nไม่ต้องสั่งซ้ำนะครับ";
     } else {
       title = "รับออเดอร์แล้ว";
       msg = "ทีมงานจะแจ้งให้ทราบ\nเมื่อยืนยันแล้ว";
