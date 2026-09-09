@@ -1012,6 +1012,11 @@ with tab_cards:
     else:
         cards_filtered = filtered
 
+    # นับจาก filtered (ตัวกรองบนสุด: สาขา/วันที่/ค้นหา) ไม่ผูกกับ quick_status_sel —
+    # ให้เห็นภาพรวม "ยืนยันแล้วกี่ออเดอร์" เสมอไม่ว่าจะกดชิปไหนอยู่ตอนนี้
+    confirmed_count = int((filtered["slip_status"] == "ยืนยัน").sum())
+    st.caption(f"✅ ยืนยันแล้ว {confirmed_count} ออเดอร์")
+
     if cards_filtered.empty:
         st.info("ไม่มีออเดอร์ตามเงื่อนไขที่เลือก")
     else:
