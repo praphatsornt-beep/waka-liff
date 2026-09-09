@@ -1011,6 +1011,7 @@ with tab_receive:
                             + badge(f"ค้างชำระ ฿{r['outstanding']:,.0f}", "danger"),
                             unsafe_allow_html=True,
                         )
+                        st.caption(_rp_items_text(r["items_json"]))
                         pc1, pc2 = st.columns([3, 1])
                         rp_add_amt = pc1.number_input(
                             "จำนวนที่จ่ายเพิ่ม (บาท)", min_value=0.0, max_value=float(r["outstanding"]),
