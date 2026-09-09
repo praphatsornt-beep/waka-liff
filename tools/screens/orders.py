@@ -1012,10 +1012,36 @@ with tab_cards:
     else:
         cards_filtered = filtered
 
-    # นับจาก filtered (ตัวกรองบนสุด: สาขา/วันที่/ค้นหา) ไม่ผูกกับ quick_status_sel —
-    # ให้เห็นภาพรวม "ยืนยันแล้วกี่ออเดอร์" เสมอไม่ว่าจะกดชิปไหนอยู่ตอนนี้
-    confirmed_count = int((filtered["slip_status"] == "ยืนยัน").sum())
-    st.caption(f"✅ ยืนยันแล้ว {confirmed_count} ออเดอร์")
+    # ── สรุปยอดสินค้าตามสาขา (เฉพาะออเดอร์ยืนยันแล้ว) ─────────────────────────
+    # ใช้ตัวกรอง "สินค้า" ที่มีอยู่แล้วด้านบน (f4) เลือกสินค้าแล้วดูว่าแต่ละสาขา
+    # ใช้ไปเท่าไหร่ — นับจาก filtered (ผ่านตัวกรองบนสุดแล้ว) แต่บังคับเฉพาะ
+    # slip_status == "ยืนยัน" เสมอ (ไม่ผูกกับตัวกรอง "สถานะสลิป" ด้านบน) เพราะ
+    # "ใช้จำนวนเท่าไหร่" หมายถึงยอดที่ยืนยันแล้วเท่านั้น ไม่ใช่ยอดที่ยังรอตรวจ
+    if product_filter:
+        confirmed_for_summary = filtered[filtered["slip_status"] == "ยืนยัน"]
+        branch_qty = {}
+        for _, row in confirmed_for_summary.iterrows():
+            b = row.get("branch") or "—"
+            for it in parse_items(row.get("items_json", "")):
+                if it.get("name") not in product_filter:
+                    continue
+                key = (b, it.get("name"))
+                entry = branch_qty.setdefault(key, {"box": 0, "pack": 0})
+                if it.get("type") == "box":
+                    entry["box"] += it.get("qty", 1)
+                else:
+                    entry["pack"] += it.get("qty", 1)
+        if branch_qty:
+            summary_df = pd.DataFrame([
+                {"สาขา": b, "สินค้า": name, "กล่อง": v["box"], "ซอง": v["pack"]}
+                for (b, name), v in sorted(branch_qty.items())
+            ])
+            st.markdown("**สรุปยอดสินค้าตามสาขา (เฉพาะยืนยันแล้ว)**")
+            st.dataframe(summary_df, hide_index=True, use_container_width=True)
+        else:
+            st.caption("ยังไม่มีออเดอร์ยืนยันแล้วของสินค้าที่เลือก")
+    else:
+        st.caption("เลือกสินค้าจากตัวกรอง \"สินค้า\" ด้านบนเพื่อดูยอดใช้แต่ละสาขา")
 
     if cards_filtered.empty:
         st.info("ไม่มีออเดอร์ตามเงื่อนไขที่เลือก")
