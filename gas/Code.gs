@@ -564,6 +564,14 @@ function doPost(e) {
       return handleNotifyCustomer(data);
     }
 
+    // ── DEBUG ชั่วคราว (ลบออกทีหลังเมื่อไม่ต้องใช้แล้ว) ────────────────────────
+    // วินิจฉัยปัญหาลูกค้าไม่ได้รับ LINE — push ตรงๆ ไป LINE API แล้วคืน HTTP
+    // response จริงกลับมาให้เห็นผ่าน curl ทันที ไม่ต้องเข้า Apps Script
+    // Executions UI เอง (ปกติ _linePush() กลืน error ไว้ แค่ Logger.log เงียบๆ)
+    if (data._action === "debugLinePush") {
+      return handleDebugLinePush(data);
+    }
+
     if (data._action === "tournamentRegister") {
       return handleTournamentRegister(data);
     }
@@ -3545,6 +3553,37 @@ function handleNotifyCustomer(data) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, time: notifyNow })));
   } catch (err) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+// ── DEBUG ชั่วคราว (ลบทิ้งเมื่อไม่ต้องใช้แล้ว) ────────────────────────────────
+// push ตรงไป LINE Messaging API เอง (ไม่ผ่าน _linePush() ซึ่งกลืน error ไว้แค่
+// Logger.log) แล้วคืน HTTP status code + response body ดิบจาก LINE กลับไปให้
+// caller เห็นตรงๆ — ใช้วินิจฉัยว่าทำไมลูกค้าไม่ได้รับ LINE (เช่น เช็คว่า LINE
+// ตอบ 400 "the user hasn't added the LINE Official Account as a friend" จริง
+// มั้ย) โดยไม่ต้องเข้า Apps Script Executions UI เอง
+// data: { uid, text (optional), staff (optional bool — true = ทดสอบด้วย
+// STAFF_LIVE_LINE_TOKEN แทน LINE_TOKEN ของลูกค้า) }
+function handleDebugLinePush(data) {
+  var uid = String(data.uid || "").trim();
+  if (!uid) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing uid" })));
+  var text = String(data.text || "").trim() || "WAKA ทดสอบระบบแจ้งเตือน (ข้อความนี้ไม่ต้องตอบกลับครับ)";
+  var token = data.staff ? STAFF_LIVE_LINE_TOKEN : LINE_TOKEN;
+  try {
+    var res = UrlFetchApp.fetch("https://api.line.me/v2/bot/message/push", {
+      method: "post",
+      muteHttpExceptions: true,
+      headers: {
+        Authorization: "Bearer " + token,
+        "Content-Type": "application/json",
+      },
+      payload: JSON.stringify({ to: uid, messages: [{ type: "text", text: text }] }),
+    });
+    return _cors(ContentService.createTextOutput(JSON.stringify({
+      uid: uid, code: res.getResponseCode(), body: res.getContentText(),
+    })));
+  } catch (e) {
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: e.message })));
   }
 }
 
