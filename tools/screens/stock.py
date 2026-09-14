@@ -127,7 +127,17 @@ NOT_YET_SHIPPED = {"กำลังจัดส่งไปสาขา", "พ�
 @st.cache_data(ttl=30)
 def load_pending_branch_demand() -> dict:
     """Mirrors gas/Code.gs's `branch_summary` action: qty still owed to each
-    branch from confirmed orders that haven't been shipped/handed over yet."""
+    branch from confirmed orders that haven't been shipped/handed over yet.
+    Split into qty_box/qty_pack (ready items — already deducted from
+    catalog/stock_branch at order time, gas's handleCreateShipment must NOT
+    deduct catalog again for these) vs preorder_qty_box/preorder_qty_pack
+    (item was catalog.status=="preorder" at order time — per doPost/Code.gs,
+    nothing was ever deducted from catalog for these, so the shipment that
+    finally moves them to a branch must be the one to deduct catalog).
+    Keyed off each order item's own persisted `_preorder` flag (set at order
+    time in gas/Code.gs's doPost, written into orders.items_json) — never off
+    catalog's current status, so this stays correct even if the product's
+    status has since changed."""
     rows = (
         get_supabase().table("orders").select("branch,slip_status,fulfillment,items_json")
         .eq("slip_status", "ยืนยัน").execute().data
@@ -139,12 +149,18 @@ def load_pending_branch_demand() -> dict:
         branch = r.get("branch") or ""
         for i in parse_items(r.get("items_json")):
             key = (branch, i.get("name", ""))
-            d = demand.setdefault(key, {"qty_box": 0, "qty_pack": 0, "order_count": 0})
+            d = demand.setdefault(key, {
+                "qty_box": 0, "qty_pack": 0,
+                "preorder_qty_box": 0, "preorder_qty_pack": 0,
+                "order_count": 0,
+            })
             qty = i.get("qty", 1) or 1
+            box_key = "preorder_qty_box" if i.get("_preorder") else "qty_box"
+            pack_key = "preorder_qty_pack" if i.get("_preorder") else "qty_pack"
             if i.get("type") == "box":
-                d["qty_box"] += qty
+                d[box_key] += qty
             else:
-                d["qty_pack"] += qty
+                d[pack_key] += qty
             d["order_count"] += 1
     return demand
 
@@ -412,7 +428,9 @@ def _create_shipment_dialog():
     if demand:
         st.caption(
             "ออเดอร์รอส่งไปสาขานี้ — ติ๊ก \"ส่ง\" เฉพาะรายการที่จะส่งรอบนี้ "
-            "\"ออเดอร์\" คือยอดที่ลูกค้าสั่งไว้แล้ว (แก้ไม่ได้) ใส่ \"เผื่อ\" เพื่อเพิ่มสำหรับขายหน้าร้าน "
+            "\"ออเดอร์\" คือยอดที่ลูกค้าสั่งไว้แล้วตอนสินค้าพร้อมส่ง (แก้ไม่ได้ หักคลังกลางไปแล้วตอนสั่ง) "
+            "\"พรีออเดอร์\" คือยอดจากออเดอร์ที่สั่งตอนสินค้ายังเป็นพรีออเดอร์ (แก้ไม่ได้ คลังกลางยังไม่เคยถูกหักส่วนนี้ ระบบจะหักให้ตอนสร้างล็อตนี้) "
+            "ใส่ \"เผื่อ\" เพื่อเพิ่มสำหรับขายหน้าร้าน "
             "\"รวม\" คือยอดที่จะส่งจริง คำนวณให้อัตโนมัติ"
         )
         editor_key = f"ship_demand_editor_{ship_branch}"
@@ -434,14 +452,16 @@ def _create_shipment_dialog():
         for idx, name in enumerate(sorted(demand)):
             d = demand[name]
             ord_box, ord_pack = int(d["qty_box"]), int(d["qty_pack"])
+            pre_box, pre_pack = int(d["preorder_qty_box"]), int(d["preorder_qty_pack"])
             row_edits = edit_state.get(idx, {})
             buf_box = _safe_int(row_edits.get("เผื่อ (กล่อง)", 0))
             buf_pack = _safe_int(row_edits.get("เผื่อ (ซอง)", 0))
             rows.append({
                 "ส่ง": False, "สินค้า": name,
                 "ออเดอร์ (กล่อง)": ord_box, "ออเดอร์ (ซอง)": ord_pack,
+                "พรีออเดอร์ (กล่อง)": pre_box, "พรีออเดอร์ (ซอง)": pre_pack,
                 "เผื่อ (กล่อง)": 0, "เผื่อ (ซอง)": 0,
-                "รวม (กล่อง)": ord_box + buf_box, "รวม (ซอง)": ord_pack + buf_pack,
+                "รวม (กล่อง)": ord_box + pre_box + buf_box, "รวม (ซอง)": ord_pack + pre_pack + buf_pack,
                 "จำนวนออเดอร์": d["order_count"],
             })
         demand_df = pd.DataFrame(rows)
@@ -449,7 +469,11 @@ def _create_shipment_dialog():
             demand_df,
             use_container_width=True,
             hide_index=True,
-            disabled=["สินค้า", "ออเดอร์ (กล่อง)", "ออเดอร์ (ซอง)", "รวม (กล่อง)", "รวม (ซอง)", "จำนวนออเดอร์"],
+            disabled=[
+                "สินค้า", "ออเดอร์ (กล่อง)", "ออเดอร์ (ซอง)",
+                "พรีออเดอร์ (กล่อง)", "พรีออเดอร์ (ซอง)",
+                "รวม (กล่อง)", "รวม (ซอง)", "จำนวนออเดอร์",
+            ],
             column_config={
                 "ส่ง": st.column_config.CheckboxColumn("ส่ง", width="small"),
                 "เผื่อ (กล่อง)": st.column_config.NumberColumn(min_value=0, step=1),
@@ -457,22 +481,26 @@ def _create_shipment_dialog():
             },
             key=editor_key,
         )
-        # qty_box/qty_pack ส่งเป็นส่วน "ออเดอร์" เท่านั้น (คลังกลางหักไปแล้วตอน
-        # ลูกค้าสั่งซื้อ — GAS's handleCreateShipment จะไม่หักซ้ำส่วนนี้) ส่วน
-        # qty_box_extra/qty_pack_extra คือ "เผื่อ" ที่ยังไม่เคยถูกหักจากไหนมาก่อน
-        # ทั้งสองส่วนรวมกันคือยอดที่ต้องไปถึงสาขาจริง (stock_branch ตอนรับของ
-        # ยังบวกเต็มทั้งก้อนเหมือนเดิม) — เดิมโค้ดตรงนี้ยัด "รวม" ทั้งก้อนใส่
-        # qty_box แล้วปล่อย qty_box_extra เป็น 0 เสมอ ทำให้คลังกลางโดนหักซ้ำสอง
-        # สำหรับส่วนที่เป็นออเดอร์ (บั๊กที่แก้พร้อมกันนี้ฝั่ง gas/Code.gs)
+        # qty_box/qty_pack ส่งเป็นส่วน "ออเดอร์" (พร้อมส่ง) เท่านั้น — คลังกลาง
+        # หักไปแล้วตอนลูกค้าสั่งซื้อ (GAS's handleCreateShipment จะไม่หักซ้ำส่วนนี้)
+        # ส่วน qty_box_extra/qty_pack_extra รวม 2 อย่างเข้าด้วยกัน: "พรีออเดอร์"
+        # (ยังไม่เคยถูกหักคลังกลางเลยตอนสั่ง เพราะตอนนั้นสินค้ายังเป็นพรีออเดอร์ —
+        # ต้องหักตอนสร้างล็อตนี้แหละ) และ "เผื่อ" ที่พนักงานพิมพ์เพิ่มเอง (ก็ยังไม่เคย
+        # ถูกหักจากไหนมาก่อนเหมือนกัน) — ทั้งสามส่วนรวมกันคือยอดที่ต้องไปถึงสาขาจริง
+        # (stock_branch ตอนรับของยังบวกเต็มทั้งก้อนเหมือนเดิม)
         for _, row in demand_edited.iterrows():
             if not row["ส่ง"]:
                 continue
+            pre_box = _safe_int(row["พรีออเดอร์ (กล่อง)"])
+            pre_pack = _safe_int(row["พรีออเดอร์ (ซอง)"])
+            buf_box = _safe_int(row["เผื่อ (กล่อง)"])
+            buf_pack = _safe_int(row["เผื่อ (ซอง)"])
             ship_items.append({
                 "name": row["สินค้า"], "id": ship_name_to_id.get(row["สินค้า"]) or None,
                 "qty_box": _safe_int(row["ออเดอร์ (กล่อง)"]),
                 "qty_pack": _safe_int(row["ออเดอร์ (ซอง)"]),
-                "qty_box_extra": _safe_int(row["เผื่อ (กล่อง)"]),
-                "qty_pack_extra": _safe_int(row["เผื่อ (ซอง)"]),
+                "qty_box_extra": pre_box + buf_box,
+                "qty_pack_extra": pre_pack + buf_pack,
             })
     else:
         st.caption(f"ไม่มีออเดอร์รอส่งไปสาขา {ship_branch} ในตอนนี้ — เลือกสินค้าที่จะส่งเองได้ด้านล่าง")
