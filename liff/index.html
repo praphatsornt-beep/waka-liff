@@ -540,6 +540,24 @@
       font-weight: 700;
       color: var(--red);
     }
+    .success-addfriend {
+      display: none;
+      background: #eaf7e8;
+      border: 1px solid #bfe6bb;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 24px;
+      text-align: center;
+    }
+    .success-addfriend p {
+      font-size: 13px;
+      color: var(--text-primary);
+      line-height: 1.6;
+      margin: 0 0 12px;
+    }
+    .success-addfriend strong { color: var(--red); }
+    .success-addfriend img { height: 36px; }
+
     .back-btn {
       width: 100%;
       padding: 16px;
@@ -774,6 +792,10 @@
         </div>
       </div>
       <div class="success-msg" id="successMsg"></div>
+      <div class="success-addfriend" id="successAddFriend">
+        <p>ยังไม่ได้เพิ่มเพื่อน <strong>WAKA SPACE</strong> ใช่ไหมครับ?<br>ต้องเพิ่มเพื่อนก่อน ถึงจะได้รับข้อความแจ้งผลทาง LINE</p>
+        <a href="https://lin.ee/7roPhSx" target="_blank" rel="noopener"><img src="https://scdn.line-apps.com/n/line_add_friends/btn/th.png" alt="เพิ่มเพื่อน" height="36" border="0"></a>
+      </div>
       <button class="back-btn" onclick="handleBack()">กลับสู่หน้าร้าน</button>
     </div>
 
@@ -1634,6 +1656,12 @@
 
     document.getElementById("successTitle").textContent = "รับออเดอร์แล้ว";
     document.getElementById("successMsg").innerHTML = msg;
+
+    // ชวนเพิ่มเพื่อน WAKA SPACE เฉพาะเคส "รอตรวจ" — มีเวลาอย่างน้อย ~1 นาที
+    // (รอบ trigger ตรวจสลิปถัดไป) ก่อนระบบจะยิง LINE แจ้งผลจริง ถ้าลูกค้ายังไม่ได้
+    // เพิ่มเพื่อนไว้ก่อน ข้อความจะส่งไม่ถึง (LINE push ต้องเป็นเพื่อนกันก่อนเท่านั้น)
+    // — เคส "ไม่มีสลิป" ยิง LINE ทันทีตั้งแต่ก่อนหน้านี้แล้ว ไม่มีเวลาให้กดทัน จึงไม่โชว์
+    document.getElementById("successAddFriend").style.display = data.slipStatus === "รอตรวจ" ? "block" : "none";
 
     document.getElementById("orderView").style.display = "none";
     document.getElementById("successView").style.display = "block";
