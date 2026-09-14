@@ -4056,7 +4056,8 @@ function handleWithdrawStock(data) {
     if (groupStaffWithdraw && staffName) {
       var unitLabel = type === "box" ? "กล่อง" : "ซอง";
       _notifyStaffGroup_(groupStaffWithdraw, "📤 " + staffName + " เบิก " + name + " x" + qty + " " + unitLabel + " จากสาขา " + branch +
-        (reason ? "\nเหตุผล: " + reason : ""));
+        (reason ? "\nเหตุผล: " + reason : "") +
+        "\nจำนวนที่เหลือ: " + bsRow[wField] + " " + unitLabel);
     }
 
     _logStaffAction_(staffName, branch, "withdraw_stock", (wCatRow && wCatRow.id) || name, qty + (type === "box" ? " กล่อง" : " ซอง") + (reason ? " — " + reason : ""));
@@ -4361,6 +4362,9 @@ function handleWalkinSale(data) {
     // ตัดสต็อกสาขา + บันทึกยอดขาย (fast REST writes, ยังอยู่ใต้ lock เพราะแข่งกับ
     // การขาย/รับของพร้อมกันได้)
     var total = 0;
+    // เก็บยอดคงเหลือหลังหักของแต่ละรายการไว้คู่กับ index — ใช้ตอนสร้างข้อความ
+    // แจ้งเตือนกลุ่ม staff ด้านล่าง (นอกลูปนี้) กันไม่ต้องเปิดอ่าน stock_branch ซ้ำ
+    var remainingAfterByIdx = [];
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
       var qty = Number(it.qty) || 0;
@@ -4369,6 +4373,7 @@ function handleWalkinSale(data) {
       var field = it.type === "box" ? "qty_box" : "qty_pack";
       var bsRow = _findStockBranchRow_(bsRows, it.name, branch);
       bsRow[field] = Math.max(0, (Number(bsRow[field]) || 0) - qty);
+      remainingAfterByIdx[i] = bsRow[field];
       var bsRes = pushToSupabase_("stock_branch", bsRow);
       if (!bsRes.ok) throw new Error("Supabase stock_branch write failed (" + bsRow.name + "): " + bsRes.text);
     }
@@ -4403,9 +4408,9 @@ function handleWalkinSale(data) {
     var groupStaffWalkin = _getConfigValue(null, "group_staff_live");
     if (groupStaffWalkin && staffName) {
       var payLabel = saleObj.payment_method === "cash" ? "💵 เงินสด" : ("📱 โอน" + (saleObj.bank ? " " + saleObj.bank : ""));
-      var walkinItemsText = items.map(function(it) {
+      var walkinItemsText = items.map(function(it, idx) {
         var u = it.type === "box" ? "กล่อง" : "ซอง";
-        return "  - " + it.name + " (" + u + ") x" + it.qty;
+        return "  - " + it.name + " (" + u + ") x" + it.qty + " — เหลือ " + remainingAfterByIdx[idx] + " " + u;
       }).join("\n");
       _notifyStaffGroup_(groupStaffWalkin, "🛒 " + staffName + " ขายหน้าร้านที่สาขา " + branch + " ฿" + total + " (" + payLabel + ")\n\n" + walkinItemsText);
     }
