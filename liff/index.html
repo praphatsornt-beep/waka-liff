@@ -975,6 +975,17 @@
     window.location.reload();
   }
 
+  // ปุ่ม "เพิ่มเพื่อน" เปิดแท็บ/หน้าจอ LINE OA แยกไป ไม่มีอะไรพากลับมาหน้าสั่งของ
+  // อัตโนมัติ — เดิมต้องกด "เพิ่มเพื่อนแล้ว ตรวจสอบอีกครั้ง" เอง ถ้าลูกค้าไม่รู้ก็
+  // ค้างอยู่หน้า LINE OA ไปเลย เช็คให้อัตโนมัติตอนลูกค้าสลับกลับมาที่แท็บนี้แทน
+  // (เฉพาะตอน gate ยังโชว์อยู่ กันรีโหลดพร่ำเพรื่อตอนอื่น)
+  document.addEventListener("visibilitychange", function () {
+    var gateOverlay = document.getElementById("addFriendGateOverlay");
+    if (document.visibilityState === "visible" && gateOverlay && gateOverlay.style.display === "flex") {
+      recheckFriendship();
+    }
+  });
+
   // ── Init ──────────────────────────────────────────────────────────────────────
   async function init() {
     // Access guard: require a specific filter — block direct URL access with no params
@@ -1602,6 +1613,24 @@
       return;
     }
 
+    // เช็คซ้ำตอนกดสั่งจริง (ไม่ใช่แค่ตอนโหลดหน้าแรกครั้งเดียวตอน init()) — ลูกค้า
+    // อาจเปิดหน้าค้างไว้นาน/เช็คตอน init() พลาดจังหวะ (เช่น เพิ่งเพิ่มเพื่อนแล้วสั่ง
+    // ทันที ข้อมูลฝั่ง LINE ยังไม่ sync) จุดนี้คือด่านสุดท้ายก่อนออเดอร์เข้าระบบจริง
+    let friendshipCheckResult = "unknown";
+    try {
+      const fs2 = await liff.getFriendship();
+      friendshipCheckResult = fs2.friendFlag ? "friend" : "not_friend";
+      if (!fs2.friendFlag) {
+        document.getElementById("addFriendGateOverlay").style.display = "flex";
+        return; // บล็อกจริง ไม่ส่งออเดอร์
+      }
+    } catch (fe) {
+      console.error("getFriendship (submit-time) error:", fe);
+      friendshipCheckResult = "error:" + (fe && fe.message || "unknown");
+      // fail-open เหมือนตอน init() — ไม่บล็อกลูกค้าเพราะ API พังชั่วคราว แต่ส่งค่า
+      // นี้ไปให้ฝั่งร้านเห็นด้วย (ดู doPost) แทนที่จะหายเงียบไปแบบเดิม
+    }
+
     if (getBranch() !== "จัดส่ง") {
       const ready = await checkPickupReady(getBranch(), items);
       if (!ready) {
@@ -1633,6 +1662,7 @@
       phone,
       email:    nickname || "", // ชื่อเล่น — เก็บใน orders.email เดิม (repurposed field, กันไม่ต้องแก้ schema/GAS เพิ่ม)
       address:  address || "",
+      friendshipCheck: friendshipCheckResult,
       slipBase64: slipBase64 || null,
     };
 

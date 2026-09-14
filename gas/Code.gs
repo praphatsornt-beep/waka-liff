@@ -723,6 +723,20 @@ function doPost(e) {
     writeSupabaseOrder_(newOrder);
     _clearDashCache();
 
+    // เพิ่งเจอเคสจริง (ออเดอร์ #260914007) ที่ลูกค้าไม่ใช่เพื่อนหลุดผ่านมาได้ทั้งที่
+    // ผูก Linked OA ถูกต้องแล้ว — LINE push ไม่แจ้ง error กลับมาเลย (คืน HTTP 200
+    // แม้ส่งไม่ถึงคนที่ไม่ใช่เพื่อน) ฝั่งร้านเลยไม่มีทางรู้เคสแบบนี้จนลูกค้ามาถามเอง
+    // — แจ้งกลุ่มทีมงานทันทีเพื่อให้ติดต่อลูกค้ากลับเองทางเบอร์โทรแทน
+    if (data.friendshipCheck && data.friendshipCheck !== "friend") {
+      var groupStaffFriendGap = _getConfigValue(null, "group_staff_live");
+      if (groupStaffFriendGap) {
+        _notifyStaffGroup_(groupStaffFriendGap,
+          "⚠️ ออเดอร์ #" + orderId + " จากลูกค้าที่ระบบยืนยันสถานะเพื่อนไม่ได้ (" +
+          data.friendshipCheck + ") — LINE อาจแจ้งเตือนไม่ถึง ลองโทรติดต่อลูกค้า " +
+          "โดยตรง: " + (newOrder.real_name || "-") + " " + (newOrder.phone || "-"));
+      }
+    }
+
     if (data.items && data.items.length > 0) {
       // limit_box/pack หักทุก item เสมอ รวมพรีออเดอร์ด้วย (limit คือเพดานขายผ่าน
       // ลิงค์ ไม่เกี่ยวกับสต็อกจริง) — ส่วนสต็อกจริง (คลังกลาง/สาขา) หักเฉพาะ item
