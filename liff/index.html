@@ -622,6 +622,21 @@
   </div>
 </div>
 
+<div id="addFriendGateOverlay" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:400;align-items:center;justify-content:center;padding:24px;">
+  <div style="background:#fff;border-radius:14px;box-shadow:0 24px 60px rgba(40,38,34,.18);border:1px solid var(--card-border);padding:28px 24px;max-width:360px;width:100%;text-align:center;">
+    <div style="font-size:32px;margin-bottom:8px">💬</div>
+    <h2 style="margin-bottom:6px;font-size:17px">เพิ่มเพื่อน WAKA SPACE ก่อนสั่งซื้อ</h2>
+    <p style="color:var(--text-secondary);margin-bottom:16px;font-size:13px;line-height:1.6">
+      ต้องเพิ่มเพื่อนก่อน ถึงจะได้รับข้อความแจ้งสถานะคำสั่งซื้อทาง LINE
+    </p>
+    <a href="https://lin.ee/7roPhSx" target="_blank" rel="noopener" style="display:block;margin-bottom:12px;">
+      <img src="https://scdn.line-apps.com/n/line_add_friends/btn/th.png" alt="เพิ่มเพื่อน" height="36" border="0">
+    </a>
+    <button onclick="recheckFriendship()"
+      style="width:100%;padding:14px;background:var(--accent);color:#fff;border:none;border-radius:var(--field-radius);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">เพิ่มเพื่อนแล้ว ตรวจสอบอีกครั้ง</button>
+  </div>
+</div>
+
 <div id="adminPinOverlay" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:300;align-items:center;justify-content:center;">
   <div style="background:#fff;border-radius:14px;box-shadow:0 24px 60px rgba(40,38,34,.18);border:1px solid var(--card-border);padding:32px;width:320px;text-align:center;">
     <div style="font-size:32px;margin-bottom:8px">🔐</div>
@@ -793,7 +808,7 @@
       </div>
       <div class="success-msg" id="successMsg"></div>
       <div class="success-addfriend" id="successAddFriend">
-        <p>ยังไม่ได้เพิ่มเพื่อน <strong>WAKA SPACE</strong> ใช่ไหมครับ?<br>ต้องเพิ่มเพื่อนก่อน ถึงจะได้รับข้อความแจ้งผลทาง LINE</p>
+        <p>หากยังไม่เพิ่มเพื่อน <strong>WAKA SPACE</strong> กรุณาเพิ่มเพื่อน เพื่อตรวจสอบสถานะคำสั่งซื้อ</p>
         <a href="https://lin.ee/7roPhSx" target="_blank" rel="noopener"><img src="https://scdn.line-apps.com/n/line_add_friends/btn/th.png" alt="เพิ่มเพื่อน" height="36" border="0"></a>
       </div>
       <button class="back-btn" onclick="handleBack()">กลับสู่หน้าร้าน</button>
@@ -956,6 +971,10 @@
     }
   }
 
+  function recheckFriendship() {
+    window.location.reload();
+  }
+
   // ── Init ──────────────────────────────────────────────────────────────────────
   async function init() {
     // Access guard: require a specific filter — block direct URL access with no params
@@ -1001,6 +1020,22 @@
         return;
       }
       lineProfile = await liff.getProfile();
+
+      // เช็คว่าเป็นเพื่อน WAKA SPACE หรือยัง — ต้องเช็คทุกครั้งที่เปิดหน้า (ไม่ใช่
+      // แค่ตอน liff.login() เพราะ session เดิมที่ login ค้างอยู่แล้วจะข้าม login()
+      // ไปเลย ไม่มีทางเห็น native add-friend prompt ของ LINE เลยแม้จะผูก Linked OA
+      // ไว้ถูกต้องแล้วก็ตาม) — fail-open ถ้า API error (เช่น scope ยังไม่พร้อม) กัน
+      // บล็อกลูกค้าทั้งระบบเพราะ API เปลี่ยน/ใช้ไม่ได้ชั่วคราว
+      try {
+        var friendship = await liff.getFriendship();
+        if (!friendship.friendFlag) {
+          document.getElementById("loadingState").style.display = "none";
+          document.getElementById("addFriendGateOverlay").style.display = "flex";
+          return;
+        }
+      } catch (fe) {
+        console.error("getFriendship error:", fe);
+      }
     } catch (e) {
       console.error("LIFF init error:", e);
       if (_isLiffPath) { window.location.replace(_rawLs); return; }
