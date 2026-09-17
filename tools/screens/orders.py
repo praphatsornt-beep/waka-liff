@@ -426,8 +426,6 @@ all_products = sorted({
 name_to_category = load_name_to_category()
 all_categories = sorted({c for c in name_to_category.values() if c})
 
-phone_counts = df["phone"].value_counts().to_dict() if "phone" in df.columns else {}
-
 # ── KPI row (today, independent of filters below) ────────────────────────────
 today = datetime.now(TH_TZ).date()
 today_df = df[df["date"] == today]
@@ -1105,14 +1103,12 @@ with tab_cards:
             items = parse_items(row.get("items_json", ""))
             cur_status = row.get("slip_status", "รอตรวจ")
             ff_status = row.get("fulfillment", "") or "รอเตรียม"
-            is_repeat = phone_counts.get(row.get("phone", ""), 0) > 1
             ts = row.get("timestamp_dt")
             time_str = ts.tz_convert("Asia/Bangkok").strftime("%d/%m %H:%M") if pd.notna(ts) else "—"
             display_rows.append({
                 "เลขออเดอร์": row.get("order_id", ""),
                 "เวลา": time_str,
                 "ลูกค้า": row.get("real_name") or row.get("display_name") or "—",
-                "ประเภท": "🔁 ประจำ" if is_repeat else "🆕 ใหม่",
                 "เบอร์โทร": row.get("phone", "—") or "—",
                 "สินค้า": items_summary_text(items),
                 "ยอดรวม": float(row.get("total", 0) or 0),
