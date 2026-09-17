@@ -57,6 +57,35 @@ def _clear_login_cookie() -> None:
     """, height=1)
 
 
+def _get_admin_password() -> str:
+    admin_password = os.environ.get("ADMIN_PASSWORD", "")
+    if not admin_password:
+        try:
+            admin_password = st.secrets["ADMIN_PASSWORD"]
+        except Exception:
+            admin_password = ""
+    return admin_password
+
+
+def _peek_authed(admin_password: str) -> bool:
+    """Read-only version of _require_login()'s session/cookie check, with no
+    side effects — lets the caller decide whether to render the sidebar nav
+    menu BEFORE _require_login() runs (see comment at the bottom of this
+    file for why that ordering matters for deep links like /orders)."""
+    if st.session_state.get("authed") and st.session_state.get("admin_name"):
+        return True
+    if not admin_password:
+        return False
+    cookies = st.context.cookies
+    cookie_name_raw = cookies.get(_COOKIE_NAME, "")
+    cookie_token = cookies.get(_COOKIE_TOKEN, "")
+    if cookie_name_raw and cookie_token:
+        cookie_name = urllib.parse.unquote(cookie_name_raw)
+        if _cookie_token(admin_password, cookie_name) == cookie_token:
+            return True
+    return False
+
+
 def _require_login() -> None:
     """Password gate + admin-name capture for the whole dashboard.
 
@@ -71,12 +100,7 @@ def _require_login() -> None:
     session_state alone resets on every new browser tab/hard-refresh/app
     sleep, which was forcing staff to log in constantly.
     """
-    admin_password = os.environ.get("ADMIN_PASSWORD", "")
-    if not admin_password:
-        try:
-            admin_password = st.secrets["ADMIN_PASSWORD"]
-        except Exception:
-            admin_password = ""
+    admin_password = _get_admin_password()
     if not admin_password:
         st.error("ยังไม่ได้ตั้งรหัสผ่านแอดมิน — เพิ่ม ADMIN_PASSWORD ใน Streamlit Secrets (หรือ .env ตอนรันเครื่อง local) ก่อนใช้งาน")
         st.stop()
@@ -584,8 +608,6 @@ def home():
 
 st.set_page_config(page_title="WAKA", page_icon="🏠", layout="wide", initial_sidebar_state="expanded")
 apply_theme()
-_require_login()
-st.logo(str(ASSETS_DIR / "waka_logo.png"), icon_image=str(ASSETS_DIR / "waka_icon.png"), size="large")
 
 home_pg = st.Page(home, title="หน้าแรก", icon="🏠", url_path="", default=True)
 orders_pg = st.Page("screens/orders.py", title="ออเดอร์", icon="🛒", url_path="orders")
@@ -597,10 +619,24 @@ report_pg = st.Page("screens/report.py", title="รายงาน", icon="📊"
 audit_log_pg = st.Page("screens/audit_log.py", title="ประวัติการทำงาน", icon="🕓", url_path="audit-log")
 settings_pg = st.Page("screens/settings.py", title="ตั้งค่า", icon="⚙️", url_path="settings")
 
-pg = st.navigation({"เมนูหลัก": [
-    home_pg, orders_pg, walkin_pg, stock_pg, products_pg,
-    report_pg, audit_log_pg, tournament_pg, settings_pg,
-]})
+# st.navigation() ต้องถูกสร้างไว้ "ก่อน" เช็ค login เสมอ — ไม่งั้นเวลากดลิงก์ตรง
+# ไปหน้าอื่น (เช่นการ์ด "ออเดอร์รอตรวจสลิป" ที่หน้าแรกพาไป /orders) แล้วดันต้อง
+# login ใหม่ (คุกกี้หมดอายุ/เพิ่ง sleep) สคริปต์จะ st.stop() ที่ _require_login()
+# ไปก่อนถึงจุดนี้เสมอ ทำให้ตัว router ไม่เคยรู้จัก URL ปลายทางนี้เลยระหว่างที่ยัง
+# auth ไม่ผ่าน — พอ login สำเร็จแล้ว rerun ใหม่ เลยเด้งกลับไปหน้าแรกเสมอ ไม่ใช่
+# หน้าที่ตั้งใจจะไปตั้งแต่ต้น (เจอเคสจริงกับการ์ดนี้) สร้าง navigation ไว้ก่อนเพื่อ
+# ให้ router จำ URL ปลายทางไว้ข้ามช่วง login ได้ แค่ซ่อนเมนูไว้จนกว่าจะ auth ผ่าน
+_authed_peek = _peek_authed(_get_admin_password())
+pg = st.navigation(
+    {"เมนูหลัก": [
+        home_pg, orders_pg, walkin_pg, stock_pg, products_pg,
+        report_pg, audit_log_pg, tournament_pg, settings_pg,
+    ]},
+    position="sidebar" if _authed_peek else "hidden",
+)
+
+_require_login()
+st.logo(str(ASSETS_DIR / "waka_logo.png"), icon_image=str(ASSETS_DIR / "waka_icon.png"), size="large")
 
 with st.sidebar:
     if st.button("🔄 โหลดใหม่", use_container_width=True):
