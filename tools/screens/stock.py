@@ -29,7 +29,7 @@ ADMIN_CODE = st.secrets["ADMIN_CODE"]  # withdrawStock now also requires this to
 
 BRANCHES = ["ต้นสักคอร์เนอร์", "เมืองทองธานี", "ศรีนครินทร์"]
 ADJUST_REASONS = ["", "ซื้อเข้า", "แก้ไขยอดผิด", "อื่นๆ"]
-WITHDRAW_REASONS = ["", "เบิกขายออนไลน์", "ส่งให้สปอนเซอร์", "จัดกิจกรรม", "ชำรุด", "เบิกกล่องแยกเป็นซอง", "อื่นๆ"]
+WITHDRAW_REASONS = ["", "เบิกขายออนไลน์", "จัดส่งพัสดุลูกค้า", "ส่งให้สปอนเซอร์", "จัดกิจกรรม", "ชำรุด", "เบิกกล่องแยกเป็นซอง", "อื่นๆ"]
 
 
 @st.cache_resource
@@ -345,6 +345,17 @@ def _withdraw_central_stock_dialog():
     max_box = int(pd.to_numeric(cur_row["qty_box"], errors="coerce").fillna(0).iloc[0]) if not cur_row.empty else 0
     max_pack = int(pd.to_numeric(cur_row["qty_pack"], errors="coerce").fillna(0).iloc[0]) if not cur_row.empty else 0
     st.caption(f"คงเหลือคลังกลาง: กล่อง {max_box} · ซอง {max_pack}")
+
+    # พรีออเดอร์ไม่แตะสต็อกเลยตอนลูกค้าสั่งซื้อ (ดู doPost/gas/Code.gs) — ออเดอร์
+    # ไปสาขามี "สร้างล็อตส่งสาขา" ช่วยตัดคลังกลางให้ทีหลัง แต่ออเดอร์ "จัดส่ง"
+    # ไม่มีกลไกไหนตัดให้เลยทั้งระบบ (ดู workflows/pending tasks) — โชว์จำนวนที่
+    # ค้างส่งไว้ตรงนี้ให้พนักงานเห็น จะได้เบิกออกมาให้พอ (รวมเผื่อขายช่องทางอื่น
+    # พร้อมกันได้เลยในคำขอเดียว ไม่ต้องเบิก 2 รอบ)
+    pending_delivery = load_pending_branch_demand().get(("จัดส่ง", wc_name), {})
+    pd_box = pending_delivery.get("preorder_qty_box", 0)
+    pd_pack = pending_delivery.get("preorder_qty_pack", 0)
+    if pd_box or pd_pack:
+        st.caption(f"📦 ค้างส่งลูกค้า (จัดส่ง) — พรีออเดอร์ยังไม่ได้ตัดคลังกลาง: กล่อง {pd_box} · ซอง {pd_pack}")
 
     wc_reason = st.selectbox("เหตุผล", WITHDRAW_REASONS, index=WITHDRAW_REASONS.index("เบิกขายออนไลน์"), key="wc_reason_sel")
     is_convert = wc_reason == "เบิกกล่องแยกเป็นซอง"
