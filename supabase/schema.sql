@@ -131,6 +131,22 @@ create table if not exists stock_returns (
   qty_pack             numeric
 );
 
+-- ย้าย/โอนสต็อกโดยตรงระหว่างจุดใดก็ได้ (สาขา ↔ สาขา, สาขา ↔ คลังกลาง) — ทำใน
+-- ขั้นตอนเดียว (ตัด-เพิ่มพร้อมกันทันที ไม่มีสถานะ "รอรับ" แบบ shipments) ต่างจาก
+-- withdrawals (เบิกออกจากระบบ ไม่มีปลายทาง) และ stock_returns (เจาะจงแค่ branch
+-- → คลังกลาง) — from_location/to_location เป็นชื่อสาขาจริง หรือ "คลังกลาง"
+create table if not exists stock_transfers (
+  id                   bigserial primary key,
+  timestamp            timestamptz,
+  from_location        text,
+  to_location          text,
+  name                 text,
+  qty_box              numeric,
+  qty_pack             numeric,
+  staff_name           text,
+  reason               text
+);
+
 create table if not exists player_stats (
   player_name          text primary key,
   display_name         text,
@@ -232,6 +248,7 @@ alter table catalog enable row level security;
 alter table stock_branch enable row level security;
 alter table shipments enable row level security;
 alter table stock_returns enable row level security;
+alter table stock_transfers enable row level security;
 alter table player_stats enable row level security;
 alter table wakagym_events enable row level security;
 alter table tournament_events enable row level security;
@@ -251,6 +268,7 @@ grant select, insert, update, delete on public.catalog to service_role;
 grant select, insert, update, delete on public.stock_branch to service_role;
 grant select, insert, update, delete on public.shipments to service_role;
 grant select, insert, update, delete on public.stock_returns to service_role;
+grant select, insert, update, delete on public.stock_transfers to service_role;
 grant select, insert, update, delete on public.player_stats to service_role;
 grant select, insert, update, delete on public.wakagym_events to service_role;
 grant select, insert, update, delete on public.tournament_events to service_role;
@@ -425,3 +443,25 @@ grant usage, select on all sequences in schema public to service_role;
 -- gas/Code.gs change — a status IS NULL row would otherwise fall through to
 -- the "ready" branch there and get a real stock check applied to what's
 -- still meant to be a preorder.
+
+-- ── Migration (2026-09-17): stock_transfers — โอนสต็อกข้าม location เดียวกัน ──
+-- Run in the Supabase SQL editor BEFORE deploying gas/Code.gs's next version
+-- (handleTransferStock writes to this table). New table — nothing reads/
+-- writes it until that deploy, safe to run ahead of time.
+-- create table if not exists stock_transfers (
+--   id                   bigserial primary key,
+--   timestamp            timestamptz,
+--   from_location        text,
+--   to_location          text,
+--   name                 text,
+--   qty_box              numeric,
+--   qty_pack             numeric,
+--   staff_name           text,
+--   reason               text
+-- );
+-- alter table stock_transfers enable row level security;
+-- grant select, insert, update, delete on public.stock_transfers to service_role;
+-- bigserial (not `generated always as identity`) — needs its own sequence
+-- grant same as purchases above, or every insert fails with "permission
+-- denied for sequence stock_transfers_id_seq".
+-- grant usage, select on sequence stock_transfers_id_seq to service_role;

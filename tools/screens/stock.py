@@ -1359,6 +1359,54 @@ with tab_branch:
                     except Exception as e:
                         st.error(f"คืนสต็อกไม่ได้: {e}")
 
+    with st.expander("🔀 โยกย้ายสต็อก (สาขา ↔ สาขา / คลังกลาง)"):
+        TRANSFER_LOCATIONS = ["คลังกลาง"] + BRANCHES
+
+        def _location_qty(loc: str, name: str):
+            if loc == "คลังกลาง":
+                row = catalog[catalog["name"] == name] if not catalog.empty else pd.DataFrame()
+            else:
+                row = stock_branch[(stock_branch["branch"] == loc) & (stock_branch["name"] == name)] if not stock_branch.empty else pd.DataFrame()
+            if row.empty:
+                return 0, 0
+            box = int(pd.to_numeric(row["qty_box"], errors="coerce").fillna(0).iloc[0])
+            pack = int(pd.to_numeric(row["qty_pack"], errors="coerce").fillna(0).iloc[0])
+            return box, pack
+
+        # จาก/ไป/สินค้า อยู่นอก form โดยตั้งใจ — เหตุผลเดียวกับฟอร์มอื่นในไฟล์นี้
+        # (ยอดคงเหลือที่โชว์ต้องอัปเดตทันทีตามที่เลือก ไม่รอกด submit ก่อน)
+        tb1, tb2, tb3 = st.columns(3)
+        t_from = tb1.selectbox("จาก", TRANSFER_LOCATIONS, key="transfer_from_sel")
+        t_to = tb2.selectbox("ไป", [l for l in TRANSFER_LOCATIONS if l != t_from], key="transfer_to_sel")
+        t_names = sorted(catalog["name"].unique().tolist()) if not catalog.empty else []
+        t_name = tb3.selectbox("สินค้า", t_names, key="transfer_name_sel")
+
+        t_from_box, t_from_pack = _location_qty(t_from, t_name)
+        t_to_box, t_to_pack = _location_qty(t_to, t_name)
+        st.caption(f"{t_from}: กล่อง {t_from_box} · ซอง {t_from_pack}    →    {t_to}: กล่อง {t_to_box} · ซอง {t_to_pack}")
+
+        with st.form("transfer_stock_form"):
+            tb4, tb5 = st.columns(2)
+            t_qty_box = tb4.number_input(f"โอนกล่อง (มี {t_from_box})", min_value=0, max_value=max(t_from_box, 0), value=0, step=1)
+            t_qty_pack = tb5.number_input(f"โอนซอง (มี {t_from_pack})", min_value=0, max_value=max(t_from_pack, 0), value=0, step=1)
+            t_reason = st.text_input("เหตุผล (ถ้ามี)", key="transfer_reason")
+            submitted_t = st.form_submit_button("โอนสต็อก")
+            if submitted_t:
+                if t_qty_box <= 0 and t_qty_pack <= 0:
+                    st.warning("ใส่จำนวนที่จะโอนก่อน")
+                else:
+                    try:
+                        gas_post({
+                            "_action": "transferStock", "from": t_from, "to": t_to,
+                            "name": t_name, "id": branch_name_to_id.get(t_name) or None,
+                            "qty_box": t_qty_box, "qty_pack": t_qty_pack, "reason": t_reason,
+                        })
+                        _flash(f"โอน {t_name} จาก {t_from} ไป {t_to} แล้ว")
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"โอนไม่ได้: {e}")
+
 with tab_history:
     ships = load_shipments()
     if ships.empty:
