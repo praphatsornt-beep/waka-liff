@@ -540,6 +540,10 @@ function doPost(e) {
       return handleReturnStock(data);
     }
 
+    if (data._action === "transferStock") {
+      return handleTransferStock(data);
+    }
+
     if (data._action === "walkinSale") {
       return handleWalkinSale(data);
     }
@@ -4350,6 +4354,117 @@ function handleReturnStock(data) {
     _clearCatalogCache_();
     lock.releaseLock();
     _logStaffAction_(staffName, branch, "return_stock", (catRow && catRow.id) || name, "Box:" + qtyBox + " Pack:" + qtyPack);
+
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+  } catch (err) {
+    try { lock.releaseLock(); } catch(_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+// ── โอนสต็อกโดยตรงระหว่างจุดใดก็ได้ — สาขา↔สาขา, สาขา↔คลังกลาง ──────────────
+// ขั้นตอนเดียว (ตัด-เพิ่มพร้อมกันทันที ไม่มีสถานะ "รอรับ" แบบ shipments — อันนั้น
+// ยังใช้แยกต่างหากสำหรับล็อตส่งสาขาจากคลังกลางที่มี "เผื่อ"/พรีออเดอร์ปนอยู่)
+// ต่างจาก handleReturnStock (เจาะจงแค่ branch → คลังกลาง) ตรงนี้รับได้ทั้ง
+// 4 ทิศทาง (branch→branch ด้วย) — ใช้ "คลังกลาง" (ค่าคงที่ CENTRAL) แทนชื่อสาขา
+// เมื่อฝั่งนั้นคือคลังกลาง ไม่ใช่ stock_branch
+// data: { from, to, name, id, qty_box, qty_pack, reason, staff_name, code }
+function handleTransferStock(data) {
+  var CENTRAL = "คลังกลาง";
+  var from = String(data.from || "").trim();
+  var to   = String(data.to   || "").trim();
+  var name = String(data.name || "").trim();
+  var qtyBox  = Number(data.qty_box  || 0);
+  var qtyPack = Number(data.qty_pack || 0);
+  var reason  = String(data.reason || "").trim();
+  var staffName = String(data.staff_name || "").trim();
+
+  if (!from || !to || from === to || !name || (qtyBox <= 0 && qtyPack <= 0)) {
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ข้อมูลไม่ครบ หรือต้นทาง/ปลายทางซ้ำกัน" })));
+  }
+  if ((from !== CENTRAL && !_branchAuthorized(data.code, from)) || (to !== CENTRAL && !_branchAuthorized(data.code, to))) {
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+  }
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var catRow = _resolveProductRow_(name, data.id);
+    if (!catRow) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบสินค้า: " + name }))); }
+    name = catRow.name;
+
+    // ── หักจากต้นทาง ──
+    var fromBsRow = null;
+    if (from === CENTRAL) {
+      var cHaveBox = Number(catRow.qty_box) || 0;
+      var cHavePack = Number(catRow.qty_pack) || 0;
+      if (qtyBox > cHaveBox || qtyPack > cHavePack) {
+        lock.releaseLock();
+        return _cors(ContentService.createTextOutput(JSON.stringify({ error: name + " สต็อกคลังกลางไม่พอ (เหลือ กล่อง:" + cHaveBox + " ซอง:" + cHavePack + ")" })));
+      }
+      if (qtyBox  > 0) catRow.qty_box  = cHaveBox  - qtyBox;
+      if (qtyPack > 0) catRow.qty_pack = cHavePack - qtyPack;
+    } else {
+      fromBsRow = _findStockBranchRow_(_fetchStockBranchRows_(from), name, from);
+      if (!fromBsRow) { lock.releaseLock(); return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบ " + name + " ในสต็อกสาขา " + from }))); }
+      var fHaveBox = Number(fromBsRow.qty_box) || 0;
+      var fHavePack = Number(fromBsRow.qty_pack) || 0;
+      if (qtyBox > fHaveBox || qtyPack > fHavePack) {
+        lock.releaseLock();
+        return _cors(ContentService.createTextOutput(JSON.stringify({ error: name + " สต็อกสาขา " + from + " ไม่พอ (เหลือ กล่อง:" + fHaveBox + " ซอง:" + fHavePack + ")" })));
+      }
+      if (qtyBox  > 0) fromBsRow.qty_box  = fHaveBox  - qtyBox;
+      if (qtyPack > 0) fromBsRow.qty_pack = fHavePack - qtyPack;
+    }
+
+    // ── เพิ่มปลายทาง ──
+    var toBsRow = null;
+    if (to === CENTRAL) {
+      catRow.qty_box  = (Number(catRow.qty_box)  || 0) + qtyBox;
+      catRow.qty_pack = (Number(catRow.qty_pack) || 0) + qtyPack;
+    } else {
+      toBsRow = _findStockBranchRow_(_fetchStockBranchRows_(to), name, to);
+      if (!toBsRow) toBsRow = { name: name, category: catRow.category || "", branch: to, qty_box: 0, qty_pack: 0 };
+      toBsRow.qty_box  = (Number(toBsRow.qty_box)  || 0) + qtyBox;
+      toBsRow.qty_pack = (Number(toBsRow.qty_pack) || 0) + qtyPack;
+    }
+
+    if (from === CENTRAL || to === CENTRAL) {
+      _clearCatalogCache_();
+      writeSupabaseRow_("catalog", catRow, SUPABASE_CATALOG_HEADER, "name");
+    }
+    if (fromBsRow) _writeStockBranchRow_(fromBsRow);
+    if (toBsRow) _writeStockBranchRow_(toBsRow);
+
+    var now = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd'T'HH:mm:ss'+07:00'");
+    var trObj = { timestamp: now, from_location: from, to_location: to, name: name, qty_box: qtyBox, qty_pack: qtyPack, staff_name: staffName || null, reason: reason || null };
+    var trRes = pushToSupabase_("stock_transfers", trObj);
+    if (!trRes.ok) throw new Error("Supabase stock_transfers write failed: " + trRes.text);
+    lock.releaseLock();
+
+    var trParts = [];
+    if (qtyBox  > 0) trParts.push(qtyBox + " กล่อง");
+    if (qtyPack > 0) trParts.push(qtyPack + " ซอง");
+    var trQtyText = trParts.join(" ");
+
+    // สต็อกคงเหลือหลังโอน ณ ทั้ง 2 ฝั่ง (ใช้ค่าที่อัปเดตแล้วในตัวแปรข้างบนตรงๆ
+    // ไม่ต้องอ่านใหม่จาก Supabase) — ใส่ในข้อความแจ้งกลุ่ม กันพนักงานต้องเปิด
+    // แอปมาเช็คซ้ำว่าโอนแล้วเหลือเท่าไหร่
+    var fromRemainBox  = from === CENTRAL ? (Number(catRow.qty_box)  || 0) : (Number(fromBsRow.qty_box)  || 0);
+    var fromRemainPack = from === CENTRAL ? (Number(catRow.qty_pack) || 0) : (Number(fromBsRow.qty_pack) || 0);
+    var toRemainBox    = to   === CENTRAL ? (Number(catRow.qty_box)  || 0) : (Number(toBsRow.qty_box)    || 0);
+    var toRemainPack   = to   === CENTRAL ? (Number(catRow.qty_pack) || 0) : (Number(toBsRow.qty_pack)   || 0);
+
+    var groupStaffTransfer = _getConfigValue(null, "group_staff_live");
+    if (groupStaffTransfer && staffName) {
+      _notifyStaffGroup_(groupStaffTransfer, "🔀 " + staffName + " โอน " + name + " " + trQtyText + "\n" + from + " → " + to +
+        "\nคงเหลือ " + from + ": กล่อง " + fromRemainBox + " ซอง " + fromRemainPack +
+        "\nคงเหลือ " + to + ": กล่อง " + toRemainBox + " ซอง " + toRemainPack +
+        (reason ? "\nเหตุผล: " + reason : ""));
+    }
+
+    var trTargetBranch = from !== CENTRAL ? from : (to !== CENTRAL ? to : null);
+    _logStaffAction_(staffName, trTargetBranch, "transfer_stock", catRow.id || name, trQtyText + " — " + from + " → " + to + (reason ? " (" + reason + ")" : ""));
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
