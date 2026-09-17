@@ -346,16 +346,20 @@ def _withdraw_central_stock_dialog():
     max_pack = int(pd.to_numeric(cur_row["qty_pack"], errors="coerce").fillna(0).iloc[0]) if not cur_row.empty else 0
     st.caption(f"คงเหลือคลังกลาง: กล่อง {max_box} · ซอง {max_pack}")
 
-    # พรีออเดอร์ไม่แตะสต็อกเลยตอนลูกค้าสั่งซื้อ (ดู doPost/gas/Code.gs) — ออเดอร์
-    # ไปสาขามี "สร้างล็อตส่งสาขา" ช่วยตัดคลังกลางให้ทีหลัง แต่ออเดอร์ "จัดส่ง"
-    # ไม่มีกลไกไหนตัดให้เลยทั้งระบบ (ดู workflows/pending tasks) — โชว์จำนวนที่
-    # ค้างส่งไว้ตรงนี้ให้พนักงานเห็น จะได้เบิกออกมาให้พอ (รวมเผื่อขายช่องทางอื่น
-    # พร้อมกันได้เลยในคำขอเดียว ไม่ต้องเบิก 2 รอบ)
-    pending_delivery = load_pending_branch_demand().get(("จัดส่ง", wc_name), {})
-    pd_box = pending_delivery.get("preorder_qty_box", 0)
-    pd_pack = pending_delivery.get("preorder_qty_pack", 0)
-    if pd_box or pd_pack:
-        st.caption(f"📦 ค้างส่งลูกค้า (จัดส่ง) — พรีออเดอร์ยังไม่ได้ตัดคลังกลาง: กล่อง {pd_box} · ซอง {pd_pack}")
+    # พรีออเดอร์ไม่แตะสต็อกเลยตอนลูกค้าสั่งซื้อ (ดู doPost/gas/Code.gs) — ยังไม่ถูก
+    # หักออกจาก "คงเหลือคลังกลาง" ด้านบนเลยไม่ว่าช่องทางไหน: ไปสาขามี "สร้างล็อต
+    # ส่งสาขา" ช่วยตัดทีหลัง, จัดส่งไม่มีกลไกไหนตัดให้เลย — รวมทุกช่องทางไว้ให้
+    # พนักงานเห็นก่อนเบิก จะได้ไม่เบิกเกินของที่มีจริง (สั่งไปแล้วแต่ตัวเลขยังไม่หัก)
+    # แยกโชว์ส่วนที่เป็นออเดอร์จัดส่งด้วย เพราะเป็นส่วนที่ต้องเบิกออกมาส่งเองตรงนี้
+    demand = load_pending_branch_demand()
+    pd_box_total = sum(d.get("preorder_qty_box", 0) for (_b, _n), d in demand.items() if _n == wc_name)
+    pd_pack_total = sum(d.get("preorder_qty_pack", 0) for (_b, _n), d in demand.items() if _n == wc_name)
+    st.caption(f"ลูกค้าสั่งไว้แล้ว (พรีออเดอร์ ยังไม่ตัดคลังกลาง) รวมทุกช่องทาง: กล่อง {pd_box_total} · ซอง {pd_pack_total}")
+    pending_delivery = demand.get(("จัดส่ง", wc_name), {})
+    pd_box_delivery = pending_delivery.get("preorder_qty_box", 0)
+    pd_pack_delivery = pending_delivery.get("preorder_qty_pack", 0)
+    if pd_box_delivery or pd_pack_delivery:
+        st.caption(f"📦 ในนั้นเป็นออเดอร์จัดส่ง (ต้องเบิกออกมาส่งเอง): กล่อง {pd_box_delivery} · ซอง {pd_pack_delivery}")
 
     wc_reason = st.selectbox("เหตุผล", WITHDRAW_REASONS, index=WITHDRAW_REASONS.index("เบิกขายออนไลน์"), key="wc_reason_sel")
     is_convert = wc_reason == "เบิกกล่องแยกเป็นซอง"
