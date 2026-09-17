@@ -4458,17 +4458,25 @@ function handleWalkinSale(data) {
 
     lock.releaseLock();
 
-    var groupStaffWalkin = _getConfigValue(null, "group_staff_live");
-    if (groupStaffWalkin && staffName) {
-      var payLabel = saleObj.payment_method === "cash" ? "💵 เงินสด" : ("📱 โอน" + (saleObj.bank ? " " + saleObj.bank : ""));
-      var walkinItemsText = items.map(function(it, idx) {
-        var u = it.type === "box" ? "กล่อง" : "ซอง";
-        return "  - " + it.name + " (" + u + ") x" + it.qty + " — เหลือ " + remainingAfterByIdx[idx] + " " + u;
-      }).join("\n");
-      _notifyStaffGroup_(groupStaffWalkin, "🛒 " + staffName + " ขายหน้าร้านที่สาขา " + branch + " ฿" + total + " (" + payLabel + ")\n\n" + walkinItemsText);
-    }
+    // ตัดสต็อก + เขียน walkin_sales (งานที่พลาดไม่ได้) เสร็จไปแล้วข้างบนก่อน lock
+    // ปล่อย — แจ้งกลุ่ม/log ด้านล่างเป็นแค่ส่วนเสริม ห้ามให้พังแล้วดึงทั้งฟังก์ชันไป
+    // เข้า catch จนตอบ error กลับไปทั้งที่ขายสำเร็จแล้วจริง (เจอเคสจริง 2026-09-17
+    // ที่พนักงานเห็น "บันทึกไม่ได้" ทั้งที่ Supabase มีรายการแล้วและกลุ่มไลน์ได้รับ
+    // แจ้งแล้ว — สาเหตุตอนนั้นเป็นฝั่ง fetch ของ client ไม่ใช่ตรงนี้ แต่จุดนี้เป็น
+    // ช่องโหว่คล้ายกันที่ควรปิดไว้ด้วยเผื่อ LINE push พังจริงสักครั้ง)
+    try {
+      var groupStaffWalkin = _getConfigValue(null, "group_staff_live");
+      if (groupStaffWalkin && staffName) {
+        var payLabel = saleObj.payment_method === "cash" ? "💵 เงินสด" : ("📱 โอน" + (saleObj.bank ? " " + saleObj.bank : ""));
+        var walkinItemsText = items.map(function(it, idx) {
+          var u = it.type === "box" ? "กล่อง" : "ซอง";
+          return "  - " + it.name + " (" + u + ") x" + it.qty + " — เหลือ " + remainingAfterByIdx[idx] + " " + u;
+        }).join("\n");
+        _notifyStaffGroup_(groupStaffWalkin, "🛒 " + staffName + " ขายหน้าร้านที่สาขา " + branch + " ฿" + total + " (" + payLabel + ")\n\n" + walkinItemsText);
+      }
+    } catch (_) {}
 
-    _logStaffAction_(staffName, branch, "walkin_sale", saleId, "฿" + total);
+    try { _logStaffAction_(staffName, branch, "walkin_sale", saleId, "฿" + total); } catch (_) {}
 
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true, sale_id: saleId, total: total })));
   } catch (err) {
