@@ -560,6 +560,23 @@ _PENDING_REVIEW_STATUSES = {"รอตรวจ", "รอตรวจเพิ�
 _DELIVERED_FULFILLMENTS = {"จัดส่งแล้ว", "รับแล้ว", "สาขายืนยัน", "จัดส่งบางส่วนแล้ว", "รับบางส่วนแล้ว"}
 
 
+_FULLY_DONE_FULFILLMENTS = {"จัดส่งแล้ว", "รับแล้ว", "สาขายืนยัน"}
+
+
+def _item_is_pending_handover(it: dict, items: list, fulfillment: str) -> bool:
+    """ชิ้นนี้ยังไม่ได้ส่งมอบลูกค้าจริงมั้ย — อิง handed_at/cancelled_at ของ
+    แต่ละชิ้นเป็นหลัก (รองรับออเดอร์ที่ส่งมอบบางส่วน) ยกเว้นออเดอร์ที่ไม่เคยผ่าน
+    partial flow เลยสักชิ้น (ไม่มี handed_at/ready_at/cancelled_at ติดอยู่ที่ไหน
+    เลย — เช่นกดปุ่ม "จัดส่งแล้ว" แบบง่ายที่ไม่ set รายชิ้น) กรณีนั้นให้เชื่อสถานะ
+    ระดับออเดอร์แทน"""
+    if it.get("handed_at") or it.get("cancelled_at"):
+        return False
+    any_tracked = any(i.get("handed_at") or i.get("ready_at") or i.get("cancelled_at") for i in items)
+    if not any_tracked and fulfillment in _FULLY_DONE_FULFILLMENTS:
+        return False
+    return True
+
+
 def quick_status_kind(slip_status: str, fulfillment: str) -> str:
     """Maps a real (slip_status, fulfillment) pair onto one of the 6 quick-filter
     chips above the order table. slip_status alone already covers every value in
@@ -1015,13 +1032,44 @@ with tab_cards:
     # ใช้ไปเท่าไหร่ — นับจาก filtered (ผ่านตัวกรองบนสุดแล้ว) แต่บังคับเฉพาะ
     # slip_status == "ยืนยัน" เสมอ (ไม่ผูกกับตัวกรอง "สถานะสลิป" ด้านบน) เพราะ
     # "ใช้จำนวนเท่าไหร่" หมายถึงยอดที่ยืนยันแล้วเท่านั้น ไม่ใช่ยอดที่ยังรอตรวจ
+    #
+    # ผูกกับตัวกรอง "สถานะด่วน" (quick_status_sel) ด้วย — "รอจัดเตรียม"/"จัดส่งแล้ว"
+    # นับที่ระดับรายชิ้น (handed_at) ไม่ใช่ระดับทั้งออเดอร์ เพราะออเดอร์เดียวส่งมอบ
+    # บางส่วนได้ (fulfillment="รับบางส่วนแล้ว"/"จัดส่งบางส่วนแล้ว" ถูกนับเป็นกลุ่ม
+    # "จัดส่งแล้ว" ทั้งใบใน quick_status_kind() ทั้งที่บางชิ้นในใบเดียวกันยังไม่ได้
+    # ส่งมอบจริง — ถ้านับแบบเดิมที่ระดับออเดอร์ ของค้างส่งกลุ่มนี้จะหายไปจาก "รอจัด
+    # เตรียม" เงียบๆ) จึงใช้ `filtered` ทั้งชุด (ไม่ใช่ cards_filtered ที่กรองระดับ
+    # ออเดอร์ไปแล้ว) แล้วกรองรายชิ้นเองแทน — ออเดอร์เก่า/ที่กดปุ่ม "จัดส่งแล้ว" แบบ
+    # ง่าย (ไม่ผ่าน partial flow เลยสักครั้ง ไม่มี handed_at/ready_at/cancelled_at
+    # ติดอยู่ที่ชิ้นไหนเลย) ให้ fallback ไปเชื่อสถานะระดับออเดอร์แทน (ดู
+    # _item_is_pending_handover)
     if product_filter:
         confirmed_for_summary = filtered[filtered["slip_status"] == "ยืนยัน"]
+        item_filter_mode = None
+        summary_caption_suffix = ""
+        if quick_status_sel == "รอจัดเตรียม":
+            item_filter_mode = "pending"
+            summary_caption_suffix = " — เฉพาะที่ยังไม่ได้ส่งมอบลูกค้า"
+        elif quick_status_sel == "จัดส่งแล้ว":
+            item_filter_mode = "handed"
+            summary_caption_suffix = " — เฉพาะที่ส่งมอบลูกค้าแล้ว"
+        elif quick_status_sel != "ทั้งหมด":
+            # รอแจ้งชำระ/รอตรวจสอบ/ยกเลิก ไม่มีออเดอร์ที่ยืนยันแล้วอยู่ในกลุ่มนี้
+            # เลยโดยนิยาม (quick_status_kind แยกจาก slip_status=="ยืนยัน" เป๊ะๆ)
+            confirmed_for_summary = confirmed_for_summary.iloc[0:0]
+
         branch_qty = {}
         for _, row in confirmed_for_summary.iterrows():
             b = row.get("branch") or "—"
-            for it in parse_items(row.get("items_json", "")):
+            ff = row.get("fulfillment") or ""
+            items_list = parse_items(row.get("items_json", ""))
+            for it in items_list:
                 if it.get("name") not in product_filter:
+                    continue
+                is_pending = _item_is_pending_handover(it, items_list, ff)
+                if item_filter_mode == "pending" and not is_pending:
+                    continue
+                if item_filter_mode == "handed" and is_pending:
                     continue
                 key = (b, it.get("name"))
                 entry = branch_qty.setdefault(key, {"box": 0, "pack": 0})
@@ -1034,7 +1082,7 @@ with tab_cards:
                 {"สาขา": b, "สินค้า": name, "กล่อง": v["box"], "ซอง": v["pack"]}
                 for (b, name), v in sorted(branch_qty.items())
             ])
-            st.markdown("**สรุปยอดสินค้าตามสาขา (เฉพาะยืนยันแล้ว)**")
+            st.markdown(f"**สรุปยอดสินค้าตามสาขา (เฉพาะยืนยันแล้ว{summary_caption_suffix})**")
             st.dataframe(summary_df, hide_index=True, use_container_width=True)
         else:
             st.caption("ยังไม่มีออเดอร์ยืนยันแล้วของสินค้าที่เลือก")
