@@ -1157,6 +1157,7 @@ with tab_cards:
                 "เลขออเดอร์": row.get("order_id", ""),
                 "เวลา": time_str,
                 "ลูกค้า": row.get("real_name") or row.get("display_name") or "—",
+                "ชื่อไลน์": row.get("display_name") or "—",
                 "เบอร์โทร": row.get("phone", "—") or "—",
                 "สินค้า": items_summary_text(items),
                 "ยอดรวม": float(row.get("total", 0) or 0),
