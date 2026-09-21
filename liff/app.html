@@ -392,6 +392,7 @@
                 <option value="อื่นๆ">อื่นๆ</option>
               </select>
             </div>
+            <div class="form-group" id="wdReasonOtherWrap" style="display:none"><label>ระบุเหตุผลเพิ่มเติม</label><input type="text" id="wdReasonOther" placeholder="เช่น เบิกไปให้ลูกค้าทดลองเล่น" maxlength="120"></div>
             <div id="wdConvertPreview" style="display:none;font-size:13px;color:var(--text2);margin:4px 0 8px"></div>
             <div class="form-group"><label>ชื่อพนักงาน</label><input type="text" id="wdStaffName" placeholder="ชื่อพนักงานที่เบิก"></div>
             <button class="btn btn-orange" onclick="submitWithdraw(this)">📤 เบิกสินค้า</button>
@@ -1058,6 +1059,7 @@ async function loadWithdrawProductOptions() {
 // withdrawStock) โดยส่งแค่ qty_box ให้ backend คำนวณจำนวนซองเองอีกที
 function updateWithdrawMode() {
   const isConvert = gid('wdReason').value === 'เบิกกล่องแยกเป็นซอง';
+  gid('wdReasonOtherWrap').style.display = gid('wdReason').value === 'อื่นๆ' ? 'block' : 'none';
   gid('wdType').disabled = isConvert;
   if (isConvert) gid('wdType').value = 'box';
   const el = gid('wdConvertPreview');
@@ -1609,7 +1611,13 @@ async function submitWithdraw(btn) {
   const branch=gid('branchSelect').value;if(!branch)return alert('เลือกสาขาก่อน');
   if(branch==='ทั้งหมด')return alert('โหมด "ทุกสาขา" เบิกสินค้าไม่ได้ กรุณาเปลี่ยนไปเลือกสาขาที่ต้องการก่อน');
   const name=gid('wdProduct').value;if(!name)return alert('เลือกสินค้า');
-  const type=gid('wdType').value,qty=+gid('wdQty').value||0,reason=gid('wdReason').value;
+  const type=gid('wdType').value,qty=+gid('wdQty').value||0;
+  let reason=gid('wdReason').value;
+  if(reason==='อื่นๆ'){
+    const other=gid('wdReasonOther').value.trim();
+    if(!other)return alert('กรุณาระบุเหตุผลเพิ่มเติม');
+    reason='อื่นๆ: '+other;
+  }
   if(qty<=0)return alert('ใส่จำนวน');
   const staff_name=gid('wdStaffName').value.trim();if(!staff_name)return alert('กรอกชื่อพนักงาน');
   localStorage.setItem('waka_staff_name',staff_name);
@@ -1631,7 +1639,7 @@ async function submitWithdraw(btn) {
   }
 
   try{const r=await fetch(G,{method:'POST',body:JSON.stringify({_action:'withdrawStock',branch,name,id:_p?_p.id:undefined,type,qty,reason,staff_name,code:_authCode()})});const d=await r.json();
-    if(d.ok){toast('เบิก '+name+' x'+qty);gid('wdQty').value=1;loadBrStock();loadWithdrawals();}
+    if(d.ok){toast('เบิก '+name+' x'+qty);gid('wdQty').value=1;gid('wdReasonOther').value='';loadBrStock();loadWithdrawals();}
     else alert(d.error||'ผิดพลาด');
   }catch(e){alert('บันทึกไม่ได้');}
   finally{btn.disabled=false;}
