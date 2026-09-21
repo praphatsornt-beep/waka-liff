@@ -79,6 +79,12 @@ def load_actions() -> pd.DataFrame:
     return df
 
 
+@st.cache_data(ttl=60)
+def load_product_names() -> dict:
+    rows = get_supabase().table("catalog").select("id,name").execute().data
+    return {r["id"]: r["name"] for r in rows if r.get("id") and r.get("name")}
+
+
 def df_to_csv_bytes(df: pd.DataFrame) -> bytes:
     return df.to_csv(index=False).encode("utf-8-sig")
 
@@ -167,9 +173,13 @@ else:
     if show.empty:
         st.caption("ไม่มีประวัติในช่วงที่เลือก")
     else:
-        display_cols = ["เวลา", "staff_name", "branch", "การกระทำ", "target_id", "detail"]
+        # target_id ของการกระทำที่เกี่ยวกับสินค้าเป็นรหัสสินค้า (P0001) — แปลงเป็นชื่อ
+        # ส่วนการกระทำอื่น (ออเดอร์/ล็อต/ใบซื้อ ฯลฯ) ไม่ใช่รหัสสินค้า คงค่าเดิมไว้
+        product_names = load_product_names()
+        show = show.assign(สินค้า=show["target_id"].map(lambda t: product_names.get(t, t)))
+        display_cols = ["เวลา", "staff_name", "branch", "การกระทำ", "สินค้า", "detail"]
         display_df = show[display_cols].rename(columns={
-            "staff_name": "พนักงาน", "branch": "สาขา", "target_id": "รหัสอ้างอิง", "detail": "รายละเอียด",
+            "staff_name": "พนักงาน", "branch": "สาขา", "detail": "รายละเอียด",
         })
         st.dataframe(display_df, use_container_width=True, hide_index=True)
         st.download_button(
