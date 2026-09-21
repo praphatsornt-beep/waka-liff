@@ -527,6 +527,9 @@ function doPost(e) {
     if (data._action === "withdrawStock") {
       return handleWithdrawStock(data);
     }
+    if (data._action === "cancelWithdrawStock") {
+      return handleCancelWithdrawStock(data);
+    }
 
     if (data._action === "adjustBranchStock") {
       return handleAdjustBranchStock(data);
@@ -4122,6 +4125,92 @@ function handleWithdrawStock(data) {
     return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
   } catch (err) {
     try { lock.releaseLock(); } catch(_) {}
+    return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
+  }
+}
+
+// ── ยกเลิกการเบิกสต็อกสาขาที่พนักงานกดผิด: คืนสต็อกสาขา + ลบแถว withdrawals ──
+// อ้างอิงจากแถว staff_actions (action = withdraw_stock) ที่หน้า "ประวัติการทำงาน"
+// ของ Streamlit — ตาราง withdrawals ไม่มี staff_name/action id เลยต้องแกะ
+// จำนวน/หน่วย/เหตุผลจาก detail ("N กล่อง|ซอง — เหตุผล") แล้วจับคู่แถว withdrawals
+// ที่ branch/name/type/qty ตรงกันและเวลาใกล้ที่สุด กันยกเลิกซ้ำด้วย log
+// cancel_withdraw_stock (target_id = id ของแถว staff_actions เดิม)
+// data: { action_id, staff_name, code }
+function handleCancelWithdrawStock(data) {
+  var actionId = String(data.action_id || "").trim();
+  var staffName = String(data.staff_name || "").trim();
+  if (!actionId) return _cors(ContentService.createTextOutput(JSON.stringify({ error: "missing action_id" })));
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var logRows = supabaseSelect_("staff_actions", "select=*&id=eq." + encodeURIComponent(actionId) + "&limit=1");
+    var logRow = logRows[0];
+    if (!logRow || logRow.action !== "withdraw_stock") {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบรายการเบิกนี้" })));
+    }
+    var branch = String(logRow.branch || "");
+    if (!_branchAuthorized(data.code, branch)) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "unauthorized" })));
+    }
+    var already = supabaseSelect_("staff_actions", "select=id&action=eq.cancel_withdraw_stock&target_id=eq." + encodeURIComponent(actionId) + "&limit=1");
+    if (already.length) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "รายการนี้ถูกยกเลิกไปแล้ว" })));
+    }
+
+    var m = String(logRow.detail || "").match(/^([\d.]+) (กล่อง|ซอง)(?: — ([\s\S]*))?$/);
+    if (!m) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "อ่านจำนวนจากรายการเบิกไม่ได้" })));
+    }
+    var qty = Number(m[1]);
+    var type = m[2] === "กล่อง" ? "box" : "pack";
+    var reason = m[3] || "";
+
+    // target_id เป็น catalog.id (หรือชื่อสินค้าถ้าไม่มี id) — resolve เป็นชื่อปัจจุบัน
+    var catRow = _resolveProductRow_(logRow.target_id, logRow.target_id);
+    var name = catRow ? catRow.name : String(logRow.target_id || "");
+
+    var wRows = supabaseSelect_("withdrawals",
+      "select=*&branch=eq." + encodeURIComponent(branch) + "&name=eq." + encodeURIComponent(name) +
+      "&type=eq." + type + "&qty=eq." + qty + "&order=timestamp.desc&limit=50");
+    var logTime = new Date(logRow.created_at).getTime();
+    var wRow = null, best = Infinity;
+    wRows.forEach(function (w) {
+      var diff = Math.abs(new Date(w.timestamp).getTime() - logTime);
+      if (diff < best) { best = diff; wRow = w; }
+    });
+    if (!wRow || best > 5 * 60 * 1000) {
+      lock.releaseLock();
+      return _cors(ContentService.createTextOutput(JSON.stringify({ error: "ไม่พบแถวเบิกที่ตรงกันใน withdrawals" })));
+    }
+
+    var bsRow = _findStockBranchRow_(_fetchStockBranchRows_(branch), name, branch);
+    if (!bsRow) bsRow = { name: name, category: (catRow && catRow.category) || "", branch: branch, qty_box: 0, qty_pack: 0 };
+    var field = type === "box" ? "qty_box" : "qty_pack";
+    bsRow[field] = (Number(bsRow[field]) || 0) + qty;
+    _writeStockBranchRow_(bsRow);
+
+    var delRes = deleteSupabase_("withdrawals", "id=eq." + encodeURIComponent(wRow.id));
+    if (!delRes.ok) throw new Error("Supabase withdrawals delete failed: " + delRes.text);
+    lock.releaseLock();
+
+    var unitLabel = type === "box" ? "กล่อง" : "ซอง";
+    var groupStaffCancelWd = _getConfigValue(null, "group_staff_live");
+    if (groupStaffCancelWd && staffName) {
+      _notifyStaffGroup_(groupStaffCancelWd, "↩️ " + staffName + " ยกเลิกการเบิก " + name + " x" + qty + " " + unitLabel +
+        " ของสาขา " + branch + " (เบิกโดย " + (logRow.staff_name || "-") + ")" +
+        (reason ? "\nเหตุผลเดิม: " + reason : "") +
+        "\nคืนสต็อกแล้ว — จำนวนที่เหลือ: " + bsRow[field] + " " + unitLabel);
+    }
+    _logStaffAction_(staffName, branch, "cancel_withdraw_stock", actionId, name + " " + qty + " " + unitLabel + (reason ? " — " + reason : ""));
+
+    return _cors(ContentService.createTextOutput(JSON.stringify({ ok: true })));
+  } catch (err) {
+    try { lock.releaseLock(); } catch (_) {}
     return _cors(ContentService.createTextOutput(JSON.stringify({ error: err.message })));
   }
 }

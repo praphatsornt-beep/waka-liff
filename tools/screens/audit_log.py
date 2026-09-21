@@ -9,13 +9,18 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
+import requests
 import streamlit as st
 from dotenv import load_dotenv
 
 load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from theme import apply_theme, page_header, kpi_card, ACCENT_TEXT
+from theme import apply_theme, page_header, kpi_card, admin_name, ACCENT_TEXT
+
+GAS_URL = "https://script.google.com/macros/s/AKfycbz52wvADM7O1zMjqKlT2G4HPkq8gwAon_fUCuKgbmUMkDPQkaYKUWnv598U3EkFN1AByQ/exec"
+WAKA_S = st.secrets["WAKA_S"]
+ADMIN_CODE = st.secrets["ADMIN_CODE"]
 
 ACTION_LABELS = {
     "cancel_order": "ยกเลิกออเดอร์",
@@ -28,6 +33,7 @@ ACTION_LABELS = {
     "cancel_shipment": "ยกเลิกล็อตส่งสาขา",
     "receive_shipment": "รับของเข้าสาขา",
     "withdraw_stock": "เบิกสต็อกสาขา",
+    "cancel_withdraw_stock": "ยกเลิกการเบิกสต็อกสาขา",
     "withdraw_central_stock": "เบิกคลังกลาง",
     "return_stock": "คืนสต็อกกลับคลังกลาง",
     "add_stock": "ปรับสต็อกคลังกลาง",
@@ -81,6 +87,9 @@ def df_to_csv_bytes(df: pd.DataFrame) -> bytes:
 apply_theme()
 page_header("ประวัติการทำงาน", "ใครทำอะไร เมื่อไหร่ ที่สาขาไหน — ตรวจสอบผู้รับผิดชอบย้อนหลังได้")
 
+if "_flash_msg" in st.session_state:
+    st.toast(st.session_state.pop("_flash_msg"), icon="✅")
+
 actions = load_actions()
 if actions.empty:
     st.caption("ยังไม่มีประวัติการทำงานบันทึกไว้")
@@ -130,6 +139,42 @@ else:
             "⬇️ ดาวน์โหลดประวัติ (CSV)", df_to_csv_bytes(display_df),
             file_name=f"waka_staff_actions_{date_from}_{date_to}.csv", mime="text/csv",
         )
+
+        # ยกเลิกการเบิกสต็อกสาขาที่พนักงานกดผิด — คืนสต็อก + แจ้งกลุ่มทีมงาน (ทำที่ GAS)
+        wd_rows = show[show["action"] == "withdraw_stock"]
+        if not wd_rows.empty:
+            cancelled_ids = set(
+                actions[actions["action"] == "cancel_withdraw_stock"]["target_id"].dropna().astype(str)
+            )
+            with st.expander("↩️ ยกเลิกการเบิกสต็อกสาขา (กรณีกดผิด)"):
+                st.caption("เลือกรายการเบิกที่ต้องการยกเลิก — ระบบจะคืนสต็อกให้สาขา ลบรายการเบิก และแจ้งกลุ่มไลน์ทีมงาน")
+                wd_opts = {}
+                for _, r in wd_rows.head(50).iterrows():
+                    rid = str(r["id"])
+                    if rid in cancelled_ids:
+                        continue
+                    label = f"{r['เวลา']} · {r.get('staff_name') or '-'} · {r.get('branch') or '-'} · {r.get('detail') or ''}"
+                    wd_opts[label] = rid
+                if not wd_opts:
+                    st.caption("ไม่มีรายการเบิกที่ยกเลิกได้ในช่วงที่เลือก")
+                else:
+                    sel_label = st.selectbox("รายการเบิก", list(wd_opts.keys()), key="cancel_wd_sel")
+                    if st.button("ยกเลิกการเบิกนี้", type="primary", key="cancel_wd_btn"):
+                        try:
+                            payload = {
+                                "_action": "cancelWithdrawStock", "action_id": wd_opts[sel_label],
+                                "code": ADMIN_CODE, "staff_name": admin_name(),
+                            }
+                            resp = requests.post(f"{GAS_URL}?_s={WAKA_S}", json=payload, timeout=30)
+                            res = resp.json()
+                            if res.get("error"):
+                                st.error(res["error"])
+                            else:
+                                load_actions.clear()
+                                st.session_state["_flash_msg"] = "ยกเลิกการเบิกแล้ว คืนสต็อกเรียบร้อย"
+                                st.rerun()
+                        except Exception as e:
+                            st.error(f"ยกเลิกไม่สำเร็จ: {e}")
 
         st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
         with st.expander("📊 สรุปจำนวนการกระทำต่อพนักงาน"):
