@@ -127,6 +127,43 @@ else:
 
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
+    # ยกเลิกการเบิกสต็อกสาขาที่พนักงานกดผิด — คืนสต็อก + แจ้งกลุ่มทีมงาน (ทำที่ GAS)
+    wd_rows = show[show["action"] == "withdraw_stock"]
+    if True:
+        cancelled_ids = set(
+            actions[actions["action"] == "cancel_withdraw_stock"]["target_id"].dropna().astype(str)
+        )
+        with st.expander("↩️ ยกเลิกการเบิกสต็อกสาขา (กรณีกดผิด)", expanded=True):
+            st.caption("เลือกรายการเบิกที่ต้องการยกเลิก — ระบบจะคืนสต็อกให้สาขา ลบรายการเบิก และแจ้งกลุ่มไลน์ทีมงาน")
+            wd_opts = {}
+            for _, r in wd_rows.head(50).iterrows():
+                rid = str(r["id"])
+                if rid in cancelled_ids:
+                    continue
+                label = f"{r['เวลา']} · {r.get('staff_name') or '-'} · {r.get('branch') or '-'} · {r.get('detail') or ''}"
+                wd_opts[label] = rid
+            if not wd_opts:
+                st.caption("ไม่มีรายการเบิกสต็อกสาขาในช่วง/ตัวกรองที่เลือก (ลองขยายช่วงวันที่ หรือตั้งสาขา/ประเภทเป็น \"ทุก...\")")
+            else:
+                sel_label = st.selectbox("รายการเบิก", list(wd_opts.keys()), key="cancel_wd_sel")
+                if st.button("ยกเลิกการเบิกนี้", type="primary", key="cancel_wd_btn"):
+                    try:
+                        payload = {
+                            "_action": "cancelWithdrawStock", "action_id": wd_opts[sel_label],
+                            "code": ADMIN_CODE, "staff_name": admin_name(),
+                        }
+                        resp = requests.post(f"{GAS_URL}?_s={WAKA_S}", json=payload, timeout=30)
+                        res = resp.json()
+                        if res.get("error"):
+                            st.error(res["error"])
+                        else:
+                            load_actions.clear()
+                            st.session_state["_flash_msg"] = "ยกเลิกการเบิกแล้ว คืนสต็อกเรียบร้อย"
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"ยกเลิกไม่สำเร็จ: {e}")
+
+
     if show.empty:
         st.caption("ไม่มีประวัติในช่วงที่เลือก")
     else:
@@ -139,42 +176,6 @@ else:
             "⬇️ ดาวน์โหลดประวัติ (CSV)", df_to_csv_bytes(display_df),
             file_name=f"waka_staff_actions_{date_from}_{date_to}.csv", mime="text/csv",
         )
-
-        # ยกเลิกการเบิกสต็อกสาขาที่พนักงานกดผิด — คืนสต็อก + แจ้งกลุ่มทีมงาน (ทำที่ GAS)
-        wd_rows = show[show["action"] == "withdraw_stock"]
-        if not wd_rows.empty:
-            cancelled_ids = set(
-                actions[actions["action"] == "cancel_withdraw_stock"]["target_id"].dropna().astype(str)
-            )
-            with st.expander("↩️ ยกเลิกการเบิกสต็อกสาขา (กรณีกดผิด)"):
-                st.caption("เลือกรายการเบิกที่ต้องการยกเลิก — ระบบจะคืนสต็อกให้สาขา ลบรายการเบิก และแจ้งกลุ่มไลน์ทีมงาน")
-                wd_opts = {}
-                for _, r in wd_rows.head(50).iterrows():
-                    rid = str(r["id"])
-                    if rid in cancelled_ids:
-                        continue
-                    label = f"{r['เวลา']} · {r.get('staff_name') or '-'} · {r.get('branch') or '-'} · {r.get('detail') or ''}"
-                    wd_opts[label] = rid
-                if not wd_opts:
-                    st.caption("ไม่มีรายการเบิกที่ยกเลิกได้ในช่วงที่เลือก")
-                else:
-                    sel_label = st.selectbox("รายการเบิก", list(wd_opts.keys()), key="cancel_wd_sel")
-                    if st.button("ยกเลิกการเบิกนี้", type="primary", key="cancel_wd_btn"):
-                        try:
-                            payload = {
-                                "_action": "cancelWithdrawStock", "action_id": wd_opts[sel_label],
-                                "code": ADMIN_CODE, "staff_name": admin_name(),
-                            }
-                            resp = requests.post(f"{GAS_URL}?_s={WAKA_S}", json=payload, timeout=30)
-                            res = resp.json()
-                            if res.get("error"):
-                                st.error(res["error"])
-                            else:
-                                load_actions.clear()
-                                st.session_state["_flash_msg"] = "ยกเลิกการเบิกแล้ว คืนสต็อกเรียบร้อย"
-                                st.rerun()
-                        except Exception as e:
-                            st.error(f"ยกเลิกไม่สำเร็จ: {e}")
 
         st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
         with st.expander("📊 สรุปจำนวนการกระทำต่อพนักงาน"):
